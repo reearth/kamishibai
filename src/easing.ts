@@ -63,3 +63,111 @@ export function ramp(
   const p = raw < 0 ? 0 : raw > 1 ? 1 : raw;
   return fromV + (toV - fromV) * ease(p);
 }
+
+// ---- spring -------------------------------------------------------
+export interface SpringConfig {
+  stiffness?: number;
+  damping?: number;
+  mass?: number;
+}
+
+/**
+ * A physical spring as an easing function. `p` is treated as the spring's
+ * time (so a window of `ramp(ms, 0, D, …, spring())` settles over D), and the
+ * output settles toward 1 — overshooting past it for low damping. Analytical
+ * and deterministic (no per-frame state), so it's safe for parallel capture.
+ */
+export function spring(config: SpringConfig = {}): Ease {
+  const { stiffness = 100, damping = 10, mass = 1 } = config;
+  const w0 = Math.sqrt(stiffness / mass); // natural angular frequency
+  const zeta = damping / (2 * Math.sqrt(stiffness * mass)); // damping ratio
+  return (p: number): number => {
+    if (p <= 0) return 0;
+    const t = p;
+    if (zeta < 1) {
+      const wd = w0 * Math.sqrt(1 - zeta * zeta);
+      return (
+        1 -
+        Math.exp(-zeta * w0 * t) *
+          (Math.cos(wd * t) + ((zeta * w0) / wd) * Math.sin(wd * t))
+      );
+    }
+    if (zeta === 1) {
+      return 1 - Math.exp(-w0 * t) * (1 + w0 * t);
+    }
+    // over-damped
+    const s = Math.sqrt(zeta * zeta - 1);
+    const r1 = -w0 * (zeta - s);
+    const r2 = -w0 * (zeta + s);
+    return 1 - (r2 * Math.exp(r1 * t) - r1 * Math.exp(r2 * t)) / (r2 - r1);
+  };
+}
+
+// ---- track (multi-stop interpolation) -----------------------------
+export interface TrackStop {
+  /** time in ms (on the current clock) */
+  at: number;
+  value: number;
+  /** easing for the segment ending at this stop (default linear) */
+  ease?: Ease;
+}
+
+/**
+ * Interpolate a value across many keyframes — the multi-stop `ramp`. Holds
+ * flat before the first and after the last stop; each segment can ease.
+ */
+export function track(ms: number, stops: TrackStop[]): number {
+  if (stops.length === 0) return 0;
+  const sorted = [...stops].sort((a, b) => a.at - b.at);
+  if (ms <= sorted[0]!.at) return sorted[0]!.value;
+  const last = sorted[sorted.length - 1]!;
+  if (ms >= last.at) return last.value;
+  let i = 0;
+  while (i < sorted.length - 1 && ms >= sorted[i + 1]!.at) i++;
+  const a = sorted[i]!;
+  const b = sorted[i + 1]!;
+  const ease = b.ease ?? eases.linear;
+  const p = (ms - a.at) / (b.at - a.at);
+  return a.value + (b.value - a.value) * ease(p);
+}
+
+// ---- stagger ------------------------------------------------------
+export interface StaggerOptions {
+  /** delay between consecutive items, in ms (default 80) */
+  each?: number;
+  /** anchor: "start" | "end" | "center" | a specific index */
+  from?: "start" | "end" | "center" | number;
+  /** item count (required for "end" / "center") */
+  total?: number;
+}
+
+/** Delay (ms) for item `i` in a staggered group — add it to a start time. */
+export function stagger(i: number, options: StaggerOptions = {}): number {
+  const { each = 80, from = "start", total = 0 } = options;
+  let distance: number;
+  if (from === "start") distance = i;
+  else if (from === "end") distance = Math.max(0, total - 1) - i;
+  else if (from === "center") distance = Math.abs(i - (total - 1) / 2);
+  else distance = Math.abs(i - from);
+  return distance * each;
+}
+
+// ---- color --------------------------------------------------------
+function parseHex(hex: string): [number, number, number] {
+  let h = hex.replace(/^#/, "");
+  if (h.length === 3) h = h[0]! + h[0]! + h[1]! + h[1]! + h[2]! + h[2]!;
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+/** Interpolate between two hex colors (sRGB), returning `rgb(r, g, b)`. */
+export function interpolateColor(a: string, b: string, t: number): string {
+  const p = t < 0 ? 0 : t > 1 ? 1 : t;
+  const ca = parseHex(a);
+  const cb = parseHex(b);
+  const mix = (i: number) => Math.round(ca[i]! + (cb[i]! - ca[i]!) * p);
+  return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`;
+}
