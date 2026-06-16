@@ -5,7 +5,7 @@
 //   node dist/cli.js render examples/video/react.tsx \
 //     --public examples/video/public -o video-react.mp4
 import React from "react";
-import { mount, Series, Video, Stage, Enter, useClock } from "../../src/react/index.tsx";
+import { mount, Series, Video, Subtitle, Stage, Enter, useClock } from "../../src/react/index.tsx";
 
 const Title: React.FC = () => (
   <Stage background="#0E1116">
@@ -33,6 +33,8 @@ const Clip: React.FC = () => {
           trimmed to the scene and faded out at the end. The src is resolved
           against --public; pass muted to drop it. */}
       <Video src="/clip.mp4" fadeOutMs={400} style={{ position: "absolute", inset: 0 }} />
+      {/* Captions burned in from a VTT file — cue times are local to this scene. */}
+      <Subtitle src="/captions.vtt" bottom={40} style={{ fontSize: 28 }} />
       <div
         style={{
           position: "absolute",

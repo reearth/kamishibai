@@ -159,6 +159,25 @@ kamishibai skill > kamishibai.md
 
 ---
 
+## Subtitles
+
+Burn captions from an SRT or WebVTT file. With React it's a composable component — drop `<Subtitle>` into a scene and its cue times count from that scene's start:
+
+```tsx
+import { Subtitle } from "kamishibai/react";
+<Subtitle src="/captions.vtt" bottom={60} />   // src served via --public
+```
+
+The parser is also framework-free for the raw API or Node:
+
+```ts
+import { parseSubtitles, cueAt } from "kamishibai/subtitle";
+const cues = parseSubtitles(srtOrVttText);
+const text = cueAt(cues, ms)?.text;            // draw it yourself in seek()
+```
+
+---
+
 ## Library
 
 ```ts
@@ -204,6 +223,7 @@ mount(<Reel />, { fps: 30, durationMs: 6000, width: 1920, height: 1080 });
 - `<Series>` / `<Series.Scene durationMs crossfadeMs>` — lay scenes back-to-back, each with its own local clock, with optional crossfades
 - `<Audio src delayMs atMs gain>` — declare narration/music; starts at the enclosing scene's start (+`delayMs`) or an explicit `atMs`, and is collected for muxing automatically
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate video via WebCodecs (see [Video](#video-frame-accurate)); draws the clip frame for the current scene-local time, and auto-muxes the clip's audio (use `muted` to drop it)
+- `<Subtitle src delayMs bottom style>` — burn captions from an SRT/VTT file; the active cue for the current scene-local time is drawn (composable — cue times count from the enclosing scene)
 - `mount(node, meta)` — render and expose `window.kamishibai` for you (also free-runs in a browser for live preview)
 
 ```tsx
