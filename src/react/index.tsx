@@ -21,6 +21,7 @@ import { createRoot } from "react-dom/client";
 import type { KamishibaiMeta } from "../protocol.ts";
 import type { AudioClip } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
+import { loadSubtitles, cueAt, type Cue as SubtitleCue } from "../subtitle.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
 
 // Re-exported for convenience (these live framework-free in kamishibai/easing).
@@ -362,6 +363,86 @@ export const Video: React.FC<{
 
   return (
     <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", ...style }} />
+  );
+};
+
+// ---- Subtitle -----------------------------------------------------
+// Burn captions from an SRT/VTT file into the frames: the active cue for the
+// current (scene-local) ms is drawn. Composable — drop it into a scene and
+// its cue times count from that scene's start (+ delayMs). The src must be
+// fetchable by the browser (e.g. --public).
+const subtitleCache = new Map<string, Promise<SubtitleCue[]>>();
+function loadSubtitlesCached(src: string): Promise<SubtitleCue[]> {
+  let p = subtitleCache.get(src);
+  if (!p) {
+    p = loadSubtitles(src);
+    subtitleCache.set(src, p);
+  }
+  return p;
+}
+
+export const Subtitle: React.FC<{
+  src: string;
+  /** shift all cue times by this many ms */
+  delayMs?: number;
+  /** distance from the bottom edge, in px (default 80) */
+  bottom?: number;
+  /** style overrides for the caption text box */
+  style?: React.CSSProperties;
+}> = ({ src, delayMs = 0, bottom = 80, style }) => {
+  const { epochMs } = useClock();
+  const ref = useRef<HTMLDivElement>(null);
+  const epochRef = useRef(epochMs);
+  epochRef.current = epochMs;
+
+  useLayoutEffect(() => {
+    const loaded = loadSubtitlesCached(src);
+    let cues: SubtitleCue[] | undefined;
+    void loaded.then((c) => {
+      cues = c;
+    });
+    const settler: Settler = async (globalMs) => {
+      const cs = cues ?? (await loaded);
+      cues = cs;
+      const el = ref.current;
+      if (!el) return;
+      const cue = cueAt(cs, globalMs - epochRef.current - delayMs);
+      el.textContent = cue ? cue.text : "";
+      // Only show the box when there's text (so empty cues are invisible).
+      el.style.background = cue ? "rgba(0,0,0,0.62)" : "transparent";
+      el.style.padding = cue ? "8px 22px" : "0";
+    };
+    return registerSettler(settler);
+  }, [src, delayMs]);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom,
+        textAlign: "center",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        ref={ref}
+        style={{
+          display: "inline-block",
+          maxWidth: "80%",
+          borderRadius: 10,
+          whiteSpace: "pre-line",
+          fontFamily: '"Hiragino Sans", "Noto Sans JP", system-ui, sans-serif',
+          fontSize: 40,
+          fontWeight: 600,
+          lineHeight: 1.35,
+          color: "#fff",
+          textShadow: "0 2px 8px rgba(0,0,0,0.55)",
+          ...style,
+        }}
+      />
+    </div>
   );
 };
 

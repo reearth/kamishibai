@@ -7,6 +7,7 @@ export default defineConfig({
     react: "src/react/index.tsx",
     video: "src/video.ts",
     easing: "src/easing.ts",
+    subtitle: "src/subtitle.ts",
   },
   format: ["esm"],
   target: "node20",

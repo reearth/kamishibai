@@ -41,6 +41,10 @@
     "./easing": {
       "types": "./dist/easing.d.ts",
       "import": "./dist/easing.js"
+    },
+    "./subtitle": {
+      "types": "./dist/subtitle.d.ts",
+      "import": "./dist/subtitle.js"
     }
   },
   "files": [
