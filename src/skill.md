@@ -101,10 +101,10 @@ Sugar API:
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
   video via WebCodecs (see Video below); draws the clip frame for the current
   scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
-- `<Subtitle src delayMs bottom style>` — burn captions from an SRT/VTT file;
-  the active cue for the current scene-local time is drawn (cue times count
-  from the enclosing scene). Parser also at kamishibai/subtitle (parseSubtitles,
-  cueAt) for the raw API.
+- `<Subtitle src | cues | children>` — burn captions from an SRT/VTT file
+  (`src`), inline `cues`, or direct text (`children`, timed via the enclosing
+  `<Cue>`). Cue times count from the enclosing scene. Parser also at
+  kamishibai/subtitle (parseSubtitles, cueAt) for the raw API.
 
 ```tsx
 import { mount, Series, Audio } from "kamishibai/react";

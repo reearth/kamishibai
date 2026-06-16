@@ -22,6 +22,7 @@ import type { KamishibaiMeta } from "../protocol.ts";
 import type { AudioClip } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
 import { loadSubtitles, cueAt, type Cue as SubtitleCue } from "../subtitle.ts";
+export type { Cue as SubtitleCue } from "../subtitle.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
 
 // Re-exported for convenience (these live framework-free in kamishibai/easing).
@@ -382,38 +383,63 @@ function loadSubtitlesCached(src: string): Promise<SubtitleCue[]> {
 }
 
 export const Subtitle: React.FC<{
-  src: string;
-  /** shift all cue times by this many ms */
+  /** a subtitle file (SRT/VTT), fetchable by the browser (e.g. --public) */
+  src?: string;
+  /** inline cues instead of a file */
+  cues?: SubtitleCue[];
+  /** static caption text shown while mounted — compose timing with <Cue> */
+  children?: React.ReactNode;
+  /** shift all cue times by this many ms (src / cues modes) */
   delayMs?: number;
   /** distance from the bottom edge, in px (default 80) */
   bottom?: number;
   /** style overrides for the caption text box */
   style?: React.CSSProperties;
-}> = ({ src, delayMs = 0, bottom = 80, style }) => {
+}> = ({ src, cues, children, delayMs = 0, bottom = 80, style }) => {
   const { epochMs } = useClock();
   const ref = useRef<HTMLDivElement>(null);
   const epochRef = useRef(epochMs);
   epochRef.current = epochMs;
 
+  // src/cues drive the active cue per frame; otherwise children is a static
+  // caption (timing comes from the enclosing <Cue>/<Series.Scene>).
+  const dynamic = src != null || cues != null;
+  const cuesKey = cues ? JSON.stringify(cues) : "";
+
   useLayoutEffect(() => {
-    const loaded = loadSubtitlesCached(src);
-    let cues: SubtitleCue[] | undefined;
-    void loaded.then((c) => {
-      cues = c;
-    });
+    if (!dynamic) return;
+    const pending = cues ? null : loadSubtitlesCached(src!);
+    let resolved: SubtitleCue[] | undefined = cues ?? undefined;
+    if (pending) void pending.then((c) => (resolved = c));
     const settler: Settler = async (globalMs) => {
-      const cs = cues ?? (await loaded);
-      cues = cs;
+      const cs = resolved ?? (await pending!);
+      resolved = cs;
       const el = ref.current;
       if (!el) return;
       const cue = cueAt(cs, globalMs - epochRef.current - delayMs);
       el.textContent = cue ? cue.text : "";
-      // Only show the box when there's text (so empty cues are invisible).
+      // Only show the box when there's a cue (so gaps are invisible).
       el.style.background = cue ? "rgba(0,0,0,0.62)" : "transparent";
       el.style.padding = cue ? "8px 22px" : "0";
     };
     return registerSettler(settler);
-  }, [src, delayMs]);
+  }, [dynamic, src, cuesKey, delayMs]);
+
+  const boxStyle: React.CSSProperties = {
+    display: "inline-block",
+    maxWidth: "80%",
+    borderRadius: 10,
+    whiteSpace: "pre-line",
+    fontFamily: '"Hiragino Sans", "Noto Sans JP", system-ui, sans-serif',
+    fontSize: 40,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    color: "#fff",
+    textShadow: "0 2px 8px rgba(0,0,0,0.55)",
+    // static text shows its box immediately; dynamic toggles bg per cue.
+    ...(dynamic ? null : { background: "rgba(0,0,0,0.62)", padding: "8px 22px" }),
+    ...style,
+  };
 
   return (
     <div
@@ -426,22 +452,7 @@ export const Subtitle: React.FC<{
         pointerEvents: "none",
       }}
     >
-      <div
-        ref={ref}
-        style={{
-          display: "inline-block",
-          maxWidth: "80%",
-          borderRadius: 10,
-          whiteSpace: "pre-line",
-          fontFamily: '"Hiragino Sans", "Noto Sans JP", system-ui, sans-serif',
-          fontSize: 40,
-          fontWeight: 600,
-          lineHeight: 1.35,
-          color: "#fff",
-          textShadow: "0 2px 8px rgba(0,0,0,0.55)",
-          ...style,
-        }}
-      />
+      {dynamic ? <div ref={ref} style={boxStyle} /> : <div style={boxStyle}>{children}</div>}
     </div>
   );
 };
