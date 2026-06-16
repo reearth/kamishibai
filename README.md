@@ -5,7 +5,7 @@
 
 ![A reel rendered with kamishibai](examples/basics/demo.gif)
 
-<sub>The [`examples/basics`](examples/basics/index.tsx) reel — fades, an eased progress meter, count-up, staggered reveals, eased motion. ([full mp4](examples/basics/out.mp4))</sub>
+<sub>The [`examples/basics`](examples/basics/index.tsx) reel — spring entrances, staggered bars, multi-stop tracks, color tweens. ([full mp4](examples/basics/out.mp4))</sub>
 
 `kamishibai` turns any web page (DOM, canvas, anything) into a video by **seeking to each moment and capturing a still**, then assembling the stills with `ffmpeg`. Because every frame is a pure function of its time, capture is deterministic and **trivially parallelisable** across several headless Chrome instances.
 
@@ -117,12 +117,14 @@ kamishibai render <entry|url> [options]
 
 | Option | | Description |
 |---|---|---|
-| `--out` | `-o` | output mp4 (default: `out.mp4`) |
+| `--out` | `-o` | output file; `.mp4` (default) or `.gif` by extension |
 | `--workers` | `-w` | parallel Chrome instances (default: ~cpus-2, max 8) |
 | `--scale` | `-s` | device scale factor; output px = meta size × scale (default: 1) |
+| `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
 | `--audio` | `-a` | audio manifest JSON: `[{ "src", "atMs", "gain"? }, …]` |
 | `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
+| `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
 | `--crf` | | H.264 quality, lower = better (default: 18) |
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
@@ -136,6 +138,8 @@ The entry can be:
 ```sh
 kamishibai render reel.tsx -o reel.mp4 -w 4
 kamishibai render reel.tsx -s 2 -o reel@2x.mp4          # 2× resolution
+kamishibai render reel.tsx -o reel.gif --max-width 720  # animated GIF
+kamishibai render reel.tsx -o reel.mp4 --max-width 1280 # downscaled mp4
 kamishibai render http://localhost:3000 -o page.mp4
 kamishibai render reel.tsx -a audio.json -p public -o reel.mp4
 ```
@@ -237,6 +241,10 @@ const ease = bezier(0.16, 1, 0.3, 1);    // custom cubic-bezier easing
 - `bezier(x1, y1, x2, y2)` — build a custom easing (the curve math CSS timing functions use)
 - `eases` — ready-made `linear` / `smooth` / `inOut` / `pop`
 - `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped time→value interpolation
+- `spring({ stiffness, damping, mass })` — a physical spring as an easing (overshoots, settles); analytical, so it's deterministic
+- `track(ms, [{ at, value, ease? }])` — multi-stop interpolation (the n-point `ramp`)
+- `stagger(i, { each, from })` — cascade delay (ms) for item `i`
+- `interpolateColor(a, b, t)` — tween between hex colors
 
 ---
 
