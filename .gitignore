@@ -11,5 +11,6 @@ out/
 *.mp4
 .DS_Store
 
-# …but example source clips are tracked
+# …but example source clips and the README demo are tracked
 !examples/video/public/clip.mp4
+!examples/basics/out.mp4

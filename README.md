@@ -3,6 +3,10 @@
 > **Slice a web page into parallel-capturable units, seek through time, and bake each frame into an mp4. That's it.**
 > A *mechanism*, not a framework. How you draw — React, plain DOM, canvas, WebGL — is up to you.
 
+![A reel rendered with kamishibai](examples/basics/demo.gif)
+
+<sub>The [`examples/basics`](examples/basics/index.tsx) reel — fades, an eased progress meter, count-up, staggered reveals, eased motion. ([full mp4](examples/basics/out.mp4))</sub>
+
 `kamishibai` turns any web page (DOM, canvas, anything) into a video by **seeking to each moment and capturing a still**, then assembling the stills with `ffmpeg`. Because every frame is a pure function of its time, capture is deterministic and **trivially parallelisable** across several headless Chrome instances.
 
 It deliberately does *not* try to be a frame-accurate compositing engine or ship an editor. It gives you the renderer and one tiny contract; the rest is yours.
