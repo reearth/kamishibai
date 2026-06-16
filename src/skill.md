@@ -168,8 +168,10 @@ timeline). Two ways:
 ]
 ```
 
-Per-clip: `gain` (dB), `trimStartMs`/`durationMs` (use a sub-section), and
-`fadeInMs`/`fadeOutMs` (fade-out needs `durationMs`).
+Per-clip: `gain` (dB), `trimStartMs`/`durationMs` (use a sub-section),
+`fadeInMs`/`fadeOutMs` (fade-out needs `durationMs`), and `gainKeyframes`
+(`[{ atMs, gain }]`) — dB volume automation over the clip's timeline, linearly
+interpolated, for ducking/swells.
 
 **2. Declared in the page** (composable, no manifest). The renderer reads
 `window.kamishibai.audio` after capture and muxes it. With React, use `<Audio>`

@@ -208,9 +208,12 @@ export const Audio: React.FC<{
   fadeInMs?: number;
   /** fade-out over this many ms (needs durationMs) */
   fadeOutMs?: number;
-}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs }) => {
+  /** dB volume automation over the clip's timeline (atMs from clip start) */
+  gainKeyframes?: Array<{ atMs: number; gain: number }>;
+}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, gainKeyframes }) => {
   const { epochMs } = useClock();
   const start = Math.round(atMs ?? epochMs + delayMs);
+  const kfKey = gainKeyframes ? JSON.stringify(gainKeyframes) : "";
   useEffect(() => {
     const clip: AudioClip = { src, atMs: start };
     if (gain != null) clip.gain = gain;
@@ -218,8 +221,10 @@ export const Audio: React.FC<{
     if (durationMs != null) clip.durationMs = durationMs;
     if (fadeInMs != null) clip.fadeInMs = fadeInMs;
     if (fadeOutMs != null) clip.fadeOutMs = fadeOutMs;
+    if (gainKeyframes != null) clip.gainKeyframes = gainKeyframes;
     registerAudio(clip);
-  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, kfKey]);
   return null;
 };
 
@@ -336,8 +341,10 @@ export const Video: React.FC<{
   /** fade-in / fade-out (ms) for the muxed audio */
   fadeInMs?: number;
   fadeOutMs?: number;
+  /** dB volume automation for the muxed audio (atMs from the clip start) */
+  gainKeyframes?: Array<{ atMs: number; gain: number }>;
   style?: React.CSSProperties;
-}> = ({ src, startMs = 0, muted, audioSrc, gain, fadeInMs, fadeOutMs, style }) => {
+}> = ({ src, startMs = 0, muted, audioSrc, gain, fadeInMs, fadeOutMs, gainKeyframes, style }) => {
   const { epochMs, durationMs } = useClock();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const epochRef = useRef(epochMs);
@@ -348,6 +355,7 @@ export const Video: React.FC<{
   // renderer resolves the path (via --public) and skips it if the file has
   // no audio stream. Set `muted` to opt out.
   const audioPath = audioSrc ?? src;
+  const kfKey = gainKeyframes ? JSON.stringify(gainKeyframes) : "";
   useEffect(() => {
     if (muted) return;
     const clip: AudioClip = {
@@ -358,8 +366,10 @@ export const Video: React.FC<{
     if (gain != null) clip.gain = gain;
     if (fadeInMs != null) clip.fadeInMs = fadeInMs;
     if (fadeOutMs != null) clip.fadeOutMs = fadeOutMs;
+    if (gainKeyframes != null) clip.gainKeyframes = gainKeyframes;
     registerAudio(clip);
-  }, [muted, audioPath, epochMs, startMs, durationMs, gain, fadeInMs, fadeOutMs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [muted, audioPath, epochMs, startMs, durationMs, gain, fadeInMs, fadeOutMs, kfKey]);
 
   useLayoutEffect(() => {
     const loaded = loadVideoCached(src);

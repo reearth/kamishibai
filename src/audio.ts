@@ -20,6 +20,13 @@ export interface AudioClip {
   fadeInMs?: number;
   /** linear fade-out over this many ms at the clip's end (needs durationMs) */
   fadeOutMs?: number;
+  /**
+   * Volume automation: dB keyframes over the clip's own timeline (atMs from
+   * the clip start). The level is linearly interpolated in dB between them
+   * and held flat outside the range — for ducking, swells, custom fades.
+   * Combined additively with `gain` if both are set.
+   */
+  gainKeyframes?: Array<{ atMs: number; gain: number }>;
 }
 
 export type AudioManifest = AudioClip[];

@@ -56,7 +56,15 @@ kamishibai never generates sound. You declare files + start times (from a TTS, a
 ]
 ```
 
-Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), and `fadeInMs` / `fadeOutMs` (fade-out needs `durationMs`).
+Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), `fadeInMs` / `fadeOutMs` (fade-out needs `durationMs`), and `gainKeyframes` — dB volume automation over the clip's timeline, linearly interpolated, for ducking/swells:
+
+```ts
+// duck the music under narration between 1s and 3s
+{ src: "bgm.mp3", atMs: 0, gainKeyframes: [
+  { atMs: 0, gain: -10 }, { atMs: 1000, gain: -24 },
+  { atMs: 3000, gain: -24 }, { atMs: 3500, gain: -10 },
+] }
+```
 
 **2. Declared in the page** — composable. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain? }`) and the renderer collects + muxes it automatically, no manifest needed. With React this is just an `<Audio>` component dropped into a scene (see below); with the raw API, push entries onto the array yourself.
 

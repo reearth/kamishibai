@@ -98,6 +98,34 @@ export interface MuxOptions {
 const ms2s = (ms: number) => (ms / 1000).toFixed(6);
 
 /**
+ * Build an ffmpeg `volume` expression (a linear-amplitude function of `t` in
+ * seconds) that interpolates dB keyframes linearly and holds flat outside the
+ * range. `baseGainDb` is added to every keyframe.
+ */
+export function volumeExpr(
+  keyframes: Array<{ atMs: number; gain: number }>,
+  baseGainDb = 0,
+): string {
+  const kf = [...keyframes].sort((a, b) => a.atMs - b.atMs);
+  const t = (i: number) => (kf[i]!.atMs / 1000).toFixed(6);
+  const db = (i: number) => kf[i]!.gain + baseGainDb;
+  const n = kf.length - 1;
+
+  let inner = `${db(n)}`; // t >= last keyframe
+  for (let i = n - 1; i >= 0; i--) {
+    const dt = kf[i + 1]!.atMs - kf[i]!.atMs;
+    const seg =
+      dt <= 0
+        ? `${db(i + 1)}` // coincident keyframes -> step
+        : `(${db(i)}+(${db(i + 1) - db(i)})*(t-${t(i)})/${(dt / 1000).toFixed(6)})`;
+    inner = `if(lt(t,${t(i + 1)}),${seg},${inner})`;
+  }
+  // t < first keyframe -> hold the first level
+  const dbExpr = n >= 1 ? `if(lt(t,${t(0)}),${db(0)},${inner})` : `${db(0)}`;
+  return `pow(10,(${dbExpr})/20)`;
+}
+
+/**
  * Build the ffmpeg input args + filter_complex for an audio manifest.
  * Pure (no I/O) so it can be unit-tested. Each clip is, in order:
  * trimmed, timestamp-reset, faded, gain-adjusted, delayed to its start;
@@ -130,8 +158,12 @@ export function buildAudioGraph(clips: AudioManifest): {
       const st = Math.max(0, clip.durationMs - clip.fadeOutMs);
       chain.push(`afade=t=out:st=${ms2s(st)}:d=${ms2s(clip.fadeOutMs)}`);
     }
-    // 3. static gain
-    if (clip.gain) chain.push(`volume=${clip.gain}dB`);
+    // 3. gain — automated (dB keyframes) or static
+    if (clip.gainKeyframes && clip.gainKeyframes.length > 0) {
+      chain.push(`volume=volume='${volumeExpr(clip.gainKeyframes, clip.gain ?? 0)}':eval=frame`);
+    } else if (clip.gain) {
+      chain.push(`volume=${clip.gain}dB`);
+    }
     // 4. place on the reel timeline
     chain.push(`adelay=${Math.max(0, Math.round(clip.atMs))}:all=1`);
 

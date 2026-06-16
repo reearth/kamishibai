@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { audio } from "../src/audio.ts";
-import { buildAudioGraph } from "../src/ffmpeg.ts";
+import { buildAudioGraph, volumeExpr } from "../src/ffmpeg.ts";
 
 describe("audio manifest helper", () => {
   it("passes clips through unchanged", () => {
@@ -46,5 +46,40 @@ describe("buildAudioGraph", () => {
     ]);
     expect(g.inputs).toEqual(["-i", "a.m4a", "-i", "b.m4a"]);
     expect(g.filterComplex).toContain("amix=inputs=2:normalize=0");
+  });
+
+  it("emits a volume automation expression for gainKeyframes", () => {
+    const g = buildAudioGraph([
+      { src: "bgm.mp3", atMs: 0, gainKeyframes: [
+        { atMs: 0, gain: 0 },
+        { atMs: 1000, gain: -18 },
+        { atMs: 2000, gain: 0 },
+      ] },
+    ]);
+    expect(g.filterComplex).toContain("volume=volume='");
+    expect(g.filterComplex).toContain("eval=frame");
+    // not a static volume=NdB step
+    expect(g.filterComplex).not.toContain("volume=0dB");
+  });
+});
+
+describe("volumeExpr", () => {
+  it("is constant for a single keyframe", () => {
+    expect(volumeExpr([{ atMs: 0, gain: -6 }])).toBe("pow(10,(-6)/20)");
+  });
+
+  it("holds flat before the first and after the last keyframe", () => {
+    const e = volumeExpr([
+      { atMs: 1000, gain: 0 },
+      { atMs: 2000, gain: -20 },
+    ]);
+    // before t=1: hold 0dB; after t=2: hold -20dB
+    expect(e).toContain("if(lt(t,1.000000),0,");
+    expect(e).toContain("if(lt(t,2.000000),");
+    expect(e.startsWith("pow(10,(")).toBe(true);
+  });
+
+  it("adds the base gain to every keyframe", () => {
+    expect(volumeExpr([{ atMs: 0, gain: -3 }], -6)).toBe("pow(10,(-9)/20)");
   });
 });

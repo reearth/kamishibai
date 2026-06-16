@@ -24,4 +24,11 @@ export { probeMeta, captureChunk } from "./renderer.ts";
 export { renderPool } from "./pool.ts";
 export { serveEntry } from "./serve.ts";
 export type { Served } from "./serve.ts";
-export { assertFfmpeg, encodeFrames, muxAudio, buildAudioGraph, hasAudioStream } from "./ffmpeg.ts";
+export {
+  assertFfmpeg,
+  encodeFrames,
+  muxAudio,
+  buildAudioGraph,
+  volumeExpr,
+  hasAudioStream,
+} from "./ffmpeg.ts";
