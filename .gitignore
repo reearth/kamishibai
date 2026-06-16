@@ -7,3 +7,6 @@ frames/
 out/
 *.mp4
 .DS_Store
+
+# …but example source clips are tracked
+!examples/video/public/clip.mp4
