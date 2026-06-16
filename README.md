@@ -51,9 +51,12 @@ kamishibai never generates sound. You declare files + start times (from a TTS, a
 ```ts
 [
   { src: "voiceover/intro.m4a", atMs: 0 },
-  { src: "bgm.mp3", atMs: 0, gain: -18 },
+  // trim to a sub-section, duck under narration, fade out:
+  { src: "bgm.mp3", atMs: 0, gain: -18, trimStartMs: 5000, durationMs: 20000, fadeOutMs: 800 },
 ]
 ```
+
+Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), and `fadeInMs` / `fadeOutMs` (fade-out needs `durationMs`).
 
 **2. Declared in the page** — composable. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain? }`) and the renderer collects + muxes it automatically, no manifest needed. With React this is just an `<Audio>` component dropped into a scene (see below); with the raw API, push entries onto the array yourself.
 
@@ -75,7 +78,7 @@ window.kamishibai = {
 };
 ```
 
-With React, `<Video src>` does this for you (see below). WebCodecs is available because kamishibai serves on localhost (a secure context). Codec support follows the Chromium build: VP9/AV1 everywhere, H.264 is platform-dependent — prefer VP9/AV1 for portable CI. The whole clip is decoded into memory up front (great for short overlays; a streaming decoder would be the next step for long clips).
+With React, `<Video src>` does this for you (see below), and the clip's **own audio track is muxed automatically** — trimmed to the scene and gain/fade-able — unless you pass `muted`. WebCodecs is available because kamishibai serves on localhost (a secure context). Codec support follows the Chromium build: VP9/AV1 everywhere, H.264 is platform-dependent — prefer VP9/AV1 for portable CI. The whole clip is decoded into memory up front (great for short overlays; a streaming decoder would be the next step for long clips).
 
 ---
 
@@ -185,7 +188,7 @@ mount(<Reel />, { fps: 30, durationMs: 6000, width: 1920, height: 1080 });
 - `<Stage>` — root surface · `<Cue at hold>` — reveal during a window (with a local clock) · `<Enter>` — fade + rise
 - `<Series>` / `<Series.Scene durationMs crossfadeMs>` — lay scenes back-to-back, each with its own local clock, with optional crossfades
 - `<Audio src delayMs atMs gain>` — declare narration/music; starts at the enclosing scene's start (+`delayMs`) or an explicit `atMs`, and is collected for muxing automatically
-- `<Video src startMs style>` — frame-accurate video via WebCodecs (see [Video](#video-frame-accurate)); draws the clip frame for the current scene-local time onto a canvas
+- `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate video via WebCodecs (see [Video](#video-frame-accurate)); draws the clip frame for the current scene-local time, and auto-muxes the clip's audio (use `muted` to drop it)
 - `mount(node, meta)` — render and expose `window.kamishibai` for you (also free-runs in a browser for live preview)
 
 ```tsx

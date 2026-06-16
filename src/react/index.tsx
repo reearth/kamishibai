@@ -200,12 +200,26 @@ export const Audio: React.FC<{
   delayMs?: number;
   /** volume in dB (negative = quieter) */
   gain?: number;
-}> = ({ src, atMs, delayMs = 0, gain }) => {
+  /** start offset into the source file, in ms */
+  trimStartMs?: number;
+  /** how much of the source to use, in ms */
+  durationMs?: number;
+  /** fade-in over this many ms */
+  fadeInMs?: number;
+  /** fade-out over this many ms (needs durationMs) */
+  fadeOutMs?: number;
+}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs }) => {
   const { epochMs } = useClock();
   const start = Math.round(atMs ?? epochMs + delayMs);
   useEffect(() => {
-    registerAudio(gain == null ? { src, atMs: start } : { src, atMs: start, gain });
-  }, [src, start, gain]);
+    const clip: AudioClip = { src, atMs: start };
+    if (gain != null) clip.gain = gain;
+    if (trimStartMs != null) clip.trimStartMs = trimStartMs;
+    if (durationMs != null) clip.durationMs = durationMs;
+    if (fadeInMs != null) clip.fadeInMs = fadeInMs;
+    if (fadeOutMs != null) clip.fadeOutMs = fadeOutMs;
+    registerAudio(clip);
+  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs]);
   return null;
 };
 
@@ -312,12 +326,40 @@ export const Video: React.FC<{
   src: string;
   /** when, in this scope's local ms, the clip starts playing (default 0) */
   startMs?: number;
+  /** drop the clip's audio (by default it's muxed automatically) */
+  muted?: boolean;
+  /** override the path ffmpeg reads the audio from (defaults to src, which
+   *  the renderer resolves against --public) */
+  audioSrc?: string;
+  /** gain (dB) for the muxed audio */
+  gain?: number;
+  /** fade-in / fade-out (ms) for the muxed audio */
+  fadeInMs?: number;
+  fadeOutMs?: number;
   style?: React.CSSProperties;
-}> = ({ src, startMs = 0, style }) => {
-  const { epochMs } = useClock();
+}> = ({ src, startMs = 0, muted, audioSrc, gain, fadeInMs, fadeOutMs, style }) => {
+  const { epochMs, durationMs } = useClock();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const epochRef = useRef(epochMs);
   epochRef.current = epochMs;
+
+  // By default, composite the clip's own audio: register it as a marker,
+  // placed at the clip's start and trimmed to the rest of this scope. The
+  // renderer resolves the path (via --public) and skips it if the file has
+  // no audio stream. Set `muted` to opt out.
+  const audioPath = audioSrc ?? src;
+  useEffect(() => {
+    if (muted) return;
+    const clip: AudioClip = {
+      src: audioPath,
+      atMs: Math.round(epochMs + startMs),
+      durationMs: Math.max(0, Math.round(durationMs - startMs)),
+    };
+    if (gain != null) clip.gain = gain;
+    if (fadeInMs != null) clip.fadeInMs = fadeInMs;
+    if (fadeOutMs != null) clip.fadeOutMs = fadeOutMs;
+    registerAudio(clip);
+  }, [muted, audioPath, epochMs, startMs, durationMs, gain, fadeInMs, fadeOutMs]);
 
   useLayoutEffect(() => {
     const loaded = loadVideoCached(src);

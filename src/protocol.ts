@@ -50,7 +50,15 @@ export interface KamishibaiPage {
    * kamishibai/react's <Audio>, or by hand: push { src, atMs, gain? } entries
    * (src is a path ffmpeg can read, atMs is the start time in milliseconds).
    */
-  audio?: Array<{ src: string; atMs: number; gain?: number }>;
+  audio?: Array<{
+    src: string;
+    atMs: number;
+    gain?: number;
+    trimStartMs?: number;
+    durationMs?: number;
+    fadeInMs?: number;
+    fadeOutMs?: number;
+  }>;
 }
 
 declare global {

@@ -22,6 +22,23 @@ export async function assertFfmpeg(): Promise<void> {
   }
 }
 
+/** Whether a media file has at least one audio stream (best-effort via ffprobe). */
+export async function hasAudioStream(src: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error",
+      "-select_streams", "a",
+      "-show_entries", "stream=index",
+      "-of", "csv=p=0",
+      src,
+    ]);
+    return stdout.trim().length > 0;
+  } catch {
+    // ffprobe missing or errored — assume audio is present and let ffmpeg decide.
+    return true;
+  }
+}
+
 function runFfmpeg(args: string[], verbose: boolean): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ffmpeg", args, {
@@ -78,29 +95,47 @@ export interface MuxOptions {
   verbose?: boolean;
 }
 
-/**
- * Mux an audio manifest onto a video: each clip is delayed to its start
- * time, gain-adjusted, then mixed together. Video stream is copied.
- */
-export async function muxAudio(opts: MuxOptions): Promise<void> {
-  const { video, clips, out, videoDurationSec, verbose = false } = opts;
-  if (clips.length === 0) {
-    throw new Error("muxAudio called with an empty manifest");
-  }
+const ms2s = (ms: number) => (ms / 1000).toFixed(6);
 
-  const inputs: string[] = ["-y", "-i", video];
+/**
+ * Build the ffmpeg input args + filter_complex for an audio manifest.
+ * Pure (no I/O) so it can be unit-tested. Each clip is, in order:
+ * trimmed, timestamp-reset, faded, gain-adjusted, delayed to its start;
+ * then all clips are mixed into [aout].
+ */
+export function buildAudioGraph(clips: AudioManifest): {
+  inputs: string[];
+  filterComplex: string;
+} {
+  const inputs: string[] = [];
   const filters: string[] = [];
   const labels: string[] = [];
 
   clips.forEach((clip, i) => {
     inputs.push("-i", clip.src);
     const inIndex = i + 1; // input 0 is the video
-    const delay = Math.max(0, Math.round(clip.atMs));
-    const gain = clip.gain ?? 0;
     const label = `a${i}`;
+    const chain: string[] = [];
+
+    // 1. trim the source (head/tail), then reset timestamps to 0
+    if (clip.trimStartMs != null || clip.durationMs != null) {
+      const parts: string[] = [];
+      if (clip.trimStartMs != null) parts.push(`start=${ms2s(clip.trimStartMs)}`);
+      if (clip.durationMs != null) parts.push(`duration=${ms2s(clip.durationMs)}`);
+      chain.push(`atrim=${parts.join(":")}`, "asetpts=PTS-STARTPTS");
+    }
+    // 2. fades (relative to the clip's own start; fade-out needs durationMs)
+    if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${ms2s(clip.fadeInMs)}`);
+    if (clip.fadeOutMs && clip.durationMs != null) {
+      const st = Math.max(0, clip.durationMs - clip.fadeOutMs);
+      chain.push(`afade=t=out:st=${ms2s(st)}:d=${ms2s(clip.fadeOutMs)}`);
+    }
+    // 3. static gain
+    if (clip.gain) chain.push(`volume=${clip.gain}dB`);
+    // 4. place on the reel timeline
+    chain.push(`adelay=${Math.max(0, Math.round(clip.atMs))}:all=1`);
+
     // The input pad [N:a] is a prefix on the first filter, NOT comma-joined.
-    const chain = [`adelay=${delay}:all=1`];
-    if (gain !== 0) chain.push(`volume=${gain}dB`);
     filters.push(`[${inIndex}:a]${chain.join(",")}[${label}]`);
     labels.push(`[${label}]`);
   });
@@ -110,7 +145,21 @@ export async function muxAudio(opts: MuxOptions): Promise<void> {
     labels.length === 1
       ? `${labels[0]}anull[aout]`
       : `${labels.join("")}amix=inputs=${labels.length}:normalize=0:dropout_transition=0[aout]`;
-  const filterComplex = [...filters, mix].join(";");
+
+  return { inputs, filterComplex: [...filters, mix].join(";") };
+}
+
+/**
+ * Mux an audio manifest onto a video: each clip is trimmed, faded, gained,
+ * delayed to its start time, then mixed together. Video stream is copied.
+ */
+export async function muxAudio(opts: MuxOptions): Promise<void> {
+  const { video, clips, out, videoDurationSec, verbose = false } = opts;
+  if (clips.length === 0) {
+    throw new Error("muxAudio called with an empty manifest");
+  }
+
+  const { inputs, filterComplex } = buildAudioGraph(clips);
 
   // Clamp output to the video length: the reel is the master timeline, and
   // audio is expected to sit inside it. (Not -shortest, which would instead
@@ -119,6 +168,8 @@ export async function muxAudio(opts: MuxOptions): Promise<void> {
 
   await runFfmpeg(
     [
+      "-y",
+      "-i", video,
       ...inputs,
       "-filter_complex", filterComplex,
       "-map", "0:v",

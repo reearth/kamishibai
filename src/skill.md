@@ -99,8 +99,9 @@ Sugar API:
   back-to-back, each with its own local clock, with optional crossfades
 - `<Audio src delayMs atMs gain>` — declare audio inside a scene; it starts at
   the scene's start (+`delayMs`) and is collected for muxing automatically
-- `<Video src startMs style>` — frame-accurate video via WebCodecs (see Video
-  below); draws the clip frame for the current scene-local time
+- `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
+  video via WebCodecs (see Video below); draws the clip frame for the current
+  scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
 
 ```tsx
 import { mount, Series, Audio } from "kamishibai/react";
@@ -163,9 +164,12 @@ timeline). Two ways:
 ```json
 [
   { "src": "voiceover/intro.m4a", "atMs": 0 },
-  { "src": "bgm.mp3", "atMs": 0, "gain": -18 }
+  { "src": "bgm.mp3", "atMs": 0, "gain": -18, "trimStartMs": 5000, "durationMs": 20000, "fadeOutMs": 800 }
 ]
 ```
+
+Per-clip: `gain` (dB), `trimStartMs`/`durationMs` (use a sub-section), and
+`fadeInMs`/`fadeOutMs` (fade-out needs `durationMs`).
 
 **2. Declared in the page** (composable, no manifest). The renderer reads
 `window.kamishibai.audio` after capture and muxes it. With React, use `<Audio>`
@@ -199,10 +203,11 @@ const clip = await loadVideo("/clip.mp4");
 // in seek(ms): const f = clip.frameAtMs(ms); if (f) ctx.drawImage(f, 0, 0);
 ```
 
-With React, just use `<Video src startMs />` inside a scene. WebCodecs works
-because kamishibai serves on localhost (secure context). Codecs: VP9/AV1 are
-portable; H.264 is platform-dependent. The clip is decoded into memory up front
-(best for short overlays).
+With React, just use `<Video src startMs />` inside a scene; the clip's own
+audio is muxed automatically (trimmed to the scene, with optional gain/fades) —
+pass `muted` to drop it. WebCodecs works because kamishibai serves on localhost
+(secure context). Codecs: VP9/AV1 are portable; H.264 is platform-dependent.
+The clip is decoded into memory up front (best for short overlays).
 
 ## Library (programmatic)
 

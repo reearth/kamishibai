@@ -1,6 +1,7 @@
 // The orchestrator: serve -> probe -> split -> capture -> assemble.
 // ------------------------------------------------------------------
 import { mkdtemp, mkdir, rm, readdir, unlink } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import os from "node:os";
@@ -9,8 +10,8 @@ import { probeMeta } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
-import { assertFfmpeg, encodeFrames, muxAudio } from "./ffmpeg.ts";
-import type { AudioManifest } from "./audio.ts";
+import { assertFfmpeg, encodeFrames, muxAudio, hasAudioStream } from "./ffmpeg.ts";
+import type { AudioManifest, AudioClip } from "./audio.ts";
 
 export interface RenderOptions {
   /** a URL, an .html file, or a script entry (.ts/.tsx/.js/.jsx) */
@@ -52,6 +53,35 @@ export interface RenderResult {
 
 function defaultWorkers(): number {
   return Math.min(8, Math.max(1, os.cpus().length - 2));
+}
+
+/** Resolve an audio clip's src to something ffmpeg can read: an http(s) URL or
+ *  existing file as-is, otherwise a served path resolved against publicDir
+ *  (so <Video src="/clip.mp4"> finds publicDir/clip.mp4). */
+function resolveAudioSrc(src: string, publicDir?: string): string {
+  if (/^https?:\/\//i.test(src)) return src;
+  if (existsSync(src)) return src;
+  if (publicDir) {
+    const candidate = join(resolve(publicDir), src.replace(/^\/+/, ""));
+    if (existsSync(candidate)) return candidate;
+  }
+  return src;
+}
+
+/** Resolve clip srcs and drop any whose source has no audio stream (e.g. a
+ *  silent video auto-registered by <Video>), so the mux can't fail on them. */
+async function prepareAudio(
+  clips: AudioManifest,
+  publicDir: string | undefined,
+  log: (msg: string) => void,
+): Promise<AudioManifest> {
+  const resolved = clips.map((c) => ({ ...c, src: resolveAudioSrc(c.src, publicDir) }));
+  const kept: AudioClip[] = [];
+  for (const clip of resolved) {
+    if (await hasAudioStream(clip.src)) kept.push(clip);
+    else log(`  (skipping ${clip.src} — no audio stream)`);
+  }
+  return kept;
 }
 
 /** Remove any existing f000000.png-style files so a previous, longer run
@@ -113,7 +143,8 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
 
     log(`Encoding video…`);
     // An explicit manifest wins; otherwise use markers the page declared.
-    const audioClips = opts.audio && opts.audio.length > 0 ? opts.audio : collectedAudio;
+    const declared = opts.audio && opts.audio.length > 0 ? opts.audio : collectedAudio;
+    const audioClips = await prepareAudio(declared, opts.publicDir, log);
     const hasAudio = audioClips.length > 0;
     const silent = hasAudio ? join(framesDir, "_silent.mp4") : out;
     await encodeFrames({
