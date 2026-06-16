@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  render:
+    name: end-to-end render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # ffmpeg is an external dependency; Japanese fonts so the sample
+      # reel renders with real glyphs instead of tofu.
+      - name: Install ffmpeg + fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+
+      # Pin Chromium via the Playwright version in the lockfile.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Render the basics example
+        run: node dist/cli.js render examples/basics/index.tsx -o /tmp/out.mp4 -w 2
+
+      # Verify the reel came out at the expected shape. Drift in fps,
+      # dimensions or frame count fails the build loudly.
+      - name: Verify output
+        run: |
+          probe() { ffprobe -v error -select_streams v:0 \
+            -show_entries stream="$1" -of csv=p=0 /tmp/out.mp4; }
+          W=$(probe width); H=$(probe height); R=$(probe r_frame_rate); N=$(probe nb_frames)
+          echo "width=$W height=$H fps=$R frames=$N"
+          test "$W" = "1920"
+          test "$H" = "1080"
+          test "$R" = "30/1"
+          test "$N" = "180"
+
+      - name: Upload sample reel
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: basics-reel
+          path: /tmp/out.mp4
+          if-no-files-found: ignore

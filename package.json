@@ -1,0 +1,89 @@
+{
+  "name": "kamishibai",
+  "version": "0.1.0",
+  "description": "Slice a web page into parallel-capturable units, seek through time, and bake each frame into an mp4.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Re:Earth and contributors",
+  "packageManager": "pnpm@10.5.0",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reearth/kamishibai.git"
+  },
+  "keywords": [
+    "video",
+    "mp4",
+    "playwright",
+    "ffmpeg",
+    "headless-chrome",
+    "react",
+    "canvas",
+    "programmatic-video",
+    "deterministic-rendering"
+  ],
+  "bin": {
+    "kamishibai": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./video": {
+      "types": "./dist/video.d.ts",
+      "import": "./dist/video.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example": "node dist/cli.js render examples/basics/index.tsx --out examples/basics/out.mp4"
+  },
+  "dependencies": {
+    "esbuild": "^0.24.0",
+    "mp4box": "^2.3.0",
+    "playwright": "^1.49.0"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

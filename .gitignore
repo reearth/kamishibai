@@ -1,0 +1,9 @@
+node_modules
+dist
+*.log
+
+# render artifacts
+frames/
+out/
+*.mp4
+.DS_Store
