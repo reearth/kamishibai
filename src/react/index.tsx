@@ -24,7 +24,19 @@ import { loadVideo, type DecodedVideo } from "../video.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
 
 // Re-exported for convenience (these live framework-free in kamishibai/easing).
-export { bezier, eases, ramp, type Ease } from "../easing.ts";
+export {
+  bezier,
+  eases,
+  ramp,
+  spring,
+  track,
+  stagger,
+  interpolateColor,
+  type Ease,
+  type SpringConfig,
+  type TrackStop,
+  type StaggerOptions,
+} from "../easing.ts";
 
 export type Clock = {
   /** elapsed time in milliseconds since the start of the current scope */
