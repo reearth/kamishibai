@@ -18,6 +18,8 @@ export interface RenderOptions {
   entry: string;
   /** output mp4 path */
   out: string;
+  /** override the page's meta.fps (re-samples the same reel at this rate) */
+  fps?: number;
   /** number of parallel Chrome instances; defaults to ~cpus-2 (max 8) */
   workers?: number;
   /** device scale factor — output pixels = meta size × scale (default 1) */
@@ -122,7 +124,9 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
 
   try {
     log(`Probing ${served.url} …`);
-    const meta = await probeMeta(served.url);
+    const probed = await probeMeta(served.url);
+    // An explicit --fps re-samples the same reel (ms-driven) at a new rate.
+    const meta = opts.fps ? { ...probed, fps: opts.fps } : probed;
     const total = frameCount(meta);
     const workers = Math.min(opts.workers ?? defaultWorkers(), total);
     const chunks = splitFrames(total, workers);

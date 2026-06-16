@@ -31,6 +31,7 @@ Arguments:
 Options:
   -o, --out <file>      output file; .mp4 (default) or .gif by extension
   -w, --workers <n>     parallel Chrome instances (default: ~cpus-2, max 8)
+      --fps <n>         override the page's fps (re-samples the same reel)
   -s, --scale <n>       device scale factor; output px = meta size × scale (default: 1)
   -a, --audio <file>    audio manifest JSON: [{ "src", "atMs", "gain"? }, …]
   -p, --public <dir>    static assets dir served at the root (staticFile paths)
@@ -65,6 +66,7 @@ async function main(): Promise<void> {
     options: {
       out: { type: "string", short: "o" },
       workers: { type: "string", short: "w" },
+      fps: { type: "string" },
       scale: { type: "string", short: "s" },
       audio: { type: "string", short: "a" },
       public: { type: "string", short: "p" },
@@ -103,6 +105,7 @@ async function main(): Promise<void> {
 
   const audio = values.audio ? await loadManifest(values.audio) : undefined;
   const workers = values.workers ? Number(values.workers) : undefined;
+  const fps = values.fps ? Number(values.fps) : undefined;
   const scale = values.scale ? Number(values.scale) : undefined;
   const maxWidth = values["max-width"] ? Number(values["max-width"]) : undefined;
   const gifLoop = values["gif-loop"] != null ? Number(values["gif-loop"]) : undefined;
@@ -113,6 +116,9 @@ async function main(): Promise<void> {
   if (scale !== undefined && (!Number.isFinite(scale) || scale <= 0)) {
     throw new Error(`--scale must be a positive number, got "${values.scale}"`);
   }
+  if (fps !== undefined && (!Number.isFinite(fps) || fps <= 0)) {
+    throw new Error(`--fps must be a positive number, got "${values.fps}"`);
+  }
   if (maxWidth !== undefined && (!Number.isFinite(maxWidth) || maxWidth <= 0)) {
     throw new Error(`--max-width must be a positive number, got "${values["max-width"]}"`);
   }
@@ -121,6 +127,7 @@ async function main(): Promise<void> {
     entry,
     out: values.out ?? "out.mp4",
     workers,
+    fps,
     scale,
     maxWidth,
     gifLoop,

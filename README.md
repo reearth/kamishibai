@@ -119,6 +119,7 @@ kamishibai render <entry|url> [options]
 |---|---|---|
 | `--out` | `-o` | output file; `.mp4` (default) or `.gif` by extension |
 | `--workers` | `-w` | parallel Chrome instances (default: ~cpus-2, max 8) |
+| `--fps` | | override the page's fps — re-samples the same reel at this rate |
 | `--scale` | `-s` | device scale factor; output px = meta size × scale (default: 1) |
 | `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
 | `--audio` | `-a` | audio manifest JSON: `[{ "src", "atMs", "gain"? }, …]` |
