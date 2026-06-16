@@ -6,6 +6,7 @@ export default defineConfig({
     cli: "src/cli.ts",
     react: "src/react/index.tsx",
     video: "src/video.ts",
+    easing: "src/easing.ts",
   },
   format: ["esm"],
   target: "node20",

@@ -89,8 +89,7 @@ mount(<Reel />, { fps: 30, durationMs: 6000, width: 1920, height: 1080 });
 
 Sugar API:
 - `useClock()` → `{ ms, durationMs, fps, epochMs }`
-- `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped time→value map
-- `eases` → `linear` | `smooth` | `inOut` | `pop`
+- `ramp` / `eases` / `bezier` — re-exported from `kamishibai/easing` (see below)
 - `<Stage background style>` — root surface
 - `<Cue at hold>` — render children only during a window, with a **local clock**
   that restarts at 0 at `at`
@@ -113,6 +112,20 @@ const Movie = () => (
 );
 mount(<Movie />, { fps: 30, durationMs: 10000, width: 1920, height: 1080 });
 ```
+
+## Easing (framework-free)
+
+`kamishibai/easing` works without React — use it from the raw API or Node too:
+
+```ts
+import { ramp, eases, bezier } from "kamishibai/easing";
+ramp(ms, 0, 1000, 0, 400, eases.smooth);   // clamped time→value map
+const ease = bezier(0.16, 1, 0.3, 1);        // custom cubic-bezier
+```
+
+- `bezier(x1,y1,x2,y2)` — custom easing
+- `eases` — `linear` | `smooth` | `inOut` | `pop`
+- `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped interpolation
 
 ## Rendering (CLI)
 

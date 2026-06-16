@@ -21,6 +21,10 @@ import { createRoot } from "react-dom/client";
 import type { KamishibaiMeta } from "../protocol.ts";
 import type { AudioClip } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
+import { eases, ramp, type Ease } from "../easing.ts";
+
+// Re-exported for convenience (these live framework-free in kamishibai/easing).
+export { bezier, eases, ramp, type Ease } from "../easing.ts";
 
 export type Clock = {
   /** elapsed time in milliseconds since the start of the current scope */
@@ -37,63 +41,6 @@ const ClockContext = createContext<Clock>({ ms: 0, durationMs: 0, fps: 30, epoch
 
 export const ClockProvider = ClockContext.Provider;
 export const useClock = (): Clock => useContext(ClockContext);
-
-// ---- easing -------------------------------------------------------
-// A small cubic-bezier solver (the same curve math the web platform
-// uses for timing functions). Returns a function p:[0..1] -> [0..1].
-function solveBezier(x1: number, y1: number, x2: number, y2: number) {
-  const cx = 3 * x1;
-  const bx = 3 * (x2 - x1) - cx;
-  const ax = 1 - cx - bx;
-  const cy = 3 * y1;
-  const by = 3 * (y2 - y1) - cy;
-  const ay = 1 - cy - by;
-
-  const sampleX = (t: number) => ((ax * t + bx) * t + cx) * t;
-  const sampleY = (t: number) => ((ay * t + by) * t + cy) * t;
-  const slopeX = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
-
-  return (p: number): number => {
-    if (p <= 0) return 0;
-    if (p >= 1) return 1;
-    // Newton-Raphson to invert x(t) = p, then read y(t).
-    let t = p;
-    for (let i = 0; i < 6; i++) {
-      const x = sampleX(t) - p;
-      const d = slopeX(t);
-      if (Math.abs(x) < 1e-6) break;
-      if (Math.abs(d) < 1e-6) break;
-      t -= x / d;
-    }
-    return sampleY(t);
-  };
-}
-
-export const eases = {
-  linear: (p: number) => p,
-  smooth: solveBezier(0.16, 1, 0.3, 1), // crisp deceleration, no overshoot
-  inOut: solveBezier(0.45, 0, 0.55, 1), // balanced
-  pop: solveBezier(0.34, 1.56, 0.64, 1), // slight overshoot
-};
-
-export type Ease = (p: number) => number;
-
-// ---- ramp ---------------------------------------------------------
-// Map a time window [fromMs, toMs] onto [fromV, toV], clamped at both
-// ends, shaped by an easing curve. Scalar args by design — no arrays.
-export function ramp(
-  ms: number,
-  fromMs: number,
-  toMs: number,
-  fromV: number,
-  toV: number,
-  ease: Ease = eases.linear,
-): number {
-  if (toMs <= fromMs) return ms < fromMs ? fromV : toV;
-  const raw = (ms - fromMs) / (toMs - fromMs);
-  const p = raw < 0 ? 0 : raw > 1 ? 1 : raw;
-  return fromV + (toV - fromV) * ease(p);
-}
 
 // ---- Stage --------------------------------------------------------
 export const Stage: React.FC<{

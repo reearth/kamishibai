@@ -191,8 +191,7 @@ mount(<Reel />, { fps: 30, durationMs: 6000, width: 1920, height: 1080 });
 ```
 
 - `useClock()` — the current clock (`ms`, `durationMs`, `fps`, `epochMs`)
-- `ramp(ms, fromMs, toMs, fromV, toV, ease)` — map a time window onto a value
-- `eases` — `linear` / `smooth` / `inOut` / `pop`
+- `ramp` / `eases` / `bezier` — re-exported from [`kamishibai/easing`](#easing) for convenience
 - `<Stage>` — root surface · `<Cue at hold>` — reveal during a window (with a local clock) · `<Enter>` — fade + rise
 - `<Series>` / `<Series.Scene durationMs crossfadeMs>` — lay scenes back-to-back, each with its own local clock, with optional crossfades
 - `<Audio src delayMs atMs gain>` — declare narration/music; starts at the enclosing scene's start (+`delayMs`) or an explicit `atMs`, and is collected for muxing automatically
@@ -217,6 +216,23 @@ const Movie = () => (
 ```
 
 The vocabulary (`seek` / `ms` / `Cue` / `Stage` / `ramp`) is intentionally distinct from Remotion's — kamishibai is an independent implementation, not a clone.
+
+---
+
+## Easing
+
+`kamishibai/easing` is framework-free — use it from the raw API, the React sugar (which re-exports it), or Node-side code. No DOM or React dependency.
+
+```ts
+import { ramp, eases, bezier } from "kamishibai/easing";
+
+ramp(ms, 0, 1000, 0, 400, eases.smooth); // map a time window onto a value
+const ease = bezier(0.16, 1, 0.3, 1);    // custom cubic-bezier easing
+```
+
+- `bezier(x1, y1, x2, y2)` — build a custom easing (the curve math CSS timing functions use)
+- `eases` — ready-made `linear` / `smooth` / `inOut` / `pop`
+- `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped time→value interpolation
 
 ---
 
