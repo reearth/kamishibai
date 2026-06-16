@@ -29,7 +29,10 @@ const Clip: React.FC = () => {
   const { ms } = useClock(); // local to this scene
   return (
     <div style={{ position: "absolute", inset: 0, background: "#000" }}>
-      <Video src="/clip.mp4" style={{ position: "absolute", inset: 0 }} />
+      {/* The clip's own audio (the 440Hz tone) is muxed automatically —
+          trimmed to the scene and faded out at the end. The src is resolved
+          against --public; pass muted to drop it. */}
+      <Video src="/clip.mp4" fadeOutMs={400} style={{ position: "absolute", inset: 0 }} />
       <div
         style={{
           position: "absolute",
@@ -56,5 +59,6 @@ mount(
       <Clip />
     </Series.Scene>
   </Series>,
-  { fps: 30, durationMs: 4000, width: 480, height: 270 },
+  // total = 1000 + 3000 - 300 (crossfade) = 3700ms
+  { fps: 30, durationMs: 3700, width: 480, height: 270 },
 );
