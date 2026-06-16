@@ -126,6 +126,7 @@ kamishibai render <entry|url> [options]
 | `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
+| (gif fps) | | GIF delays are quantized to 1/100s — pair `.gif` with `--fps` set to a divisor of 100 (25, 50, …) for exact timing |
 | `--crf` | | H.264 quality, lower = better (default: 18) |
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
@@ -139,8 +140,8 @@ The entry can be:
 ```sh
 kamishibai render reel.tsx -o reel.mp4 -w 4
 kamishibai render reel.tsx -s 2 -o reel@2x.mp4          # 2× resolution
-kamishibai render reel.tsx -o reel.gif --max-width 720  # animated GIF
-kamishibai render reel.tsx -o reel.mp4 --max-width 1280 # downscaled mp4
+kamishibai render reel.tsx -o reel.gif --fps 25 --max-width 720  # animated GIF
+kamishibai render reel.tsx -o reel.mp4 --max-width 1280          # downscaled mp4
 kamishibai render http://localhost:3000 -o page.mp4
 kamishibai render reel.tsx -a audio.json -p public -o reel.mp4
 ```

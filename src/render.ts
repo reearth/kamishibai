@@ -155,6 +155,16 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
 
     if (out.toLowerCase().endsWith(".gif")) {
       if (audioClips.length > 0) log(`(gif has no audio — ignoring ${audioClips.length} clip(s))`);
+      // GIF frame delays are quantized to 1/100s, so only fps values that
+      // divide 100 (25, 50, 20, 10, …) are exact; others drift in speed.
+      const cs = Math.max(1, Math.round(100 / meta.fps));
+      const effFps = 100 / cs;
+      if (Math.abs(effFps - meta.fps) > 0.01) {
+        log(
+          `(gif timing is quantized to 1/100s — ${meta.fps}fps plays as ~${effFps.toFixed(2)}fps; ` +
+            `use --fps with a divisor of 100 like 25 or 50)`,
+        );
+      }
       log(`Encoding GIF…`);
       await encodeGif({
         framesDir,

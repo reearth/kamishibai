@@ -149,6 +149,10 @@ kamishibai render <entry|url> [options]
 | `--scale` | `-s` | device scale factor; output px = meta size × scale (default 1) |
 | `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
+
+GIF frame delays are quantized to 1/100s, so pair `.gif` output with `--fps` set
+to a divisor of 100 (e.g. 25 or 50) for exact timing; other rates drift in speed
+(60fps gif effectively plays at 100fps).
 | `--audio` | `-a` | audio manifest JSON `[{ "src", "atMs", "gain"? }, …]` |
 | `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
