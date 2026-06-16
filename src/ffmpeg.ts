@@ -62,20 +62,66 @@ export interface EncodeOptions {
   out: string;
   /** H.264 quality, lower = better; default 18 */
   crf?: number;
+  /** downscale to at most this width (keeps aspect); omit for native size */
+  maxWidth?: number;
   verbose?: boolean;
 }
 
 /** Encode the f000000.png … sequence into a silent H.264 mp4. */
 export async function encodeFrames(opts: EncodeOptions): Promise<void> {
-  const { framesDir, fps, out, crf = 18, verbose = false } = opts;
+  const { framesDir, fps, out, crf = 18, maxWidth, verbose = false } = opts;
+  // yuv420p needs even dimensions: cap width to an even number, height -2.
+  const vf = maxWidth
+    ? ["-vf", `scale='min(${Math.floor(maxWidth / 2) * 2},iw)':-2:flags=lanczos`]
+    : [];
   await runFfmpeg(
     [
       "-y",
       "-framerate", String(fps),
       "-i", join(framesDir, "f%06d.png"),
+      ...vf,
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
       "-crf", String(crf),
+      out,
+    ],
+    verbose,
+  );
+}
+
+export interface EncodeGifOptions {
+  framesDir: string;
+  fps: number;
+  out: string;
+  /** downscale to at most this width (keeps aspect); omit for native size */
+  maxWidth?: number;
+  /** loop count: 0 = infinite (default), -1 = play once, n = repeat n times */
+  loop?: number;
+  verbose?: boolean;
+}
+
+/** Encode the f000000.png … sequence into a palette-optimized GIF (two-pass). */
+export async function encodeGif(opts: EncodeGifOptions): Promise<void> {
+  const { framesDir, fps, out, maxWidth, loop = 0, verbose = false } = opts;
+  const seq = join(framesDir, "f%06d.png");
+  const palette = join(framesDir, "_palette.png");
+  const scale = maxWidth ? `,scale='min(${maxWidth},iw)':-1:flags=lanczos` : "";
+
+  // Pass 1: build an optimized palette from the frames.
+  await runFfmpeg(
+    ["-y", "-i", seq, "-vf", `fps=${fps}${scale},palettegen=stats_mode=diff`, palette],
+    verbose,
+  );
+  // Pass 2: render the GIF using that palette. -loop sets the NETSCAPE loop
+  // extension (0 = loop forever).
+  await runFfmpeg(
+    [
+      "-y",
+      "-framerate", String(fps),
+      "-i", seq,
+      "-i", palette,
+      "-lavfi", `fps=${fps}${scale}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3`,
+      "-loop", String(loop),
       out,
     ],
     verbose,

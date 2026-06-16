@@ -10,7 +10,7 @@ import { probeMeta } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
-import { assertFfmpeg, encodeFrames, muxAudio, hasAudioStream } from "./ffmpeg.ts";
+import { assertFfmpeg, encodeFrames, encodeGif, muxAudio, hasAudioStream } from "./ffmpeg.ts";
 import type { AudioManifest, AudioClip } from "./audio.ts";
 
 export interface RenderOptions {
@@ -22,6 +22,10 @@ export interface RenderOptions {
   workers?: number;
   /** device scale factor — output pixels = meta size × scale (default 1) */
   scale?: number;
+  /** downscale the output to at most this width (mp4 or gif; keeps aspect) */
+  maxWidth?: number;
+  /** gif loop count: 0 = infinite (default), -1 = play once, n = repeat n times */
+  gifLoop?: number;
   /** static assets to serve at the server root (for staticFile-style paths) */
   publicDir?: string;
   /** audio clips to mux in */
@@ -141,31 +145,46 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       onChunkDone: (c) => log(`  ✓ chunk ${c.id}: frames ${c.start}..${c.end - 1}`),
     });
 
-    log(`Encoding video…`);
     // An explicit manifest wins; otherwise use markers the page declared.
     const declared = opts.audio && opts.audio.length > 0 ? opts.audio : collectedAudio;
     const audioClips = await prepareAudio(declared, opts.publicDir, log);
-    const hasAudio = audioClips.length > 0;
-    const silent = hasAudio ? join(framesDir, "_silent.mp4") : out;
-    await encodeFrames({
-      framesDir,
-      fps: meta.fps,
-      out: silent,
-      crf: opts.crf,
-      verbose: opts.verbose,
-    });
 
-    if (hasAudio) {
-      log(`Muxing ${audioClips.length} audio clip(s)…`);
-      await muxAudio({
-        video: silent,
-        clips: audioClips,
+    if (out.toLowerCase().endsWith(".gif")) {
+      if (audioClips.length > 0) log(`(gif has no audio — ignoring ${audioClips.length} clip(s))`);
+      log(`Encoding GIF…`);
+      await encodeGif({
+        framesDir,
+        fps: meta.fps,
         out,
-        videoDurationSec: total / meta.fps,
+        maxWidth: opts.maxWidth,
+        loop: opts.gifLoop,
         verbose: opts.verbose,
       });
-      // Don't leave the intermediate in a kept frames dir.
-      await rm(silent, { force: true });
+    } else {
+      log(`Encoding video…`);
+      const hasAudio = audioClips.length > 0;
+      const silent = hasAudio ? join(framesDir, "_silent.mp4") : out;
+      await encodeFrames({
+        framesDir,
+        fps: meta.fps,
+        out: silent,
+        crf: opts.crf,
+        maxWidth: opts.maxWidth,
+        verbose: opts.verbose,
+      });
+
+      if (hasAudio) {
+        log(`Muxing ${audioClips.length} audio clip(s)…`);
+        await muxAudio({
+          video: silent,
+          clips: audioClips,
+          out,
+          videoDurationSec: total / meta.fps,
+          verbose: opts.verbose,
+        });
+        // Don't leave the intermediate in a kept frames dir.
+        await rm(silent, { force: true });
+      }
     }
 
     const elapsedMs = Date.now() - started;

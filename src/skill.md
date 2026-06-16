@@ -126,6 +126,10 @@ const ease = bezier(0.16, 1, 0.3, 1);        // custom cubic-bezier
 - `bezier(x1,y1,x2,y2)` — custom easing
 - `eases` — `linear` | `smooth` | `inOut` | `pop`
 - `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped interpolation
+- `spring({ stiffness, damping, mass })` — physical spring as an easing (deterministic)
+- `track(ms, [{ at, value, ease? }])` — multi-stop interpolation
+- `stagger(i, { each, from })` — cascade delay (ms)
+- `interpolateColor(a, b, t)` — hex color tween
 
 ## Rendering (CLI)
 
@@ -135,9 +139,11 @@ kamishibai render <entry|url> [options]
 
 | Option | | Description |
 |---|---|---|
-| `--out` | `-o` | output mp4 (default `out.mp4`) |
+| `--out` | `-o` | output file; `.mp4` (default) or `.gif` by extension |
 | `--workers` | `-w` | parallel Chrome instances (default ~cpus-2, max 8) |
 | `--scale` | `-s` | device scale factor; output px = meta size × scale (default 1) |
+| `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
+| `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
 | `--audio` | `-a` | audio manifest JSON `[{ "src", "atMs", "gain"? }, …]` |
 | `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |

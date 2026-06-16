@@ -27,6 +27,7 @@ export type { Served } from "./serve.ts";
 export {
   assertFfmpeg,
   encodeFrames,
+  encodeGif,
   muxAudio,
   buildAudioGraph,
   volumeExpr,
