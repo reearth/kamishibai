@@ -70,10 +70,22 @@ export function sayAdapter(opts: { voice?: string; rate?: number } = {}): TTSAda
 }
 
 /** OpenAI text-to-speech. Needs OPENAI_API_KEY in the render process's env. */
-export function openaiAdapter(opts: { model?: string; voice?: string } = {}): TTSAdapterRef {
+export function openaiAdapter(opts: {
+  model?: string;
+  voice?: string;
+  /** playback rate 0.25–4.0 (tts-1 / tts-1-hd only; ignored by gpt-4o-mini-tts) */
+  speed?: number;
+  /** voice/style direction, e.g. pace or tone (gpt-4o-mini-tts) */
+  instructions?: string;
+} = {}): TTSAdapterRef {
   const model = opts.model ?? "tts-1";
   const voice = opts.voice ?? "alloy";
-  return { id: `openai:${model}:${voice}`, provider: "openai", opts: { model, voice } };
+  const o: Record<string, unknown> = { model, voice };
+  if (opts.speed != null) o.speed = opts.speed;
+  if (opts.instructions != null) o.instructions = opts.instructions;
+  // speed + instructions affect the audio, so fold them into the cache id.
+  const id = `openai:${model}:${voice}:${opts.speed ?? ""}:${opts.instructions ?? ""}`;
+  return { id, provider: "openai", opts: o };
 }
 
 /** ElevenLabs text-to-speech. Needs ELEVENLABS_API_KEY in the render env. */

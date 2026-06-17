@@ -95,15 +95,20 @@ const openaiAdapter: TTSAdapter = {
   async synthesize(text, opts) {
     const key = process.env.OPENAI_API_KEY;
     if (!key) throw new Error("OPENAI_API_KEY is not set");
+    const body: Record<string, unknown> = {
+      model: opts.model ?? "tts-1",
+      voice: opts.voice ?? "alloy",
+      input: text,
+      response_format: "mp3",
+    };
+    // `speed` works on tts-1/tts-1-hd; gpt-4o-mini-tts takes `instructions`
+    // (e.g. pace/tone) instead. Both are passed straight through.
+    if (opts.speed != null) body.speed = opts.speed;
+    if (opts.instructions != null) body.instructions = opts.instructions;
     const res = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: opts.model ?? "tts-1",
-        voice: opts.voice ?? "alloy",
-        input: text,
-        response_format: "mp3",
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${await res.text().catch(() => "")}`);
     return { audio: new Uint8Array(await res.arrayBuffer()), format: "mp3" };
