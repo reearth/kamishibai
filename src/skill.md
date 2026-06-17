@@ -223,14 +223,15 @@ absolute). An explicit `--audio` manifest takes precedence over collected marker
 
 Don't use a raw `<video>` — `currentTime` seeking is approximate and
 non-deterministic, which breaks parallel capture. Use `kamishibai/video`, which
-decodes the clip with WebCodecs into indexed frames so each `ms` maps to an
-exact frame. The `src` must be fetchable by the browser (serve it via
-`--public`), not a filesystem path.
+demuxes the clip into an index of encoded samples and decodes on demand (one GOP
+at a time, so long clips don't blow up memory), mapping each `ms` to an exact
+frame. The `src` must be fetchable by the browser (serve it via `--public`), not
+a filesystem path.
 
 ```ts
 import { loadVideo } from "kamishibai/video";
 const clip = await loadVideo("/clip.mp4");
-// in seek(ms): const f = clip.frameAtMs(ms); if (f) ctx.drawImage(f, 0, 0);
+// in seek(ms): const f = await clip.frameAtMs(ms); if (f) ctx.drawImage(f, 0, 0);
 ```
 
 With React, just use `<Video src startMs />` inside a scene; the clip's own

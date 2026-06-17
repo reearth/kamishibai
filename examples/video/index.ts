@@ -28,7 +28,7 @@ window.kamishibai = {
   async seek(ms) {
     await ready;
     ctx.clearRect(0, 0, meta.width, meta.height);
-    const bmp = video?.frameAtMs(ms);
+    const bmp = await video?.frameAtMs(ms);
     if (bmp) ctx.drawImage(bmp, 0, 0, meta.width, meta.height);
 
     // Overlay the reel's own frame index to compare with the clip's HUD.

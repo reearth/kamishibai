@@ -5,34 +5,49 @@
 // different frames across runs — which breaks kamishibai's "frame i is a
 // pure function of its time" invariant (parallel workers would disagree).
 //
-// Instead we decode the clip with WebCodecs (demuxed by mp4box) into an
-// indexed set of frames, then `frameAtMs(ms)` returns the exact frame whose
-// presentation time is <= ms. Deterministic, frame-accurate, and it turns a
-// video back into a pure function of time — so it slots straight into seek().
+// Instead we demux the clip with mp4box into an index of *encoded* samples
+// (compressed — a few KB each), then decode on demand: `frameAtMs(ms)` finds
+// the sample whose presentation time is <= ms, decodes just that frame's GOP
+// (keyframe → next keyframe) with WebCodecs, and returns the exact frame.
+// Deterministic, frame-accurate, and a pure function of time — it slots
+// straight into seek().
+//
+// Memory: we hold only the compressed samples plus one decoded GOP at a time,
+// instead of every decoded frame at once (a 1080p clip is ~8 MB *per frame*
+// decoded). Because kamishibai renders frames in increasing-time order within
+// a worker, calls walk forward through GOPs and we decode each one roughly
+// once — same total work as decoding up front, but bounded memory, so long
+// clips no longer blow up the heap.
 //
 // Runs in the page (the kamishibai server is on localhost = a secure context,
 // where WebCodecs is available). The src must be fetchable by the browser
 // (e.g. served via --public), NOT a filesystem path.
-//
-// NOTE: this decodes the whole clip into memory up front (ImageBitmaps). Great
-// for short overlays; for long/large clips a streaming, keyframe-seeking
-// decoder would be the next step.
 import { createFile, DataStream } from "mp4box";
 
 export interface DecodedVideo {
   width: number;
   height: number;
   durationMs: number;
-  /** number of decoded frames */
+  /** number of frames in the clip */
   count: number;
-  /** the frame whose presentation time is the latest <= ms (clamped) */
-  frameAtMs(ms: number): ImageBitmap | undefined;
-  /** release all decoded bitmaps */
+  /** the frame whose presentation time is the latest <= ms (clamped); decodes
+   *  on demand, so it's async */
+  frameAtMs(ms: number): Promise<ImageBitmap | undefined>;
+  /** release the cached frames and the decoder */
   close(): void;
 }
 
-interface Frame {
-  tsMs: number;
+interface Sample {
+  /** composition (presentation) time, ms */
+  ctsMs: number;
+  /** is this a sync sample (keyframe) — the start of a decodable GOP */
+  isSync: boolean;
+  /** the compressed chunk, fed to the decoder on demand */
+  chunk: EncodedVideoChunk;
+}
+
+interface DecodedFrame {
+  ctsMs: number;
   bitmap: ImageBitmap;
 }
 
@@ -50,7 +65,24 @@ function codecDescription(file: any, trackId: number): Uint8Array | undefined {
   return undefined;
 }
 
-/** Fetch + demux + decode an entire clip into indexed frames. */
+/** latest index i in `arr` (already sorted ascending by `key`) with key(i) <= x */
+function lastLE<T>(arr: T[], x: number, key: (v: T) => number): number {
+  let lo = 0;
+  let hi = arr.length - 1;
+  let best = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (key(arr[mid]!) <= x) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
+}
+
+/** Fetch + demux a clip into an index of encoded samples, decoding on demand. */
 export async function loadVideo(src: string): Promise<DecodedVideo> {
   if (typeof VideoDecoder === "undefined") {
     throw new Error(
@@ -63,105 +95,158 @@ export async function loadVideo(src: string): Promise<DecodedVideo> {
   buf.fileStart = 0;
 
   const file = createFile();
-  const frames: Frame[] = [];
+  // Samples in *decode* order (mp4box hands them over in file order). We keep
+  // them compressed and decode on demand in frameAtMs.
+  const samples: Sample[] = [];
+  let config: VideoDecoderConfig | undefined;
+  let meta: { width: number; height: number; durationMs: number } | undefined;
 
-  const decoded = new Promise<{ width: number; height: number; durationMs: number }>(
-    (resolve, reject) => {
-      const pending: Promise<void>[] = [];
-      let info: { width: number; height: number; durationMs: number } | undefined;
+  await new Promise<void>((resolve, reject) => {
+    file.onError = (e: string) => reject(new Error(`mp4box: ${e}`));
 
-      const decoder = new VideoDecoder({
-        output: (frame) => {
-          const tsMs = frame.timestamp / 1000;
-          pending.push(
-            createImageBitmap(frame).then((bitmap) => {
-              frames.push({ tsMs, bitmap });
-              frame.close();
-            }),
-          );
-        },
-        error: (e) => reject(e),
-      });
+    file.onReady = (movie: any) => {
+      const track = movie.videoTracks?.[0];
+      if (!track) {
+        reject(new Error("no video track found"));
+        return;
+      }
+      meta = {
+        width: track.track_width,
+        height: track.track_height,
+        durationMs: (movie.duration / movie.timescale) * 1000,
+      };
+      config = {
+        codec: track.codec,
+        codedWidth: track.track_width,
+        codedHeight: track.track_height,
+        description: codecDescription(file, track.id),
+      };
+      file.setExtractionOptions(track.id, null, { nbSamples: Infinity });
+      file.start();
+    };
 
-      file.onError = (e: string) => reject(new Error(`mp4box: ${e}`));
-
-      file.onReady = (movie: any) => {
-        const track = movie.videoTracks?.[0];
-        if (!track) {
-          reject(new Error("no video track found"));
-          return;
-        }
-        info = {
-          width: track.track_width,
-          height: track.track_height,
-          durationMs: (movie.duration / movie.timescale) * 1000,
-        };
-        decoder.configure({
-          codec: track.codec,
-          codedWidth: track.track_width,
-          codedHeight: track.track_height,
-          description: codecDescription(file, track.id),
+    file.onSamples = (_id: number, _user: unknown, chunkSamples: any[]) => {
+      for (const s of chunkSamples) {
+        samples.push({
+          ctsMs: (s.cts / s.timescale) * 1000,
+          isSync: !!s.is_sync,
+          chunk: new EncodedVideoChunk({
+            type: s.is_sync ? "key" : "delta",
+            timestamp: (s.cts / s.timescale) * 1e6, // microseconds
+            duration: (s.duration / s.timescale) * 1e6,
+            data: s.data,
+          }),
         });
-        file.setExtractionOptions(track.id, null, { nbSamples: Infinity });
-        file.start();
-      };
+      }
+    };
 
-      file.onSamples = (_id: number, _user: unknown, samples: any[]) => {
-        for (const s of samples) {
-          decoder.decode(
-            new EncodedVideoChunk({
-              type: s.is_sync ? "key" : "delta",
-              timestamp: (s.cts / s.timescale) * 1e6, // microseconds
-              duration: (s.duration / s.timescale) * 1e6,
-              data: s.data,
-            }),
-          );
-        }
-      };
+    // The whole file is present, so appendBuffer + flush drives onReady and
+    // every onSamples synchronously; once they return, the index is complete.
+    file.appendBuffer(buf);
+    file.flush();
+    if (!meta || !config) {
+      reject(new Error("video never became ready"));
+      return;
+    }
+    resolve();
+  });
 
-      file.appendBuffer(buf);
-      file.flush();
+  const cfg = config!;
+  const info = meta!;
 
-      decoder
-        .flush()
-        .then(() => Promise.all(pending))
-        .then(() => {
-          decoder.close();
-          if (!info) throw new Error("video never became ready");
-          resolve(info);
-        })
-        .catch(reject);
+  // Presentation order (handles B-frames): indices into `samples`, sorted by
+  // ctsMs, for "which frame is shown at ms".
+  const byCts = samples.map((_, i) => i).sort((a, b) => samples[a]!.ctsMs - samples[b]!.ctsMs);
+  // Decode-order indices of the sync samples — the GOP boundaries.
+  const syncIdx: number[] = [];
+  samples.forEach((s, i) => {
+    if (s.isSync) syncIdx.push(i);
+  });
+
+  // [start, end) decode-order range of the GOP containing decode index `d`.
+  function gopRange(d: number): [number, number] {
+    if (syncIdx.length === 0) return [0, samples.length]; // no keyframes? one GOP
+    const k = lastLE(syncIdx, d, (i) => i); // index into syncIdx
+    const start = syncIdx[k]!;
+    const end = k + 1 < syncIdx.length ? syncIdx[k + 1]! : samples.length;
+    return [start, end];
+  }
+
+  // A single decoder, reused across GOPs. Its output is routed to whichever
+  // decode is currently running (calls are serialised, so no overlap).
+  let onOutput: ((f: VideoFrame) => void) | undefined;
+  const decoder = new VideoDecoder({
+    output: (frame) => onOutput?.(frame),
+    error: (e) => {
+      throw e;
     },
-  );
+  });
+  decoder.configure(cfg);
 
-  const meta = await decoded;
-  frames.sort((a, b) => a.tsMs - b.tsMs); // presentation order (handles B-frames)
+  // The one GOP we keep decoded, plus the decode-order index it starts at.
+  let cachedStart = -1;
+  let cachedFrames: DecodedFrame[] = [];
+
+  function releaseCache() {
+    for (const f of cachedFrames) f.bitmap.close();
+    cachedFrames = [];
+  }
+
+  async function decodeGop(start: number, end: number): Promise<DecodedFrame[]> {
+    const out: DecodedFrame[] = [];
+    const pending: Promise<void>[] = [];
+    onOutput = (frame) => {
+      const ctsMs = frame.timestamp / 1000;
+      pending.push(
+        createImageBitmap(frame).then((bitmap) => {
+          out.push({ ctsMs, bitmap });
+          frame.close();
+        }),
+      );
+    };
+    for (let i = start; i < end; i++) decoder.decode(samples[i]!.chunk);
+    await decoder.flush(); // emit every frame of this GOP, then ready for the next
+    await Promise.all(pending);
+    onOutput = undefined;
+    out.sort((a, b) => a.ctsMs - b.ctsMs);
+    return out;
+  }
+
+  // Serialise frameAtMs: the decoder and cache are shared, so concurrent calls
+  // (e.g. two <Video>s on the same clip in one page) must not interleave.
+  let lock: Promise<unknown> = Promise.resolve();
+
+  async function resolveFrame(ms: number): Promise<ImageBitmap | undefined> {
+    if (samples.length === 0) return undefined;
+    // The sample shown at ms: latest by presentation time with ctsMs <= ms.
+    const p = lastLE(byCts, ms, (i) => samples[i]!.ctsMs);
+    const d = byCts[p]!;
+    const [start, end] = gopRange(d);
+    if (cachedStart !== start) {
+      const next = await decodeGop(start, end);
+      releaseCache();
+      cachedStart = start;
+      cachedFrames = next;
+    }
+    if (cachedFrames.length === 0) return undefined;
+    const fi = lastLE(cachedFrames, ms, (f) => f.ctsMs);
+    return cachedFrames[fi]!.bitmap;
+  }
 
   return {
-    width: meta.width,
-    height: meta.height,
-    durationMs: meta.durationMs,
-    count: frames.length,
+    width: info.width,
+    height: info.height,
+    durationMs: info.durationMs,
+    count: samples.length,
     frameAtMs(ms: number) {
-      if (frames.length === 0) return undefined;
-      // binary search: latest frame with tsMs <= ms
-      let lo = 0;
-      let hi = frames.length - 1;
-      let best = 0;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (frames[mid]!.tsMs <= ms) {
-          best = mid;
-          lo = mid + 1;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      return frames[best]!.bitmap;
+      const run = lock.then(() => resolveFrame(ms));
+      lock = run.catch(() => undefined);
+      return run;
     },
     close() {
-      for (const f of frames) f.bitmap.close();
-      frames.length = 0;
+      releaseCache();
+      cachedStart = -1;
+      if (decoder.state !== "closed") decoder.close();
     },
   };
 }

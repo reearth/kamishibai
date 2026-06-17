@@ -355,7 +355,7 @@ export const Video: React.FC<{
       const ctx = c.getContext("2d");
       if (!ctx) return;
       const localMs = globalMs - epochRef.current - startMs;
-      const bmp = v.frameAtMs(localMs);
+      const bmp = await v.frameAtMs(localMs);
       ctx.clearRect(0, 0, c.width, c.height);
       if (bmp) ctx.drawImage(bmp, 0, 0);
     };
