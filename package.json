@@ -1,7 +1,7 @@
 {
   "name": "kamishibai",
   "version": "0.1.0",
-  "description": "Slice a web page into parallel-capturable units, seek through time, and bake each frame into an mp4.",
+  "description": "Turn any web page into a video — every frame a pure function of its time, so capture is deterministic and parallel.",
   "type": "module",
   "license": "MIT",
   "author": "Re:Earth and contributors",

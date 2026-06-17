@@ -1,6 +1,6 @@
 # kamishibai
 
-> **Slice a web page into parallel-capturable units, seek through time, and bake each frame into an mp4. That's it.**
+> **Turn any web page into a video — by making every frame a pure function of its time.**
 > A *mechanism*, not a framework. How you draw — React, plain DOM, canvas, WebGL — is up to you.
 
 ![A reel rendered with kamishibai](examples/basics/demo.gif)
@@ -12,7 +12,6 @@
 It deliberately does *not* try to be a frame-accurate compositing engine or ship an editor. It gives you the renderer and one tiny contract; the rest is yours.
 
 - **Free · DOM-or-anything · code/CI-first · AI-friendly · no guarantees (MIT)** — a corner of the programmatic-video space nothing else occupies.
-- If you need a guaranteed, frame-accurate media engine, reach for [Remotion](https://www.remotion.dev/) instead.
 
 ---
 
@@ -308,7 +307,7 @@ const Movie = () => (
 );
 ```
 
-The vocabulary (`seek` / `ms` / `Cue` / `Stage` / `ramp`) is intentionally distinct from Remotion's — kamishibai is an independent implementation, not a clone.
+The vocabulary (`seek` / `ms` / `Cue` / `Stage` / `ramp`) is deliberately its own — small, clock-driven, and independent.
 
 ---
 
