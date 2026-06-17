@@ -9,6 +9,19 @@ export type { RenderOptions, RenderResult } from "./render.ts";
 export { audio } from "./audio.ts";
 export type { AudioClip, AudioManifest } from "./audio.ts";
 
+// TTS / narration: browser-side refs + the Node-side engine (custom adapters).
+export {
+  sayAdapter,
+  openaiAdapter,
+  elevenLabsAdapter,
+  googleAdapter,
+  pollyAdapter,
+  prepareNarration,
+} from "./tts/index.ts";
+export type { TTSAdapterRef, NarrationClip, NarrationInput } from "./tts/index.ts";
+export { createTTSEngine } from "./tts/engine.ts";
+export type { TTSAdapter, TTSEngine, TTSEngineOptions, TTSFormat } from "./tts/engine.ts";
+
 export {
   GLOBAL_KEY,
   frameCount,

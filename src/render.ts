@@ -12,6 +12,7 @@ import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
 import { assertFfmpeg, encodeFrames, encodeGif, muxAudio, hasAudioStream } from "./ffmpeg.ts";
 import type { AudioManifest, AudioClip } from "./audio.ts";
+import { createTTSEngine, type TTSAdapter } from "./tts/engine.ts";
 
 export interface RenderOptions {
   /** a URL, an .html file, or a script entry (.ts/.tsx/.js/.jsx) */
@@ -47,6 +48,11 @@ export interface RenderOptions {
   framesDir?: string;
   /** progress / status callback */
   onLog?: (msg: string) => void;
+  /** custom TTS adapters for <Narration>/prepareNarration (a matching
+   *  `provider` overrides a built-in: say / openai / elevenlabs) */
+  ttsAdapters?: TTSAdapter[];
+  /** where baked narration audio is cached (default: <cwd>/.kamishibai-tts) */
+  ttsCacheDir?: string;
 }
 
 export interface RenderResult {
@@ -108,7 +114,14 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
 
   await assertFfmpeg();
 
-  const served = await serveEntry(opts.entry, { publicDir: opts.publicDir });
+  // The narration pre-pass: one engine for the whole render (probe + every
+  // worker share this server), so its cache + in-flight dedup make TTS run
+  // once and freeze — deterministic across parallel capture.
+  const tts = createTTSEngine({ adapters: opts.ttsAdapters, cacheDir: opts.ttsCacheDir });
+  const served = await serveEntry(opts.entry, {
+    publicDir: opts.publicDir,
+    tts: (body) => tts.handle(body as Parameters<typeof tts.handle>[0]),
+  });
 
   // Explicit framesDir -> create it, clear stale frames, and keep it.
   // Otherwise use a temp dir that's removed afterwards (unless keepFrames).

@@ -105,6 +105,9 @@ Sugar API:
   (`src`), inline `cues`, or direct text (`children`, timed via the enclosing
   `<Cue>`). Cue times count from the enclosing scene. Parser also at
   kamishibai/subtitle (parseSubtitles, cueAt) for the raw API.
+- `<Narration clip delayMs gain fadeInMs fadeOutMs subtitle>` — play a clip
+  from `prepareNarration` (synthesized up front, see Narration below); with
+  `subtitle`, also burns the line's text as a caption for the clip's window
 
 ```tsx
 import { mount, Series, Audio } from "kamishibai/react";
@@ -238,7 +241,46 @@ With React, just use `<Video src startMs />` inside a scene; the clip's own
 audio is muxed automatically (trimmed to the scene, with optional gain/fades) —
 pass `muted` to drop it. WebCodecs works because kamishibai serves on localhost
 (secure context). Codecs: VP9/AV1 are portable; H.264 is platform-dependent.
-The clip is decoded into memory up front (best for short overlays).
+Frames decode on demand (one GOP at a time), so long clips stay memory-bounded.
+
+## Narration (TTS)
+
+TTS is non-deterministic and billable, so it never runs during `seek()`.
+`prepareNarration` runs ONCE before `mount()` (a top-level `await`): it bakes
+each line to a content-hashed file under `.kamishibai-tts/`, measures its
+duration with ffprobe, and returns `{ src, durationMs, text }` per key. The
+cache freezes synthesis (identical lines never re-billed) and every parallel
+worker reads the same file → deterministic. Durations come back before mount,
+so scenes can fit their narration. It rides the existing `<Audio>` mux path.
+
+```tsx
+import { mount, Series, Narration } from "kamishibai/react";
+import { sayAdapter, prepareNarration } from "kamishibai/tts";
+
+const voice = sayAdapter(); // dev default: free, offline, deterministic
+const vo = await prepareNarration(voice, { intro: "Welcome.", body: "Pure functions of time." });
+mount(
+  <Series>
+    <Series.Scene durationMs={vo.intro.durationMs + 500}><Narration clip={vo.intro} subtitle /></Series.Scene>
+    <Series.Scene durationMs={vo.body.durationMs + 500}><Narration clip={vo.body} subtitle /></Series.Scene>
+  </Series>,
+  { fps: 30, durationMs: 9999, width: 1280, height: 720 },
+);
+```
+
+Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
+for the final render (same reel): `openaiAdapter({ model, voice })`
+(`OPENAI_API_KEY`), `googleAdapter({ name })` (`GOOGLE_API_KEY`),
+`pollyAdapter({ voiceId, engine })` (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`,
+`AWS_REGION`; signed with a built-in SigV4, no AWS SDK), or
+`elevenLabsAdapter({ voiceId, model })` (`ELEVENLABS_API_KEY`). The
+adapter sets the batch voice; a single line can override its opts with the
+object form `{ text, opts }` (merged over the adapter's, e.g. `{ rate: 150 }`)
+— the override folds into the cache key. Custom
+provider: implement the Node `TTSAdapter` (`{ provider, synthesize }`) and pass
+it via `render({ ttsAdapters })`; the reel references it by a matching
+`provider`. (Browser/Node split: the reel's adapter is a serializable ref;
+synthesis runs in Node, served to the page over `POST /__tts`.)
 
 ## Library (programmatic)
 

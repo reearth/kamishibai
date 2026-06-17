@@ -188,6 +188,60 @@ const text = cueAt(cues, ms)?.text;            // draw it yourself in seek()
 
 ---
 
+## Narration (TTS)
+
+TTS is non-deterministic (neural voices resample every call) and billable per request — the two things parallel capture can't tolerate. So kamishibai never synthesizes during `seek()`. Instead `prepareNarration` runs **once, before capture**, as a top-level `await`: it bakes each line to a **content-hashed file**, measures its duration with ffprobe, and hands back `{ src, durationMs, text }`. From then on the reel only references a path — the core contract never learns TTS exists; it rides the existing `<Audio>` mux path. The hash cache (`.kamishibai-tts/`) means identical lines are never re-synthesized or re-billed, and every parallel worker reads the same frozen file — so a non-deterministic API becomes a deterministic file reference.
+
+Because the durations come back before `mount()`, you can size each scene to the line it's about to speak:
+
+```tsx
+import { mount, Series, Narration } from "kamishibai/react";
+import { sayAdapter, prepareNarration } from "kamishibai/tts";
+
+const voice = sayAdapter();                    // dev default: free, offline, deterministic
+const vo = await prepareNarration(voice, {
+  intro: "Welcome to kamishibai.",
+  body:  "Every frame is a pure function of time.",
+});
+
+mount(
+  <Series>
+    <Series.Scene durationMs={vo.intro.durationMs + 500}>
+      <Narration clip={vo.intro} subtitle />   {/* plays the clip AND burns the text as a caption */}
+    </Series.Scene>
+    <Series.Scene durationMs={vo.body.durationMs + 500}>
+      <Narration clip={vo.body} subtitle fadeOutMs={300} />
+    </Series.Scene>
+  </Series>,
+  { fps: 30, durationMs: 9999, width: 1280, height: 720 },
+);
+```
+
+Adapters are deliberately dumb (`text → bytes`) — no SSML layer, no voice UI. `say` is **macOS-only** (it shells out to the `say` binary), so it's the free local dev default; on Linux/Windows/CI use a network adapter. **Run the dev loop on `say`, then swap one line for the final render** — same reel:
+
+```ts
+import { openaiAdapter, googleAdapter, pollyAdapter, elevenLabsAdapter } from "kamishibai/tts";
+const voice = openaiAdapter({ model: "tts-1-hd", voice: "nova" });   // OPENAI_API_KEY
+const voice = googleAdapter({ name: "en-US-Neural2-F" });            // GOOGLE_API_KEY
+const voice = pollyAdapter({ voiceId: "Matthew", engine: "neural" }); // AWS_ACCESS_KEY_ID/SECRET (+AWS_REGION)
+const voice = elevenLabsAdapter({ voiceId: "…" });                    // ELEVENLABS_API_KEY
+```
+
+(Polly is signed with a minimal built-in SigV4 — no AWS SDK dependency. Google returns base64 audio, decoded for you.)
+
+The adapter sets the voice for the whole batch; a single line can override its options (merged over the adapter's) with the object form — handy to slow one line or switch voices for a quote. The override folds into the cache key, so only that line re-synthesizes:
+
+```ts
+const vo = await prepareNarration(sayAdapter(), {
+  intro: "Spoken with the default voice.",
+  aside: { text: "…but this one, slower.", opts: { rate: 150 } },
+});
+```
+
+A custom provider implements the Node `TTSAdapter` (`{ provider, synthesize }`) and registers it via `render({ ttsAdapters: [myAdapter] })`; the reel references it with an adapter whose `provider` matches. (Why the split: the reel is bundled for the browser, so its adapter is a serializable ref — `{ id, provider, opts }` — while the actual synthesis runs in Node, served to the page over `POST /__tts`.)
+
+---
+
 ## Library
 
 ```ts
@@ -234,6 +288,7 @@ mount(<Reel />, { fps: 30, durationMs: 6000, width: 1920, height: 1080 });
 - `<Audio src delayMs atMs gain>` — declare narration/music; starts at the enclosing scene's start (+`delayMs`) or an explicit `atMs`, and is collected for muxing automatically
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate video via WebCodecs (see [Video](#video-frame-accurate)); draws the clip frame for the current scene-local time, and auto-muxes the clip's audio (use `muted` to drop it)
 - `<Subtitle src | cues | children>` — burn captions from an SRT/VTT file, inline cues, or direct text; the active cue for the current scene-local time is drawn (composable — cue times count from the enclosing scene)
+- `<Narration clip delayMs gain fadeInMs fadeOutMs subtitle>` — play a clip from `prepareNarration` (synthesized up front, see [Narration](#narration-tts)); with `subtitle`, also burns the line's text as a caption for the clip's window
 - `mount(node, meta)` — render and expose `window.kamishibai` for you (also free-runs in a browser for live preview)
 
 ```tsx
@@ -282,11 +337,13 @@ const ease = bezier(0.16, 1, 0.3, 1);    // custom cubic-bezier easing
 
 - **`examples/basics`** — a 6s reel showcasing the `kamishibai/react` sugar: fade in/out, an eased progress meter + count-up, staggered reveals, and eased motion.
 - **`examples/video`** — frame-accurate video via WebCodecs, both raw (`index.ts`) and React (`react.tsx`). The clip is an AV1-in-MP4 test pattern generated by ffmpeg (`testsrc`, synthetic — no copyright).
+- **`examples/narration`** — TTS as a build pre-pass: synthesize the voice-over up front with `say`, size each scene to its line, and burn the text as captions (`<Narration subtitle>`).
 
 ```sh
 pnpm build
 node dist/cli.js render examples/basics/index.tsx -o basics.mp4 -w 4
 node dist/cli.js render examples/video/react.tsx --public examples/video/public -o video.mp4 -w 4
+node dist/cli.js render examples/narration/index.tsx -o narration.mp4 -w 4   # macOS `say`
 ```
 
 ---

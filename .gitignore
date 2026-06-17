@@ -11,6 +11,9 @@ out/
 *.mp4
 .DS_Store
 
+# baked narration audio (content-hash cache)
+.kamishibai-tts/
+
 # …but example source clips and the README demo are tracked
 !examples/video/public/clip.mp4
 !examples/basics/out.mp4

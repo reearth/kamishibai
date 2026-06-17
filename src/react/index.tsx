@@ -23,6 +23,8 @@ import type { AudioClip } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
 import { loadSubtitles, cueAt, type Cue as SubtitleCue } from "../subtitle.ts";
 export type { Cue as SubtitleCue } from "../subtitle.ts";
+import type { NarrationClip } from "../tts/index.ts";
+export type { NarrationClip } from "../tts/index.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
 
 // Re-exported for convenience (these live framework-free in kamishibai/easing).
@@ -454,6 +456,56 @@ export const Subtitle: React.FC<{
     >
       {dynamic ? <div ref={ref} style={boxStyle} /> : <div style={boxStyle}>{children}</div>}
     </div>
+  );
+};
+
+// ---- Narration ----------------------------------------------------
+// Thin sugar over <Audio>: drop a clip from prepareNarration into a scene and
+// it plays from the scene start (+ delayMs), trimmed to its own length. With
+// `subtitle`, the same text is also burned as a caption for the clip's window
+// — text → voice → caption, all from one source. No new mux path; it rides
+// the existing <Audio> + <Subtitle> machinery.
+export const Narration: React.FC<{
+  /** a clip returned by prepareNarration ({ src, durationMs, text }) */
+  clip: NarrationClip;
+  /** absolute start in ms (overrides epoch + delayMs) */
+  atMs?: number;
+  /** offset from the enclosing scope's start, in ms (default 0) */
+  delayMs?: number;
+  /** volume in dB (negative = quieter) */
+  gain?: number;
+  /** fade-in over this many ms */
+  fadeInMs?: number;
+  /** fade-out over this many ms (at the clip's end) */
+  fadeOutMs?: number;
+  /** also burn the narration text as a caption for the clip's window */
+  subtitle?: boolean;
+  /** caption distance from the bottom edge, in px (default 80) */
+  subtitleBottom?: number;
+  /** caption style overrides */
+  subtitleStyle?: React.CSSProperties;
+}> = ({ clip, atMs, delayMs = 0, gain, fadeInMs, fadeOutMs, subtitle, subtitleBottom, subtitleStyle }) => {
+  return (
+    <>
+      {clip.src ? (
+        <Audio
+          src={clip.src}
+          atMs={atMs}
+          delayMs={delayMs}
+          durationMs={clip.durationMs}
+          gain={gain}
+          fadeInMs={fadeInMs}
+          fadeOutMs={fadeOutMs}
+        />
+      ) : null}
+      {subtitle ? (
+        <Cue at={delayMs} hold={clip.durationMs}>
+          <Subtitle bottom={subtitleBottom} style={subtitleStyle}>
+            {clip.text}
+          </Subtitle>
+        </Cue>
+      ) : null}
+    </>
   );
 };
 

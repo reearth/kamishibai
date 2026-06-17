@@ -11,7 +11,7 @@
 // at `url`.
 // ------------------------------------------------------------------
 import { build } from "esbuild";
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type IncomingMessage } from "node:http";
 import { mkdtemp, rm, writeFile, stat, cp } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,6 +22,9 @@ export interface Served {
   close(): Promise<void>;
 }
 
+/** Minimal POST handler for the narration pre-pass (the TTS engine's `handle`). */
+export type TTSRequestHandler = (body: unknown) => Promise<unknown>;
+
 export interface ServeOptions {
   /**
    * A directory of static assets to serve at the server root, so the page
@@ -29,6 +32,12 @@ export interface ServeOptions {
    * a Vite `public/`). Only applies to bundled script entries.
    */
   publicDir?: string;
+  /**
+   * Handles `POST /__tts` from the page's `prepareNarration` — synthesizes
+   * (and caches) narration audio in Node, before capture. Only wired for
+   * bundled script entries.
+   */
+  tts?: TTSRequestHandler;
 }
 
 const SCRIPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
@@ -75,11 +84,43 @@ function hostHtml(): string {
 `;
 }
 
+/** Read a request body as a UTF-8 string. */
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
 /** Start a tiny static file server rooted at `root`, return it + its port. */
-async function staticServer(root: string): Promise<{ server: Server; port: number }> {
+async function staticServer(
+  root: string,
+  opts: { tts?: TTSRequestHandler } = {},
+): Promise<{ server: Server; port: number }> {
   const server = createServer(async (req, res) => {
     try {
       const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0] ?? "/");
+
+      // Narration pre-pass: synthesize (and cache) in Node, return durations.
+      if (req.method === "POST" && urlPath === "/__tts") {
+        if (!opts.tts) {
+          res.writeHead(404).end("TTS not enabled");
+          return;
+        }
+        try {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          const result = await opts.tts(body);
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }).end(message);
+        }
+        return;
+      }
+
       let filePath = join(root, urlPath);
       // Directory -> index.html
       try {
@@ -175,7 +216,7 @@ export async function serveEntry(entry: string, opts: ServeOptions = {}): Promis
     throw new Error(`Failed to bundle entry "${entry}":\n${message}`);
   }
 
-  const { server, port } = await staticServer(dir);
+  const { server, port } = await staticServer(dir, { tts: opts.tts });
   return {
     url: `http://127.0.0.1:${port}/`,
     close: async () => {

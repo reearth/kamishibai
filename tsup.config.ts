@@ -8,6 +8,7 @@ export default defineConfig({
     video: "src/video.ts",
     easing: "src/easing.ts",
     subtitle: "src/subtitle.ts",
+    tts: "src/tts/index.ts",
   },
   format: ["esm"],
   target: "node20",
