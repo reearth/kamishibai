@@ -35,6 +35,12 @@ Both share the principles below; B adds the "Brand-film extras" section.
 - Spell out numbers/acronyms the way they should *sound* for narration
   ("twenty twenty-six", "C-I-A").
 - "Say it, then show it." Every on-screen element should have a spoken counterpart.
+- **Add value the slide doesn't have.** Narrating the bullets word-for-word is
+  boring — the listener can already read. Periodically weave in something that
+  *isn't* on the slide to pull attention back: a plain-language gloss of the
+  confusing part, a clearer rephrasing or analogy, a small aside or bit of
+  feeling, or a rhetorical check-in ("this is the bit everyone trips on, right?").
+  The slide is the reference; the voice is the guide that makes it click.
 
 ### Pacing & silence (間)
 - Silence is an edit tool. Hold **~2s between slides**, **~3s at a chapter change**.
