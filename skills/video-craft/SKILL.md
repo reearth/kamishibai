@@ -9,6 +9,10 @@ This is the **directing and editing** layer. For the API and how the engine
 works, use the `kamishibai` skill — don't restate the mechanics here, just
 apply the taste below.
 
+Everything here is **guidance, not rules** — sensible defaults for good taste.
+When the requester gives a direction, brief, or explicit instruction, follow
+that over anything below.
+
 Golden rule: **the narration is the spine.** Picture serves the voice — reveal,
 motion, and cuts exist to support what's being said, never to compete with it.
 
@@ -104,12 +108,18 @@ Both share the principles below; B adds the "Brand-film extras" section.
    on direction, *then* pilot. This catches "wrong direction" before a single
    frame renders — cheaper even than the pilot. If the requester gives direction
    (a brand, a reference, a mood), fold it in and make it concrete in the outline.
-2. **Pilot.** Build the first few scenes, lock the look/voice/pacing, get
+2. **Write the full narration script and get it signed off *before* synthesizing.**
+   Once the spoken lines are written, show them to the requester (plain text — the
+   whole script) and lock it before the first TTS run. Synthesis costs money per
+   line and editing the wording re-bills *and* re-times that line, so revisions
+   are nearly free as text and expensive once voiced. One review here avoids
+   re-synthesizing on rework — even a modest deck adds up.
+3. **Pilot.** Build the first few scenes, lock the look/voice/pacing, get
    sign-off, *then* scale to the whole thing. Direction changes are cheap early.
-3. **Render → watch on a real device → inspect the frames.** Eyeballing stills is
+4. **Render → watch on a real device → inspect the frames.** Eyeballing stills is
    the fastest way to catch flicker, overflow, or mistimed reveals.
-4. Iterate freely on visuals and timing; change narration wording/voice sparingly.
-5. Keep a reusable scene/component layer and data-driven slides so 40 slides aren't
+5. Iterate freely on visuals and timing; change narration wording/voice sparingly.
+6. Keep a reusable scene/component layer and data-driven slides so 40 slides aren't
    40 hand-built files.
 
 ## Anti-patterns (hard-won)
@@ -122,6 +132,8 @@ Both share the principles below; B adds the "Brand-film extras" section.
 - Motion that competes with the message → distracting.
 - Crossfading two different layouts without clearing content first → ghosting.
 - Music too loud or not ducked → it fights the voice. Unlicensed music → don't.
+- Synthesizing TTS before the script is approved → you pay to voice lines you'll
+  re-cut. Get script sign-off first.
 - Re-editing narration wording late and often → slow and costly. Lock the script first.
 - Jumping straight into building with no written direction outline → the wrong
   creative direction only surfaces after you've built, not before.
