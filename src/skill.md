@@ -103,8 +103,9 @@ Sugar API:
 - `<Audio src delayMs atMs gain fadeInMs fadeOutMs loop>` — declare audio inside
   a scene; it starts at the scene's start (+`delayMs`) and is collected for
   muxing automatically
-- `<Bgm src gain fadeInMs fadeOutMs>` — background music: a looped `<Audio>` at
-  the reel start, tiled to fill the whole video and muxed under everything else
+- `<Bgm src gain fadeInMs fadeOutMs duck>` — background music: a looped `<Audio>`
+  at the reel start, tiled to fill the whole video and muxed under everything
+  else; `duck` auto-dips it while narration plays
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
   video via WebCodecs (see Video below); draws the clip frame for the current
   scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
@@ -240,16 +241,24 @@ window.kamishibai = {
 ```
 
 Per-clip: `gain` (dB), `trimStartMs`/`durationMs` (use a sub-section),
-`fadeInMs`/`fadeOutMs`, `loop` (tile the source to the reel length), and
-`gainKeyframes` (`[{ atMs, gain }]`) — dB volume automation over the clip's
-timeline, linearly interpolated, for ducking/swells.
+`fadeInMs`/`fadeOutMs`, `loop` (tile the source to the reel length), `duck`
+(auto-dip under other clips — see below), and `gainKeyframes` (`[{ atMs, gain }]`)
+— dB volume automation over the clip's timeline, linearly interpolated, for
+manual ducking/swells.
 
 **Background music:** declare it like any other clip — `<Bgm src="theme.mp3"
-gain={-18} fadeOutMs={1500} />` at the top level (or `<Audio loop>`). It muxes
-*alongside* the narration markers (they mix; nothing is dropped), **tiles** a
-short track to fill the whole reel, and clamps to the video length, so you never
-hand-stitch loops; `fadeOutMs` lands at the reel end. For automated ducking under
-narration, use `gainKeyframes`.
+gain={-18} fadeOutMs={1500} duck />` at the top level (or `<Audio loop>`). It
+muxes *alongside* the narration markers (they mix; nothing is dropped), **tiles**
+a short track to fill the whole reel, and clamps to the video length, so you
+never hand-stitch loops; `fadeOutMs` lands at the reel end.
+
+**Auto-ducking:** `duck` (on `<Bgm>` or any `<Audio>`) dips the clip while any
+*other* clip plays. Because every clip's start and length are known up front,
+kamishibai derives the dip envelope from the schedule (no audio analysis): it's
+just generated `gainKeyframes`, so it stays deterministic. `duck` alone uses
+sensible defaults (−12 dB, 250 ms attack, 600 ms release, bridging short gaps);
+tune with `duck={{ amountDb: -16, attackMs: 200, releaseMs: 500 }}`. Explicit
+`gainKeyframes` override it.
 
 `src` is read **from the filesystem by ffmpeg** (relative to the render's working
 directory, or absolute) — unlike `<Video>` / `staticFile` paths, which the

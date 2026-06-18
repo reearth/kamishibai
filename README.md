@@ -49,20 +49,21 @@ frames 1370–…    → Chrome #3 ┘
 
 kamishibai never generates sound. You declare files + start times (from a TTS, a music track, anything) and they're muxed at assembly time.
 
-**Declared in the page** — composable, and the way to do it. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain?, … }`) and the renderer collects + muxes it automatically. With React, drop an `<Audio>` into a scene (see below), or `<Bgm src="theme.mp3" gain={-18} fadeOutMs={1500} />` at the top level for looped background music; with the raw API, push entries onto the array yourself.
+**Declared in the page** — composable, and the way to do it. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain?, … }`) and the renderer collects + muxes it automatically. With React, drop an `<Audio>` into a scene (see below), or `<Bgm src="theme.mp3" gain={-18} fadeOutMs={1500} duck />` at the top level for looped, auto-ducked background music; with the raw API, push entries onto the array yourself.
 
 ```ts
 [
   { src: "voiceover/intro.m4a", atMs: 0 },
-  // a short loop tiled to fill the whole reel, ducked, fading out at the end:
-  { src: "bgm.mp3", atMs: 0, gain: -18, loop: true, fadeOutMs: 1500 },
+  // a short loop tiled to fill the reel, auto-ducked under the voiceover, fading out at the end:
+  { src: "bgm.mp3", atMs: 0, gain: -18, loop: true, duck: true, fadeOutMs: 1500 },
 ]
 ```
 
-Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), `fadeInMs` / `fadeOutMs`, `loop` (tile the source to the reel length), and `gainKeyframes` — dB volume automation over the clip's timeline, linearly interpolated, for ducking/swells:
+Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), `fadeInMs` / `fadeOutMs`, `loop` (tile the source to the reel length), `duck` (auto-dip under other clips), and `gainKeyframes` — dB volume automation over the clip's timeline, for manual ducking/swells.
+
+`duck` derives the dip from the schedule — every clip's start and length are known up front, so the music dips while narration plays and rises in the gaps, deterministically (no audio analysis). `true` uses defaults (−12 dB, 250 ms attack, 600 ms release); tune with `duck: { amountDb: -16, attackMs: 200, releaseMs: 500 }`. Or automate it by hand with `gainKeyframes`:
 
 ```ts
-// duck the music under narration between 1s and 3s
 { src: "bgm.mp3", atMs: 0, loop: true, gainKeyframes: [
   { atMs: 0, gain: -10 }, { atMs: 1000, gain: -24 },
   { atMs: 3000, gain: -24 }, { atMs: 3500, gain: -10 },

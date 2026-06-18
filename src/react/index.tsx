@@ -23,7 +23,7 @@ import React, {
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { KamishibaiMeta } from "../protocol.ts";
-import type { AudioClip } from "../audio.ts";
+import type { AudioClip, DuckOptions } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
 import { loadSubtitles, cueAt, type Cue as SubtitleCue } from "../subtitle.ts";
 export type { Cue as SubtitleCue } from "../subtitle.ts";
@@ -48,6 +48,7 @@ import { seriesLayout, type SceneSpec, type SceneLayout } from "../series.ts";
 // hand-summing crossfades (these live framework-free in kamishibai/series).
 export { seriesDuration, seriesLayout } from "../series.ts";
 export type { SceneSpec, SceneLayout } from "../series.ts";
+export type { DuckOptions } from "../audio.ts";
 
 // Re-exported for convenience (these live framework-free in kamishibai/easing).
 export {
@@ -195,12 +196,15 @@ export const Audio: React.FC<{
   fadeOutMs?: number;
   /** tile the source to fill to the reel end (or durationMs) — for BGM */
   loop?: boolean;
+  /** auto-dip this clip while other clips play (true = defaults) — for BGM */
+  duck?: boolean | DuckOptions;
   /** dB volume automation over the clip's timeline (atMs from clip start) */
   gainKeyframes?: Array<{ atMs: number; gain: number }>;
-}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, gainKeyframes }) => {
+}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duck, gainKeyframes }) => {
   const { epochMs } = useClock();
   const start = Math.round(atMs ?? epochMs + delayMs);
   const kfKey = gainKeyframes ? JSON.stringify(gainKeyframes) : "";
+  const duckKey = duck ? JSON.stringify(duck) : "";
   useEffect(() => {
     const clip: AudioClip = { src, atMs: start };
     if (gain != null) clip.gain = gain;
@@ -209,10 +213,11 @@ export const Audio: React.FC<{
     if (fadeInMs != null) clip.fadeInMs = fadeInMs;
     if (fadeOutMs != null) clip.fadeOutMs = fadeOutMs;
     if (loop) clip.loop = true;
+    if (duck) clip.duck = duck;
     if (gainKeyframes != null) clip.gainKeyframes = gainKeyframes;
     registerAudio(clip);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, kfKey]);
+  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duckKey, kfKey]);
   return null;
 };
 
@@ -234,9 +239,11 @@ export const Bgm: React.FC<{
   fadeInMs?: number;
   /** fade-out over this many ms, ending at the reel end */
   fadeOutMs?: number;
-  /** dB volume automation (atMs from the reel start) — e.g. manual ducking */
+  /** auto-dip under narration/other clips (true = defaults, or tune the dip) */
+  duck?: boolean | DuckOptions;
+  /** dB volume automation (atMs from the reel start) — manual alternative to duck */
   gainKeyframes?: Array<{ atMs: number; gain: number }>;
-}> = ({ src, atMs = 0, gain, trimStartMs, fadeInMs, fadeOutMs, gainKeyframes }) => (
+}> = ({ src, atMs = 0, gain, trimStartMs, fadeInMs, fadeOutMs, duck, gainKeyframes }) => (
   <Audio
     src={src}
     atMs={atMs}
@@ -245,6 +252,7 @@ export const Bgm: React.FC<{
     trimStartMs={trimStartMs}
     fadeInMs={fadeInMs}
     fadeOutMs={fadeOutMs}
+    duck={duck}
     gainKeyframes={gainKeyframes}
   />
 );

@@ -11,7 +11,7 @@ import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
 import { assertFfmpeg, encodeFrames, encodeGif, muxAudio, hasAudioStream } from "./ffmpeg.ts";
-import type { AudioManifest, AudioClip } from "./audio.ts";
+import { applyDucking, type AudioManifest, type AudioClip } from "./audio.ts";
 import { createTTSEngine, type TTSAdapter } from "./tts/engine.ts";
 
 export interface RenderOptions {
@@ -168,7 +168,9 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     // instead of silently dropping it, and still works for a URL entry you
     // don't control (where there are no page markers).
     const declared = [...collectedAudio, ...(opts.audio ?? [])];
-    const audioClips = await prepareAudio(declared, opts.publicDir, log);
+    // Resolve srcs and drop silent clips first, then auto-duck (so a dropped
+    // narration line doesn't leave a phantom dip in the music).
+    const audioClips = applyDucking(await prepareAudio(declared, opts.publicDir, log));
 
     if (out.toLowerCase().endsWith(".gif")) {
       if (audioClips.length > 0) log(`(gif has no audio — ignoring ${audioClips.length} clip(s))`);

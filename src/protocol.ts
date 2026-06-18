@@ -59,6 +59,7 @@ export interface KamishibaiPage {
     fadeInMs?: number;
     fadeOutMs?: number;
     loop?: boolean;
+    duck?: boolean | { amountDb?: number; attackMs?: number; releaseMs?: number };
     gainKeyframes?: Array<{ atMs: number; gain: number }>;
   }>;
 }
