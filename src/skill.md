@@ -39,6 +39,7 @@ npm init -y
 npm i kamishibai react react-dom          # react / react-dom are peer deps
 npm i -D typescript @types/react @types/react-dom
 npx playwright install chromium           # the headless browser kamishibai captures with
+mkdir public                              # browser-fetched assets: images, video clips, fonts
 ```
 
 **3. Write a `reel.tsx`** that calls `mount(<Reel/>, meta)` (see **Writing a
@@ -61,7 +62,9 @@ waiting out a capture only to find a blank reel:
 // package.json — "tsc"/"kamishibai" resolve from node_modules/.bin, no npx needed
 "scripts": {
   "typecheck": "tsc --noEmit",
-  "render": "tsc --noEmit && kamishibai render reel.tsx -o out.mp4"
+  // -p public serves ./public at the server root, so the page can fetch
+  // /logo.png, <Video src="/clip.mp4">, fonts, etc. (the dir must exist).
+  "render": "tsc --noEmit && kamishibai render reel.tsx -o out.mp4 -p public"
 }
 ```
 
