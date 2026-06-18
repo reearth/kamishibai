@@ -300,19 +300,39 @@ so scenes can fit their narration. It rides the existing `<Audio>` mux path.
 
 ```tsx
 import { mount, Series, Narration, seriesDuration } from "kamishibai/react";
-import { sayAdapter, prepareNarration } from "kamishibai/tts";
+import { sayAdapter, prepareNarration, narrationLayout } from "kamishibai/tts";
 
 const voice = sayAdapter(); // dev default: free, offline, deterministic
 const vo = await prepareNarration(voice, { intro: "Welcome.", body: "Pure functions of time." });
-// Each scene is sized to its line (+ breathing room); the reel length is then
-// derived from the same specs, so it always ends exactly with the last line.
-const scenes = [
-  { durationMs: vo.intro.durationMs + 500, content: <Narration clip={vo.intro} subtitle /> },
-  { durationMs: vo.body.durationMs + 500, crossfadeMs: 400, content: <Narration clip={vo.body} subtitle /> },
-];
+// narrationLayout sizes one scene per line to its measured duration (+ pad),
+// with a uniform crossfade; add each scene's visuals and derive the reel length
+// from the same specs, so it always ends exactly with the last line.
+const scenes = narrationLayout([vo.intro, vo.body], { padMs: 500, crossfadeMs: 400 })
+  .map(({ clip, ...spec }) => ({ ...spec, content: <Narration clip={clip} subtitle /> }));
 mount(<Series scenes={scenes} />, {
   fps: 30, durationMs: seriesDuration(scenes), width: 1280, height: 720,
 });
+```
+
+Narration-driven layout helpers (in `kamishibai/tts`, also re-exported from
+`kamishibai/react`), all pure data:
+- `narrationLayout(clips, { padMs, crossfadeMs, exitFadeMs })` → one
+  `{ durationMs, crossfadeMs?, exitFadeMs?, clip }` per clip; map it to
+  `<Series scenes>` items by adding `content`.
+- `narrationTotal(clips)` → the raw voice-over length (sum of durations), handy
+  for a sanity check against `seriesDuration(scenes)` (which adds pad/crossfade).
+- `narrationSequence(clips, { gapMs, startMs })` → for **several clips in one
+  scene**, each clip's cumulative `atMs`. Reveal element X exactly when clip Y
+  starts by pairing `<Narration clip delayMs={atMs} />` with `<Cue at={atMs}>`:
+
+```tsx
+const steps = narrationSequence([vo.a, vo.b, vo.c]); // within one scene
+<>{steps.map((s, i) => (
+  <React.Fragment key={i}>
+    <Narration clip={s.clip} delayMs={s.atMs} />
+    <Cue at={s.atMs}><Bullet>{labels[i]}</Bullet></Cue>
+  </React.Fragment>
+))}</>
 ```
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line

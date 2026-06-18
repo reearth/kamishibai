@@ -19,6 +19,8 @@
 // implementation in engine.ts; a custom provider implements the Node
 // `TTSAdapter` and registers it via render({ ttsAdapters }).
 
+import type { SceneSpec } from "../series.ts";
+
 /**
  * A serializable reference to a TTS adapter. The reel hands this to
  * `prepareNarration`; the server matches `provider` to a Node implementation
@@ -187,4 +189,75 @@ export async function prepareNarration<K extends string>(
     throw new Error(`kamishibai TTS failed (${res.status})${detail ? `: ${detail}` : ""}`);
   }
   return (await res.json()) as Record<K, NarrationClip>;
+}
+
+// ---- narration-driven layout --------------------------------------
+// prepareNarration hands back each line's *measured* duration, so the common
+// "one scene per line, sized to its voice-over" structure can be derived
+// instead of hand-built. These are pure data helpers (no React): feed the
+// result to <Series scenes> and meta.durationMs = seriesDuration(...), and the
+// reel fits the narration exactly. Pass clips in the order they should play.
+
+/** Total measured narration time (sum of clip durations), in ms. */
+export function narrationTotal(clips: NarrationClip[]): number {
+  return clips.reduce((n, c) => n + Math.round(c.durationMs), 0);
+}
+
+export interface NarrationLayoutOptions {
+  /** breathing room added after each clip, in ms (default 0) */
+  padMs?: number;
+  /** crossfade for every scene after the first, in ms (default 0) */
+  crossfadeMs?: number;
+  /** content exit-fade for every scene, in ms (default 0) */
+  exitFadeMs?: number;
+}
+
+/** A scene spec sized to a narration clip, with the clip kept for the content. */
+export interface NarrationScene extends SceneSpec {
+  clip: NarrationClip;
+}
+
+/**
+ * Lay a sequence of clips out as one scene per clip, each sized to its measured
+ * duration (+ padMs), with an optional uniform crossfade / exit-fade. Map the
+ * result to `<Series scenes>` items (add `content`) and size the reel with
+ * `seriesDuration`.
+ */
+export function narrationLayout(
+  clips: NarrationClip[],
+  opts: NarrationLayoutOptions = {},
+): NarrationScene[] {
+  const { padMs = 0, crossfadeMs = 0, exitFadeMs = 0 } = opts;
+  return clips.map((clip, i) => {
+    const scene: NarrationScene = { durationMs: Math.round(clip.durationMs) + padMs, clip };
+    if (i > 0 && crossfadeMs) scene.crossfadeMs = crossfadeMs;
+    if (exitFadeMs) scene.exitFadeMs = exitFadeMs;
+    return scene;
+  });
+}
+
+/** A clip placed within a scene, with its start offset from the scene start. */
+export interface NarrationStep {
+  clip: NarrationClip;
+  /** start offset within the enclosing scene, in ms */
+  atMs: number;
+}
+
+/**
+ * Sequence several clips *within one scene*: returns each clip with its
+ * cumulative start offset. Drop `<Narration clip={s.clip} delayMs={s.atMs} />`
+ * for each, and reveal matching content with `<Cue at={s.atMs}>` — i.e. show
+ * element X exactly when clip Y starts playing.
+ */
+export function narrationSequence(
+  clips: NarrationClip[],
+  opts: { gapMs?: number; startMs?: number } = {},
+): NarrationStep[] {
+  const { gapMs = 0, startMs = 0 } = opts;
+  let cursor = startMs;
+  return clips.map((clip) => {
+    const step: NarrationStep = { clip, atMs: cursor };
+    cursor += Math.round(clip.durationMs) + gapMs;
+    return step;
+  });
 }

@@ -15,7 +15,7 @@
 //   node dist/cli.js render examples/narration/index.tsx -o narration.mp4
 import React from "react";
 import { mount, Series, Stage, Enter, Narration, seriesDuration } from "../../src/react/index.tsx";
-import { sayAdapter, prepareNarration } from "../../src/tts/index.ts";
+import { sayAdapter, prepareNarration, narrationLayout } from "../../src/tts/index.ts";
 
 const FPS = 30;
 const W = 1280;
@@ -34,7 +34,6 @@ const vo = await prepareNarration(voice, {
   outro: { text: "Narration is no exception: synthesized up front, cached, and muxed.", opts: { rate: 150 } },
 });
 
-const sceneMs = (clip: { durationMs: number }) => Math.round(clip.durationMs) + PAD_MS;
 const XF = 400; // crossfade between scenes — overlaps, so it shortens the reel
 
 const bg = ["#0B0E14", "#101826", "#0E1414"];
@@ -60,41 +59,24 @@ const Slide: React.FC<{ index: number; title: string }> = ({ index, title }) => 
   </Stage>
 );
 
-// Timing lives as data, so meta.durationMs is *derived* from the same specs
-// the Series lays out — no hand-summing, and crossfades can't drift the total
-// (sum the durations and forget the overlaps, and you get trailing blank
-// frames). Feed `scenes` to <Series> and `seriesDuration(scenes)` to meta.
-const scenes = [
-  {
-    durationMs: sceneMs(vo.intro),
-    content: (
-      <>
-        <Slide index={0} title="kamishibai" />
-        <Narration clip={vo.intro} subtitle />
-      </>
-    ),
-  },
-  {
-    durationMs: sceneMs(vo.how),
-    crossfadeMs: XF,
-    content: (
-      <>
-        <Slide index={1} title="pure function of time" />
-        <Narration clip={vo.how} subtitle />
-      </>
-    ),
-  },
-  {
-    durationMs: sceneMs(vo.outro),
-    crossfadeMs: XF,
-    content: (
-      <>
-        <Slide index={2} title="voice baked up front" />
-        <Narration clip={vo.outro} subtitle fadeOutMs={300} />
-      </>
-    ),
-  },
-];
+// narrationLayout sizes one scene per line to its *measured* duration (+ pad),
+// with a uniform crossfade. We just add each scene's visuals; meta.durationMs
+// is then derived from the same specs with seriesDuration, so the reel can't
+// drift from what renders (forget the crossfades and you get trailing blanks).
+const titles = ["kamishibai", "pure function of time", "voice baked up front"];
+
+const scenes = narrationLayout([vo.intro, vo.how, vo.outro], {
+  padMs: PAD_MS,
+  crossfadeMs: XF,
+}).map(({ clip, ...spec }, i) => ({
+  ...spec,
+  content: (
+    <>
+      <Slide index={i} title={titles[i]!} />
+      <Narration clip={clip} subtitle fadeOutMs={i === titles.length - 1 ? 300 : undefined} />
+    </>
+  ),
+}));
 
 mount(<Series scenes={scenes} />, {
   fps: FPS,

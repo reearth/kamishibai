@@ -29,6 +29,18 @@ import { loadSubtitles, cueAt, type Cue as SubtitleCue } from "../subtitle.ts";
 export type { Cue as SubtitleCue } from "../subtitle.ts";
 import type { NarrationClip } from "../tts/index.ts";
 export type { NarrationClip } from "../tts/index.ts";
+// Re-exported so narration layout pairs naturally with <Series scenes> here;
+// they live framework-free in kamishibai/tts.
+export {
+  narrationTotal,
+  narrationLayout,
+  narrationSequence,
+} from "../tts/index.ts";
+export type {
+  NarrationLayoutOptions,
+  NarrationScene,
+  NarrationStep,
+} from "../tts/index.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
 import { seriesLayout, type SceneSpec, type SceneLayout } from "../series.ts";
 
