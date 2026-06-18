@@ -11,7 +11,67 @@
 
 It deliberately does *not* try to be a frame-accurate compositing engine or ship an editor. It gives you the renderer and one tiny contract; the rest is yours.
 
-- **Free · DOM-or-anything · code/CI-first · AI-friendly · no guarantees (MIT)** — a corner of the programmatic-video space nothing else occupies.
+**Free · DOM-or-anything · code/CI-first · AI-friendly · no guarantees (MIT)** — a corner of the programmatic-video space nothing else occupies.
+
+---
+
+## Quick start
+
+```sh
+npm i kamishibai react react-dom         # react / react-dom are peer deps
+npx playwright install chromium          # the headless browser that captures frames
+# plus ffmpeg on your PATH (not bundled) — e.g. `brew install ffmpeg`
+```
+
+Write a `reel.tsx` — a page that draws "the state at time `ms`". With the optional React sugar that's just a component plus `mount`:
+
+```tsx
+import { mount, useClock, ramp, eases } from "kamishibai/react";
+
+const Reel = () => {
+  const { ms } = useClock();                       // current time, in milliseconds
+  const x = ramp(ms, 0, 1000, 0, 400, eases.smooth); // map a time window onto a value
+  return (
+    <div style={{ font: "700 96px system-ui", transform: `translateX(${x}px)` }}>
+      hello
+    </div>
+  );
+};
+
+// mount() renders the tree AND exposes window.kamishibai for the renderer.
+mount(<Reel />, { fps: 30, durationMs: 3000, width: 1280, height: 720 });
+```
+
+Render it:
+
+```sh
+npx kamishibai render reel.tsx -o reel.mp4
+```
+
+Then iterate: **render → look at the frames → fix the code → render again.** There's no GUI editor — you're the editor.
+
+**Requirements:** Node.js ≥ 20 · `ffmpeg` on `PATH` (not bundled) · a Chromium for Playwright (`npx playwright install chromium`).
+
+---
+
+## Agent skills
+
+Building videos with an AI coding agent? Two installable [skills](https://github.com/vercel-labs/skills) teach it kamishibai — install one or both by name:
+
+```sh
+npx skills add reearth/kamishibai --skill kamishibai    # the API / engine
+npx skills add reearth/kamishibai --skill video-craft   # the directing / editing craft
+# the gh extension works too:  gh skill install reearth/kamishibai
+```
+
+- **`kamishibai`** — points the agent at `kamishibai skill`, which prints the full authoring guide (the contract, the React sugar, audio / TTS, the render CLI, determinism) — always matching the installed version.
+- **`video-craft`** — the *taste* layer, not the API: narration as the spine, pacing & silence, audio-synced reveals, transitions, mix & ducking, and the outline → script sign-off → pilot → render loop.
+
+Or pipe the guide straight into your agent's context yourself:
+
+```sh
+kamishibai skill > kamishibai.md
+```
 
 ---
 
@@ -25,7 +85,8 @@ A capturable page exposes exactly one global:
 window.kamishibai = {
   meta: { fps: 30, durationMs: 6000, width: 1920, height: 1080 },
   // Build the still state for `ms` and resolve once the DOM has settled.
-  seek(ms: number): Promise<void>;
+  // Return false to mean "identical to the previous frame" (see below).
+  seek(ms: number): Promise<boolean | void> | boolean | void;
 };
 ```
 
@@ -45,11 +106,77 @@ frames 1370–…    → Chrome #3 ┘
 
 `seek(ms)` can return `false` to mean "identical to the previous frame". The renderer then copies the previous still instead of paying for a settle + screenshot, cheaply skipping held frames. Returning `void`/`true` captures normally, so existing pages are unaffected.
 
-### Audio
+---
 
-kamishibai never generates sound. You declare files + start times (from a TTS, a music track, anything) and they're muxed at assembly time.
+## Writing reels — the React sugar
 
-**Declared in the page** — composable, and the way to do it. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain?, … }`) and the renderer collects + muxes it automatically. With React, drop an `<Audio>` into a scene (see below), or `<Bgm src="theme.mp3" gain={-18} fadeOutMs={1500} duck />` at the top level for looped, auto-ducked background music; with the raw API, push entries onto the array yourself.
+You don't need React — any page that sets `window.kamishibai` works. But `kamishibai/react` wires a React tree to the contract with a small, clock-driven vocabulary:
+
+- `useClock()` — the current clock: `{ ms, durationMs, fps, epochMs }`
+- `ramp` / `eases` / `bezier` / `spring` / `track` / `stagger` / `interpolateColor` — re-exported from [`kamishibai/easing`](#easing)
+- `<Stage>` — root surface · `<Cue at hold>` — reveal children during a window, with a **local clock** that restarts at 0 · `<Enter>` — fade + rise in
+- `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>` — lay scenes back-to-back, each with its own local clock ([Scenes](#scenes) below)
+- `<Audio>` · `<Bgm>` — declare sound ([Audio](#audio)) · `<Video>` — frame-accurate video ([Video](#video-frame-accurate))
+- `<Subtitle>` — burn captions ([Subtitles](#subtitles)) · `<Narration>` — play a pre-synthesized line ([Narration](#narration-tts))
+- `mount(node, meta)` — render and expose `window.kamishibai` (also free-runs on the wall clock in a normal browser for live preview)
+
+### Scenes
+
+`<Series>` plays scenes back-to-back, each with its own local clock (so `useClock()` and `<Audio delayMs>` are measured from the scene's start). A `crossfadeMs` overlaps a scene with the previous one; `exitFadeMs` fades a scene's *content* out just before it ends (so crossfading two different layouts doesn't ghost).
+
+Scenes **self-register**, so a scene wrapped in your own component works at any depth — there's no "must be a direct child" rule:
+
+```tsx
+import { mount, Series, Audio, seriesDuration } from "kamishibai/react";
+
+// Drive a Series from data, and derive meta.durationMs from the same specs so
+// the reel can't drift from what renders (a crossfade overlaps, so it shortens
+// the timeline — `seriesDuration` accounts for that).
+const scenes = [
+  { durationMs: 4000, content: <><Audio src="vo/intro.m4a" delayMs={500} /><Intro /></> },
+  { durationMs: 6000, crossfadeMs: 600, content: <><Audio src="vo/body.m4a" /><Body /></> },
+];
+
+mount(<Series scenes={scenes} />, {
+  fps: 30, durationMs: seriesDuration(scenes), width: 1920, height: 1080,
+});
+```
+
+The JSX form is equivalent — `<Series><Series.Scene durationMs={4000}>…</Series.Scene></Series>` — and `seriesLayout(scenes)` gives the per-scene start times if you need them.
+
+---
+
+## Easing
+
+`kamishibai/easing` is framework-free — use it from the raw API, the React sugar (which re-exports it), or Node-side code. No DOM or React dependency.
+
+```ts
+import { ramp, eases, bezier } from "kamishibai/easing";
+
+ramp(ms, 0, 1000, 0, 400, eases.smooth); // map a time window onto a value
+const ease = bezier(0.16, 1, 0.3, 1);    // custom cubic-bezier easing
+```
+
+- `bezier(x1, y1, x2, y2)` — build a custom easing (the curve math CSS timing functions use)
+- `eases` — ready-made `linear` / `smooth` / `inOut` / `pop`
+- `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped time→value interpolation
+- `spring({ stiffness, damping, mass })` — a physical spring as an easing (overshoots, settles); analytical, so it's deterministic
+- `track(ms, [{ at, value, ease? }])` — multi-stop interpolation (the n-point `ramp`)
+- `stagger(i, { each, from })` — cascade delay (ms) for item `i`
+- `interpolateColor(a, b, t)` — tween between hex colors
+
+---
+
+## Audio
+
+kamishibai never generates sound. You **declare** files + start times — in the page — and they're muxed at assembly time. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain?, … }`); the renderer collects and muxes it. With React, drop an `<Audio>` into a scene, or `<Bgm>` at the top level for looped, auto-ducked background music:
+
+```tsx
+<Audio src="vo/intro.m4a" delayMs={500} />          {/* starts 500ms into the enclosing scene */}
+<Bgm src="theme.mp3" gain={-18} duck fadeOutMs={1500} />  {/* loops under everything, ducks under narration */}
+```
+
+Or as a plain array (raw API, or the programmatic `render({ audio })` option):
 
 ```ts
 [
@@ -59,20 +186,15 @@ kamishibai never generates sound. You declare files + start times (from a TTS, a
 ]
 ```
 
-Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), `fadeInMs` / `fadeOutMs`, `loop` (tile the source to the reel length), `duck` (auto-dip under other clips), and `gainKeyframes` — dB volume automation over the clip's timeline, for manual ducking/swells.
+Per clip: `gain` (dB) · `trimStartMs` / `durationMs` (use a sub-section) · `fadeInMs` / `fadeOutMs` · `loop` (tile the source to the reel length) · `duck` (auto-dip under other clips) · `gainKeyframes` (manual dB automation).
 
-`duck` derives the dip from the schedule — every clip's start and length are known up front, so the music dips while narration plays and rises in the gaps, deterministically (no audio analysis). `true` uses defaults (−12 dB, 250 ms attack, 600 ms release); tune with `duck: { amountDb: -16, attackMs: 200, releaseMs: 500 }`. Or automate it by hand with `gainKeyframes`:
+**Auto-ducking** derives the dip from the schedule — every clip's start and length are known up front, so the music dips while narration plays and rises in the gaps, deterministically (no audio analysis). `duck: true` uses defaults (−12 dB, 250 ms attack, 600 ms release); tune with `duck: { amountDb: -16, attackMs: 200, releaseMs: 500 }`, or automate by hand with `gainKeyframes`.
 
-```ts
-{ src: "bgm.mp3", atMs: 0, loop: true, gainKeyframes: [
-  { atMs: 0, gain: -10 }, { atMs: 1000, gain: -24 },
-  { atMs: 3000, gain: -24 }, { atMs: 3500, gain: -10 },
-] }
-```
+`src` is read **from the filesystem by ffmpeg** (cwd-relative or absolute) — unlike `<Video>` / `staticFile` paths, which the *browser* fetches and must be served via `--public`. There's no `--audio` CLI flag (audio belongs to the reel); the programmatic `render({ audio })` option still works and is **merged** with the page's markers — handy for adding audio to a URL entry you don't control.
 
-There's no `--audio` CLI flag — audio is part of the reel. You can still pass clips programmatically via the `audio` render option; they're **merged** with whatever the page declared (handy for adding audio to a URL entry you don't control).
+---
 
-### Video (frame-accurate)
+## Video (frame-accurate)
 
 A raw HTML `<video>` can't be addressed by frame — `video.currentTime` is an approximate, async, decoder-dependent seek, so the same `ms` can yield different frames across runs and break the parallel-determinism invariant. `kamishibai/video` instead demuxes a clip with **mp4box** into an index of *encoded* samples and decodes on demand with **WebCodecs**, and `await frameAtMs(ms)` returns the exact frame — deterministic and frame-accurate, turning a video back into a pure function of time.
 
@@ -90,88 +212,7 @@ window.kamishibai = {
 };
 ```
 
-With React, `<Video src>` does this for you (see below), and the clip's **own audio track is muxed automatically** — trimmed to the scene and gain/fade-able — unless you pass `muted`. WebCodecs is available because kamishibai serves on localhost (a secure context). Codec support follows the Chromium build: VP9/AV1 everywhere, H.264 is platform-dependent — prefer VP9/AV1 for portable CI. Only the compressed samples and one decoded GOP are held at a time — frames decode on demand as the render walks forward — so long clips stay memory-bounded instead of decoding the whole clip up front.
-
----
-
-## Install
-
-```sh
-npm install kamishibai
-# or: pnpm add kamishibai
-```
-
-Requirements:
-
-- **Node.js ≥ 20**
-- **`ffmpeg`** on your `PATH` (not bundled — e.g. `brew install ffmpeg`)
-- A Chromium for Playwright: `npx playwright install chromium`
-
----
-
-## CLI
-
-```sh
-kamishibai render <entry|url> [options]
-```
-
-| Option | | Description |
-|---|---|---|
-| `--out` | `-o` | output file; `.mp4` (default) or `.gif` by extension |
-| `--workers` | `-w` | parallel Chrome instances (default: ~cpus-2, max 8) |
-| `--fps` | | override the page's fps — re-samples the same reel at this rate |
-| `--scale` | `-s` | device scale factor; output px = meta size × scale (default: 1) |
-| `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
-| `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths) |
-| `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
-| `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
-| (gif fps) | | GIF delays are quantized to 1/100s — pair `.gif` with `--fps` set to a divisor of 100 (25, 50, …) for exact timing |
-| `--crf` | | H.264 quality, lower = better (default: 18) |
-| `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
-| `--verbose` | | stream ffmpeg output |
-
-The entry can be:
-
-- a **URL** you already serve (`http://localhost:3000`),
-- a local **`.html`** file (its directory is served as-is), or
-- a local **script** (`.ts` / `.tsx` / `.js` / `.jsx`) — bundled with esbuild and served for you.
-
-```sh
-kamishibai render reel.tsx -o reel.mp4 -w 4
-kamishibai render reel.tsx -s 2 -o reel@2x.mp4          # 2× resolution
-kamishibai render reel.tsx -o reel.gif --fps 25 --max-width 720  # animated GIF
-kamishibai render reel.tsx -o reel.mp4 --max-width 1280          # downscaled mp4
-kamishibai render http://localhost:3000 -o page.mp4
-kamishibai render reel.tsx -p public -o reel.mp4              # serve ./public at the root
-```
-
-Resolution comes from `meta.width`/`meta.height` (your CSS is authored in those
-pixels); `--scale` multiplies only the captured pixels, so a 1920×1080 reel at
-`-s 2` outputs 3840×2160 with the same layout.
-
-### `kamishibai skill`
-
-Prints the full usage guide as markdown — meant to be piped into an AI agent's
-context (or saved to a file) so it can author reels for you:
-
-```sh
-kamishibai skill > kamishibai.md
-```
-
-### Agent skill (`npx skills` / `gh skill`)
-
-There's also an installable [agent skill](https://github.com/vercel-labs/skills)
-so your coding agent knows when and how to reach for kamishibai:
-
-```sh
-npx skills add reearth/kamishibai      # installs into .claude/skills (or .agents/skills)
-# or:
-gh skill install reearth/kamishibai
-```
-
-It's deliberately tiny — it just tells the agent to run `npx kamishibai skill`
-and follow that output, so the guide it reads is always the one shipped with the
-version you have installed.
+With React, `<Video src startMs muted gain fadeInMs fadeOutMs style>` does this for you, and the clip's **own audio track is muxed automatically** — trimmed to the scene and gain/fade-able — unless you pass `muted`. WebCodecs is available because kamishibai serves on localhost (a secure context). Codec support follows the Chromium build: VP9/AV1 everywhere, H.264 is platform-dependent — prefer VP9/AV1 for portable CI. Only the compressed samples and one decoded GOP are held at a time, so long clips stay memory-bounded.
 
 ---
 
@@ -206,11 +247,11 @@ const text = cueAt(cues, ms)?.text;            // draw it yourself in seek()
 
 TTS is non-deterministic (neural voices resample every call) and billable per request — the two things parallel capture can't tolerate. So kamishibai never synthesizes during `seek()`. Instead `prepareNarration` runs **once, before capture**, as a top-level `await`: it bakes each line to a **content-hashed file**, measures its duration with ffprobe, and hands back `{ src, durationMs, text }`. From then on the reel only references a path — the core contract never learns TTS exists; it rides the existing `<Audio>` mux path. The hash cache (`.kamishibai-tts/`) means identical lines are never re-synthesized or re-billed, and every parallel worker reads the same frozen file — so a non-deterministic API becomes a deterministic file reference.
 
-Because the durations come back before `mount()`, you can size each scene to the line it's about to speak:
+Because the durations come back before `mount()`, you can size each scene to the line it's about to speak. `narrationLayout` does exactly that — one scene per line, sized to its measured duration — and `seriesDuration` then fits the reel to the voice-over:
 
 ```tsx
-import { mount, Series, Narration } from "kamishibai/react";
-import { sayAdapter, prepareNarration } from "kamishibai/tts";
+import { mount, Series, Narration, seriesDuration } from "kamishibai/react";
+import { sayAdapter, prepareNarration, narrationLayout } from "kamishibai/tts";
 
 const voice = sayAdapter();                    // dev default: free, offline, deterministic
 const vo = await prepareNarration(voice, {
@@ -218,32 +259,32 @@ const vo = await prepareNarration(voice, {
   body:  "Every frame is a pure function of time.",
 });
 
-mount(
-  <Series>
-    <Series.Scene durationMs={vo.intro.durationMs + 500}>
-      <Narration clip={vo.intro} subtitle />   {/* plays the clip AND burns the text as a caption */}
-    </Series.Scene>
-    <Series.Scene durationMs={vo.body.durationMs + 500}>
-      <Narration clip={vo.body} subtitle fadeOutMs={300} />
-    </Series.Scene>
-  </Series>,
-  { fps: 30, durationMs: 9999, width: 1280, height: 720 },
-);
+const scenes = narrationLayout([vo.intro, vo.body], { padMs: 500, crossfadeMs: 400 })
+  .map(({ clip, ...spec }) => ({
+    ...spec,
+    content: <Narration clip={clip} subtitle />,  // plays the clip AND burns the text as a caption
+  }));
+
+mount(<Series scenes={scenes} />, {
+  fps: 30, durationMs: seriesDuration(scenes), width: 1280, height: 720,
+});
 ```
+
+Helpers (`kamishibai/tts`, also re-exported from `kamishibai/react`): `narrationLayout(clips, { padMs, crossfadeMs, exitFadeMs })` → one scene spec per clip · `narrationTotal(clips)` → total voice-over length · `narrationSequence(clips, { gapMs, startMs })` → cumulative start offsets for several lines in one scene (reveal element X when line Y starts via `<Cue at={atMs}>`), with `gapMs` as a number, array, or `(i, clip) => ms` for uneven pacing.
 
 Adapters are deliberately dumb (`text → bytes`) — no SSML layer, no voice UI. `say` is **macOS-only** (it shells out to the `say` binary), so it's the free local dev default; on Linux/Windows/CI use a network adapter. **Run the dev loop on `say`, then swap one line for the final render** — same reel:
 
 ```ts
 import { openaiAdapter, googleAdapter, pollyAdapter, elevenLabsAdapter } from "kamishibai/tts";
-const voice = openaiAdapter({ model: "tts-1-hd", voice: "nova" });   // OPENAI_API_KEY
-const voice = googleAdapter({ name: "en-US-Neural2-F" });            // GOOGLE_API_KEY
+const voice = openaiAdapter({ model: "tts-1-hd", voice: "nova" });    // OPENAI_API_KEY
+const voice = googleAdapter({ name: "en-US-Neural2-F" });             // GOOGLE_API_KEY
 const voice = pollyAdapter({ voiceId: "Matthew", engine: "neural" }); // AWS_ACCESS_KEY_ID/SECRET (+AWS_REGION)
 const voice = elevenLabsAdapter({ voiceId: "…" });                    // ELEVENLABS_API_KEY
 ```
 
 (Polly is signed with a minimal built-in SigV4 — no AWS SDK dependency. Google returns base64 audio, decoded for you.)
 
-The adapter sets the voice for the whole batch; a single line can override its options (merged over the adapter's) with the object form — handy to slow one line or switch voices for a quote. The override folds into the cache key, so only that line re-synthesizes:
+The adapter sets the voice for the whole batch; a single line can override its options (merged over the adapter's) with the object form. The override folds into the cache key, so only that line re-synthesizes — and changing `voice`/`model` busts *every* line. **Finalize the narration text first, then iterate on timing/visuals** (those are free); text and voice changes cost money.
 
 ```ts
 const vo = await prepareNarration(sayAdapter(), {
@@ -256,6 +297,40 @@ A custom provider implements the Node `TTSAdapter` (`{ provider, synthesize }`) 
 
 ---
 
+## CLI
+
+```sh
+kamishibai render <entry|url> [options]
+```
+
+| Option | | Description |
+|---|---|---|
+| `--out` | `-o` | output file; `.mp4` (default) or `.gif` by extension |
+| `--workers` | `-w` | parallel Chrome instances (default: ~cpus-2, max 8) |
+| `--fps` | | override the page's fps — re-samples the same reel at this rate |
+| `--scale` | `-s` | device scale factor; output px = meta size × scale (default: 1) |
+| `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
+| `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths) |
+| `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
+| `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
+| `--crf` | | H.264 quality, lower = better (default: 18) |
+| `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
+| `--verbose` | | stream ffmpeg output |
+
+The entry can be a **URL** you already serve (`http://localhost:3000`), a local **`.html`** file (its directory is served as-is), or a local **script** (`.ts` / `.tsx` / `.js` / `.jsx`) — bundled with esbuild and served for you.
+
+```sh
+kamishibai render reel.tsx -o reel.mp4 -w 4
+kamishibai render reel.tsx -s 2 -o reel@2x.mp4                   # 2× resolution
+kamishibai render reel.tsx -o reel.gif --fps 25 --max-width 720 # animated GIF
+kamishibai render reel.tsx -p public -o reel.mp4                # serve ./public at the root
+kamishibai render http://localhost:3000 -o page.mp4
+```
+
+Resolution comes from `meta.width`/`meta.height` (your CSS is authored in those pixels); `--scale` multiplies only the captured pixels, so a 1920×1080 reel at `-s 2` outputs 3840×2160 with the same layout. GIF frame delays are quantized to 1/100s, so pair `.gif` with `--fps` set to a divisor of 100 (25, 50, …) for exact timing.
+
+---
+
 ## Library
 
 ```ts
@@ -265,7 +340,7 @@ await render({
   entry: "reel.tsx",
   out: "reel.mp4",
   workers: 4,
-  audio: [{ src: "voiceover.m4a", atMs: 0 }],
+  audio: [{ src: "voiceover.m4a", atMs: 0 }], // merged with any page-declared audio
   publicDir: "public",
   onLog: (msg) => console.log(msg),
 });
@@ -275,83 +350,11 @@ Lower-level building blocks (`probeMeta`, `captureChunk`, `renderPool`, `serveEn
 
 ---
 
-## React sugar (optional)
-
-You don't need React — any page that sets `window.kamishibai` works. But if you want it, `kamishibai/react` wires a React tree to the contract with a small, deliberately-its-own vocabulary:
-
-```tsx
-import { mount, Cue, Enter, ramp, eases, useClock } from "kamishibai/react";
-
-const Reel = () => {
-  const { ms } = useClock();        // current time in milliseconds
-  const x = ramp(ms, 0, 1000, 0, 400, eases.smooth);
-  return (
-    <Enter at={200} dur={600}>
-      <div style={{ transform: `translateX(${x}px)` }}>hello</div>
-    </Enter>
-  );
-};
-
-mount(<Reel />, { fps: 30, durationMs: 6000, width: 1920, height: 1080 });
-```
-
-- `useClock()` — the current clock (`ms`, `durationMs`, `fps`, `epochMs`)
-- `ramp` / `eases` / `bezier` — re-exported from [`kamishibai/easing`](#easing) for convenience
-- `<Stage>` — root surface · `<Cue at hold>` — reveal during a window (with a local clock) · `<Enter>` — fade + rise
-- `<Series>` / `<Series.Scene durationMs crossfadeMs>` — lay scenes back-to-back, each with its own local clock, with optional crossfades
-- `<Audio src delayMs atMs gain>` — declare narration/music; starts at the enclosing scene's start (+`delayMs`) or an explicit `atMs`, and is collected for muxing automatically
-- `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate video via WebCodecs (see [Video](#video-frame-accurate)); draws the clip frame for the current scene-local time, and auto-muxes the clip's audio (use `muted` to drop it)
-- `<Subtitle src | cues | children>` — burn captions from an SRT/VTT file, inline cues, or direct text; the active cue for the current scene-local time is drawn (composable — cue times count from the enclosing scene)
-- `<Narration clip delayMs gain fadeInMs fadeOutMs subtitle>` — play a clip from `prepareNarration` (synthesized up front, see [Narration](#narration-tts)); with `subtitle`, also burns the line's text as a caption for the clip's window
-- `mount(node, meta)` — render and expose `window.kamishibai` for you (also free-runs in a browser for live preview)
-
-```tsx
-import { mount, Series, Audio } from "kamishibai/react";
-
-const Movie = () => (
-  <Series>
-    <Series.Scene durationMs={4000}>
-      <Audio src="vo/intro.m4a" delayMs={500} />
-      <Intro />
-    </Series.Scene>
-    <Series.Scene durationMs={6000} crossfadeMs={600}>
-      <Audio src="vo/body.m4a" />
-      <Body />
-    </Series.Scene>
-  </Series>
-);
-```
-
-The vocabulary (`seek` / `ms` / `Cue` / `Stage` / `ramp`) is deliberately its own — small, clock-driven, and independent.
-
----
-
-## Easing
-
-`kamishibai/easing` is framework-free — use it from the raw API, the React sugar (which re-exports it), or Node-side code. No DOM or React dependency.
-
-```ts
-import { ramp, eases, bezier } from "kamishibai/easing";
-
-ramp(ms, 0, 1000, 0, 400, eases.smooth); // map a time window onto a value
-const ease = bezier(0.16, 1, 0.3, 1);    // custom cubic-bezier easing
-```
-
-- `bezier(x1, y1, x2, y2)` — build a custom easing (the curve math CSS timing functions use)
-- `eases` — ready-made `linear` / `smooth` / `inOut` / `pop`
-- `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped time→value interpolation
-- `spring({ stiffness, damping, mass })` — a physical spring as an easing (overshoots, settles); analytical, so it's deterministic
-- `track(ms, [{ at, value, ease? }])` — multi-stop interpolation (the n-point `ramp`)
-- `stagger(i, { each, from })` — cascade delay (ms) for item `i`
-- `interpolateColor(a, b, t)` — tween between hex colors
-
----
-
 ## Examples
 
 - **`examples/basics`** — a 6s reel showcasing the `kamishibai/react` sugar: fade in/out, an eased progress meter + count-up, staggered reveals, and eased motion.
 - **`examples/video`** — frame-accurate video via WebCodecs, both raw (`index.ts`) and React (`react.tsx`). The clip is an AV1-in-MP4 test pattern generated by ffmpeg (`testsrc`, synthetic — no copyright).
-- **`examples/narration`** — TTS as a build pre-pass: synthesize the voice-over up front with `say`, size each scene to its line, and burn the text as captions (`<Narration subtitle>`).
+- **`examples/narration`** — TTS as a build pre-pass: synthesize the voice-over up front with `say`, size each scene to its line with `narrationLayout`, and burn the text as captions.
 
 ```sh
 pnpm build
