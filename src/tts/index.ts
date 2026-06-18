@@ -243,21 +243,38 @@ export interface NarrationStep {
   atMs: number;
 }
 
+export interface NarrationSequenceOptions {
+  /**
+   * Pause inserted *after* a clip (before the next one), in ms. A number is
+   * uniform; an array or a function set it per position — `gapMs[i]` /
+   * `gapMs(i, clip)` is the pause following clip `i`, so you can hold a longer
+   * beat where the topic turns. Default 0.
+   */
+  gapMs?: number | number[] | ((index: number, clip: NarrationClip) => number);
+  /** offset of the first clip from the scene start, in ms (default 0) */
+  startMs?: number;
+}
+
 /**
  * Sequence several clips *within one scene*: returns each clip with its
  * cumulative start offset. Drop `<Narration clip={s.clip} delayMs={s.atMs} />`
  * for each, and reveal matching content with `<Cue at={s.atMs}>` — i.e. show
- * element X exactly when clip Y starts playing.
+ * element X exactly when clip Y starts playing. `gapMs` can vary per position
+ * for uneven pacing (a longer pause at a topic change).
  */
 export function narrationSequence(
   clips: NarrationClip[],
-  opts: { gapMs?: number; startMs?: number } = {},
+  opts: NarrationSequenceOptions = {},
 ): NarrationStep[] {
   const { gapMs = 0, startMs = 0 } = opts;
+  const gapAfter = (i: number, clip: NarrationClip): number => {
+    const g = typeof gapMs === "function" ? gapMs(i, clip) : Array.isArray(gapMs) ? (gapMs[i] ?? 0) : gapMs;
+    return Math.round(g);
+  };
   let cursor = startMs;
-  return clips.map((clip) => {
+  return clips.map((clip, i) => {
     const step: NarrationStep = { clip, atMs: cursor };
-    cursor += Math.round(clip.durationMs) + gapMs;
+    cursor += Math.round(clip.durationMs) + gapAfter(i, clip);
     return step;
   });
 }

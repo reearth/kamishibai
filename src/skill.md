@@ -388,7 +388,9 @@ Narration-driven layout helpers (in `kamishibai/tts`, also re-exported from
   for a sanity check against `seriesDuration(scenes)` (which adds pad/crossfade).
 - `narrationSequence(clips, { gapMs, startMs })` → for **several clips in one
   scene**, each clip's cumulative `atMs`. Reveal element X exactly when clip Y
-  starts by pairing `<Narration clip delayMs={atMs} />` with `<Cue at={atMs}>`:
+  starts by pairing `<Narration clip delayMs={atMs} />` with `<Cue at={atMs}>`.
+  `gapMs` can be a number (uniform), an array, or `(i, clip) => ms` — so you can
+  hold a longer beat at a topic change (`gapMs[i]` is the pause after clip `i`):
 
 ```tsx
 const steps = narrationSequence([vo.a, vo.b, vo.c]); // within one scene
@@ -444,6 +446,10 @@ Frames are named `f000123.png` by index, so `index ÷ fps` is the timestamp, and
 a blank run at the end almost always means `meta.durationMs` is longer than the
 content (see **Scenes** — size it with `seriesDuration`). Iterate with
 `--workers 1` for stable frame-to-frame comparison.
+
+When a render finishes, show it to whoever asked: on macOS, `open out.mp4` plays
+it straight away (QuickTime) — a small courtesy that lets them watch immediately.
+Follow any explicit instruction about the output instead, if given.
 
 ## Determinism checklist
 

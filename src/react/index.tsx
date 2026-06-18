@@ -40,6 +40,7 @@ export type {
   NarrationLayoutOptions,
   NarrationScene,
   NarrationStep,
+  NarrationSequenceOptions,
 } from "../tts/index.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
 import { seriesLayout, type SceneSpec, type SceneLayout } from "../series.ts";

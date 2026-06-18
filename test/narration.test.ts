@@ -56,4 +56,19 @@ describe("narrationSequence", () => {
     const steps = narrationSequence([clip(500), clip(500)], { startMs: 300 });
     expect(steps.map((s) => s.atMs)).toEqual([300, 800]);
   });
+
+  it("takes a per-position gap array (gapMs[i] follows clip i)", () => {
+    // big pause after clip 0 (before the topic-change clip 1), tight after that
+    const steps = narrationSequence([clip(1000, "a"), clip(1000, "b"), clip(1000, "c")], {
+      gapMs: [1500, 200],
+    });
+    expect(steps.map((s) => s.atMs)).toEqual([0, 2500, 3700]);
+  });
+
+  it("takes a gap function of (index, clip)", () => {
+    const steps = narrationSequence([clip(1000), clip(1000), clip(1000)], {
+      gapMs: (i) => (i === 0 ? 800 : 100),
+    });
+    expect(steps.map((s) => s.atMs)).toEqual([0, 1800, 2900]);
+  });
 });
