@@ -15,6 +15,66 @@ parallel. This document is the complete usage guide — follow it as-is.
 - You are expected to iterate in a loop: **render → look at frames → fix the
   code → render again.** There is no GUI editor; you are the editor.
 
+## Start here
+
+For anything past a one-off experiment, author reels in a **TypeScript + React
+project** — it's the recommended setup (typed `mount`, JSX, and the `<Series>` /
+`<Audio>` / `<Bgm>` / `<Narration>` sugar).
+
+**1. Check the system prerequisites first** — kamishibai shells out to these and
+they are **not** bundled, so verify them before anything else (and install
+what's missing):
+
+```sh
+node --version      # need ≥ 20
+ffmpeg -version     # must be on PATH — e.g. `brew install ffmpeg` / `apt-get install ffmpeg`
+```
+
+**2. Scaffold the project and install the deps** (including the Chromium that
+Playwright drives to capture frames — installing the npm package is not enough,
+you must fetch the browser binary too):
+
+```sh
+npm init -y
+npm i kamishibai react react-dom          # react / react-dom are peer deps
+npm i -D typescript @types/react @types/react-dom
+npx playwright install chromium           # the headless browser kamishibai captures with
+```
+
+**3. Write a `reel.tsx`** that calls `mount(<Reel/>, meta)` (see **Writing a
+reel** → React), add a `tsconfig.json` and npm scripts, and **type-check before
+you render** — `tsc` catches a misused prop or API in seconds, instead of you
+waiting out a capture only to find a blank reel:
+
+```jsonc
+// tsconfig.json — for type-checking only (the CLI bundles with esbuild itself)
+{
+  "compilerOptions": {
+    "target": "esnext", "lib": ["dom", "esnext"],
+    "module": "esnext", "moduleResolution": "bundler", "jsx": "react-jsx",
+    "strict": true, "noEmit": true, "skipLibCheck": true
+  }
+}
+```
+
+```jsonc
+// package.json — "tsc"/"kamishibai" resolve from node_modules/.bin, no npx needed
+"scripts": {
+  "typecheck": "tsc --noEmit",
+  "render": "tsc --noEmit && kamishibai render reel.tsx -o out.mp4"
+}
+```
+
+```sh
+npm run render        # type-checks first, then captures
+```
+
+You don't strictly need React or a build step — any page that sets
+`window.kamishibai` works (see **Raw**), and the CLI also bundles a plain
+`.ts`/`.js` entry or renders a live URL. But for a real narrated, multi-scene
+video, start from the React project above. Then iterate: **render → look at the
+frames → fix the code → render again.**
+
 ## The one contract
 
 Any capturable page exposes exactly one global:
