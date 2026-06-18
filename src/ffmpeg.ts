@@ -176,8 +176,16 @@ export function volumeExpr(
  * Pure (no I/O) so it can be unit-tested. Each clip is, in order:
  * trimmed, timestamp-reset, faded, gain-adjusted, delayed to its start;
  * then all clips are mixed into [aout].
+ *
+ * `videoDurationMs` (the reel length) is only used to bound `loop` clips: a
+ * looped clip with no explicit `durationMs` is tiled (via `-stream_loop`) and
+ * trimmed to span from its `atMs` to the reel end, which also gives `fadeOutMs`
+ * a known end. Omit it and a looped clip just runs until the master `-t` clamps.
  */
-export function buildAudioGraph(clips: AudioManifest): {
+export function buildAudioGraph(
+  clips: AudioManifest,
+  videoDurationMs?: number,
+): {
   inputs: string[];
   filterComplex: string;
 } {
@@ -186,22 +194,32 @@ export function buildAudioGraph(clips: AudioManifest): {
   const labels: string[] = [];
 
   clips.forEach((clip, i) => {
+    // Loop: repeat the input indefinitely; the trim/clamp below bounds it.
+    if (clip.loop) inputs.push("-stream_loop", "-1");
     inputs.push("-i", clip.src);
     const inIndex = i + 1; // input 0 is the video
     const label = `a${i}`;
     const chain: string[] = [];
 
+    // The clip's effective length: explicit durationMs, or — for a loop with a
+    // known reel length — the span from its start to the reel end.
+    const loopSpan =
+      clip.loop && clip.durationMs == null && videoDurationMs != null
+        ? Math.max(0, videoDurationMs - Math.max(0, clip.atMs))
+        : undefined;
+    const effDurationMs = clip.durationMs ?? loopSpan;
+
     // 1. trim the source (head/tail), then reset timestamps to 0
-    if (clip.trimStartMs != null || clip.durationMs != null) {
+    if (clip.trimStartMs != null || effDurationMs != null) {
       const parts: string[] = [];
       if (clip.trimStartMs != null) parts.push(`start=${ms2s(clip.trimStartMs)}`);
-      if (clip.durationMs != null) parts.push(`duration=${ms2s(clip.durationMs)}`);
+      if (effDurationMs != null) parts.push(`duration=${ms2s(effDurationMs)}`);
       chain.push(`atrim=${parts.join(":")}`, "asetpts=PTS-STARTPTS");
     }
-    // 2. fades (relative to the clip's own start; fade-out needs durationMs)
+    // 2. fades (relative to the clip's own start; fade-out needs a known end)
     if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${ms2s(clip.fadeInMs)}`);
-    if (clip.fadeOutMs && clip.durationMs != null) {
-      const st = Math.max(0, clip.durationMs - clip.fadeOutMs);
+    if (clip.fadeOutMs && effDurationMs != null) {
+      const st = Math.max(0, effDurationMs - clip.fadeOutMs);
       chain.push(`afade=t=out:st=${ms2s(st)}:d=${ms2s(clip.fadeOutMs)}`);
     }
     // 3. gain — automated (dB keyframes) or static
@@ -237,7 +255,10 @@ export async function muxAudio(opts: MuxOptions): Promise<void> {
     throw new Error("muxAudio called with an empty manifest");
   }
 
-  const { inputs, filterComplex } = buildAudioGraph(clips);
+  const { inputs, filterComplex } = buildAudioGraph(
+    clips,
+    videoDurationSec != null ? videoDurationSec * 1000 : undefined,
+  );
 
   // Clamp output to the video length: the reel is the master timeline, and
   // audio is expected to sit inside it. (Not -shortest, which would instead

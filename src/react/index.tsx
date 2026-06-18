@@ -191,11 +191,13 @@ export const Audio: React.FC<{
   durationMs?: number;
   /** fade-in over this many ms */
   fadeInMs?: number;
-  /** fade-out over this many ms (needs durationMs) */
+  /** fade-out over this many ms (needs a known end: durationMs, or loop + reel) */
   fadeOutMs?: number;
+  /** tile the source to fill to the reel end (or durationMs) — for BGM */
+  loop?: boolean;
   /** dB volume automation over the clip's timeline (atMs from clip start) */
   gainKeyframes?: Array<{ atMs: number; gain: number }>;
-}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, gainKeyframes }) => {
+}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, gainKeyframes }) => {
   const { epochMs } = useClock();
   const start = Math.round(atMs ?? epochMs + delayMs);
   const kfKey = gainKeyframes ? JSON.stringify(gainKeyframes) : "";
@@ -206,12 +208,46 @@ export const Audio: React.FC<{
     if (durationMs != null) clip.durationMs = durationMs;
     if (fadeInMs != null) clip.fadeInMs = fadeInMs;
     if (fadeOutMs != null) clip.fadeOutMs = fadeOutMs;
+    if (loop) clip.loop = true;
     if (gainKeyframes != null) clip.gainKeyframes = gainKeyframes;
     registerAudio(clip);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, kfKey]);
+  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, kfKey]);
   return null;
 };
+
+/**
+ * Background music: a looped <Audio> placed at the reel start. Tiles `src` to
+ * fill the whole video (so a short loop covers a long reel) and clamps to the
+ * reel end — drop it at the top level, alongside your scenes' narration, and it
+ * muxes underneath them (no `--audio`, which would replace page audio).
+ */
+export const Bgm: React.FC<{
+  src: string;
+  /** when the music starts, in ms from the reel start (default 0) */
+  atMs?: number;
+  /** volume in dB — usually negative so it sits under narration, e.g. -18 */
+  gain?: number;
+  /** start offset into the source file, in ms */
+  trimStartMs?: number;
+  /** fade-in over this many ms */
+  fadeInMs?: number;
+  /** fade-out over this many ms, ending at the reel end */
+  fadeOutMs?: number;
+  /** dB volume automation (atMs from the reel start) — e.g. manual ducking */
+  gainKeyframes?: Array<{ atMs: number; gain: number }>;
+}> = ({ src, atMs = 0, gain, trimStartMs, fadeInMs, fadeOutMs, gainKeyframes }) => (
+  <Audio
+    src={src}
+    atMs={atMs}
+    loop
+    gain={gain}
+    trimStartMs={trimStartMs}
+    fadeInMs={fadeInMs}
+    fadeOutMs={fadeOutMs}
+    gainKeyframes={gainKeyframes}
+  />
+);
 
 // ---- Series -------------------------------------------------------
 // A list of scenes laid out back-to-back, each with its own local clock.

@@ -100,8 +100,11 @@ Sugar API:
   depth. Drive it from data with `<Series scenes={[{ durationMs, crossfadeMs,
   exitFadeMs, content }]} />`, and size the reel with `seriesDuration(scenes)`
   (see **Scenes** below)
-- `<Audio src delayMs atMs gain>` — declare audio inside a scene; it starts at
-  the scene's start (+`delayMs`) and is collected for muxing automatically
+- `<Audio src delayMs atMs gain fadeInMs fadeOutMs loop>` — declare audio inside
+  a scene; it starts at the scene's start (+`delayMs`) and is collected for
+  muxing automatically
+- `<Bgm src gain fadeInMs fadeOutMs>` — background music: a looped `<Audio>` at
+  the reel start, tiled to fill the whole video and muxed under everything else
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
   video via WebCodecs (see Video below); draws the clip frame for the current
   scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
@@ -262,10 +265,10 @@ TTS).
 
 ⚠️ **`--audio` replaces page audio, it does not merge.** Passing `--audio` to add
 BGM silently drops your `<Narration>`/`<Audio>` tracks. To layer BGM *over*
-narration, declare the BGM in the page as another `<Audio>` (it muxes alongside
-the collected markers) — don't reach for `--audio`. There is also no built-in
-looping: if a BGM track is shorter than the reel, tile it yourself (repeat the
-clip at successive `atMs` with short `fadeInMs`/`fadeOutMs` seams).
+narration, declare it in the page — `<Bgm src="theme.mp3" gain={-18} fadeOutMs={1500} />`
+at the top level — which muxes alongside the collected narration markers. `<Bgm>`
+(or `<Audio loop>`) **tiles** a short track to fill the reel and clamps it to the
+video length, so you don't hand-stitch loops; `fadeOutMs` lands at the reel end.
 
 ## Video (frame-accurate)
 

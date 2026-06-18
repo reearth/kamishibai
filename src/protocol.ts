@@ -58,6 +58,7 @@ export interface KamishibaiPage {
     durationMs?: number;
     fadeInMs?: number;
     fadeOutMs?: number;
+    loop?: boolean;
     gainKeyframes?: Array<{ atMs: number; gain: number }>;
   }>;
 }

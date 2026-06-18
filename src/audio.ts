@@ -18,8 +18,18 @@ export interface AudioClip {
   durationMs?: number;
   /** linear fade-in over this many ms from the clip's start */
   fadeInMs?: number;
-  /** linear fade-out over this many ms at the clip's end (needs durationMs) */
+  /**
+   * linear fade-out over this many ms at the clip's end. Needs a known end:
+   * an explicit `durationMs`, or — for a `loop` clip — the reel length (so a
+   * looped BGM fades out as the video ends).
+   */
   fadeOutMs?: number;
+  /**
+   * Tile the source to fill from `atMs` to the reel end (or to `durationMs` if
+   * set). For background music shorter than the video — no manual tiling. The
+   * reel is the master timeline, so the loop is clamped to the video length.
+   */
+  loop?: boolean;
   /**
    * Volume automation: dB keyframes over the clip's own timeline (atMs from
    * the clip start). The level is linearly interpolated in dB between them

@@ -48,6 +48,30 @@ describe("buildAudioGraph", () => {
     expect(g.filterComplex).toContain("amix=inputs=2:normalize=0");
   });
 
+  it("loops a clip via -stream_loop and bounds it to the reel end", () => {
+    const g = buildAudioGraph([{ src: "bgm.mp3", atMs: 0, loop: true }], 20000);
+    expect(g.inputs).toEqual(["-stream_loop", "-1", "-i", "bgm.mp3"]);
+    // tiled and trimmed to the span from atMs (0) to the reel end (20s)
+    expect(g.filterComplex).toContain("atrim=duration=20.000000");
+  });
+
+  it("places fadeOut at the reel end for a looped clip (no explicit duration)", () => {
+    const g = buildAudioGraph([{ src: "bgm.mp3", atMs: 2000, fadeOutMs: 800, loop: true }], 10000);
+    // span = 10000 - 2000 = 8000ms; fade-out starts at span - 800 = 7200ms
+    expect(g.filterComplex).toContain("afade=t=out:st=7.200000:d=0.800000");
+  });
+
+  it("loops without a known reel length (unbounded, clamped later by -t)", () => {
+    const g = buildAudioGraph([{ src: "bgm.mp3", atMs: 0, loop: true }]);
+    expect(g.inputs.slice(0, 2)).toEqual(["-stream_loop", "-1"]);
+    expect(g.filterComplex).not.toContain("atrim");
+  });
+
+  it("does not loop a normal clip", () => {
+    const g = buildAudioGraph([{ src: "a.m4a", atMs: 0 }], 20000);
+    expect(g.inputs).toEqual(["-i", "a.m4a"]);
+  });
+
   it("emits a volume automation expression for gainKeyframes", () => {
     const g = buildAudioGraph([
       { src: "bgm.mp3", atMs: 0, gainKeyframes: [
