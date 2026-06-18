@@ -158,6 +158,21 @@ context (or saved to a file) so it can author reels for you:
 kamishibai skill > kamishibai.md
 ```
 
+### Agent skill (`npx skills` / `gh skill`)
+
+There's also an installable [agent skill](https://github.com/vercel-labs/skills)
+so your coding agent knows when and how to reach for kamishibai:
+
+```sh
+npx skills add reearth/kamishibai      # installs into .claude/skills (or .agents/skills)
+# or:
+gh skill install reearth/kamishibai
+```
+
+It's deliberately tiny — it just tells the agent to run `npx kamishibai skill`
+and follow that output, so the guide it reads is always the one shipped with the
+version you have installed.
+
 ---
 
 ## Subtitles
