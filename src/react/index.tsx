@@ -18,6 +18,7 @@ import React, {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import type { KamishibaiMeta } from "../protocol.ts";
 import type { AudioClip } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
@@ -536,10 +537,19 @@ const Driver: React.FC<{
       meta,
       seek: (target: number) =>
         new Promise<void>((resolve) => {
-          setDriven(true);
-          setMs(target);
-          // Let React commit the new tree, run any settlers (e.g. video
-          // frame decode/draw) for this ms, then settle the paint.
+          // Commit the new tree SYNCHRONOUSLY before doing anything else.
+          // Without flushSync, React 18 may schedule the state update
+          // concurrently and the rAF chain below can run (and a screenshot
+          // be taken) against a DOM that still shows the previous ms — which
+          // produced rare single-frame "flashes" of the initial frame under
+          // parallel capture. flushSync guarantees the DOM reflects `target`
+          // before we run settlers and settle the paint.
+          flushSync(() => {
+            setDriven(true);
+            setMs(target);
+          });
+          // DOM is committed; run any settlers (e.g. video frame decode/draw)
+          // for this ms, then settle the paint (rAF) before resolving.
           requestAnimationFrame(() => {
             Promise.all([...settlers].map((s) => s(target)))
               .catch(() => {})
