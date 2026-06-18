@@ -11,9 +11,12 @@
 // ------------------------------------------------------------------
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -27,6 +30,12 @@ export type { Cue as SubtitleCue } from "../subtitle.ts";
 import type { NarrationClip } from "../tts/index.ts";
 export type { NarrationClip } from "../tts/index.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
+import { seriesLayout, type SceneSpec, type SceneLayout } from "../series.ts";
+
+// Re-exported so authors can size meta.durationMs to a Series without
+// hand-summing crossfades (these live framework-free in kamishibai/series).
+export { seriesDuration, seriesLayout } from "../series.ts";
+export type { SceneSpec, SceneLayout } from "../series.ts";
 
 // Re-exported for convenience (these live framework-free in kamishibai/easing).
 export {
@@ -195,66 +204,157 @@ export const Audio: React.FC<{
 // ---- Series -------------------------------------------------------
 // A list of scenes laid out back-to-back, each with its own local clock.
 // A scene can crossfade in over `crossfadeMs`, overlapping the previous one
-// (so scene i starts at sum(prev durations) - sum(prev crossfades)).
-export interface SceneProps {
-  durationMs: number;
-  /** crossfade-in length in ms; overlaps the previous scene (default 0) */
-  crossfadeMs?: number;
+// (so scene i starts at Σ prev durations − Σ prev crossfades).
+//
+// Scenes discover themselves: each <Series.Scene> registers its timing with
+// the enclosing <Series> from a layout effect — the same mechanism <Audio>
+// and the settler barrier use. So a scene wrapped in your own component works
+// at any depth; there's no fragile "must be a direct child" rule. Registration
+// order is the source order, so keep scenes statically ordered. You can also
+// drive a Series from data via the `scenes` prop (handy with seriesDuration /
+// narration-sized layouts).
+export interface SceneProps extends SceneSpec {
   children: React.ReactNode;
 }
 
-const SeriesScene: React.FC<SceneProps> = () => null; // marker; handled by Series
+/** A data-driven scene: timing plus the content to render for it. */
+export interface SceneItem extends SceneSpec {
+  /** the scene's content, rendered with a scene-local clock */
+  content: React.ReactNode;
+}
 
-export interface SeriesComponent extends React.FC<{ children: React.ReactNode }> {
+interface SeriesContextValue {
+  register: (id: string, spec: SceneSpec) => void;
+  unregister: (id: string) => void;
+  layout: Map<string, SceneLayout>;
+}
+const SeriesContext = createContext<SeriesContextValue | null>(null);
+
+const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs, children }) => {
+  const series = useContext(SeriesContext);
+  const clock = useClock();
+  const id = useId();
+
+  const register = series?.register;
+  const unregister = series?.unregister;
+  useLayoutEffect(() => {
+    if (!register || !unregister) {
+      console.warn("kamishibai: <Series.Scene> must be rendered inside a <Series>.");
+      return;
+    }
+    register(id, { durationMs, crossfadeMs, exitFadeMs });
+    return () => unregister(id);
+  }, [register, unregister, id, durationMs, crossfadeMs, exitFadeMs]);
+
+  // No placement yet means the registry hasn't settled (first commit) or this
+  // scene is outside a Series — render nothing until we know where it lands.
+  const place = series?.layout.get(id);
+  if (!place) return null;
+
+  const { start, xfIn, xfOut } = place;
+  const end = start + durationMs;
+  if (clock.ms < start || clock.ms >= end) return null;
+  const local = clock.ms - start;
+
+  // Background crossfade: overlap the neighbours at partial opacity.
+  let opacity = 1;
+  if (xfIn > 0 && local < xfIn) opacity = Math.min(opacity, local / xfIn);
+  if (xfOut > 0 && local >= durationMs - xfOut) {
+    opacity = Math.min(opacity, (durationMs - local) / xfOut);
+  }
+
+  // Content exit-fade (anti-ghosting): fade this scene's content out over its
+  // last exitFadeMs, so it's gone before the next scene crossfades in and only
+  // the backgrounds blend. Authored as an inner layer over the crossfade.
+  let contentOpacity = 1;
+  if (exitFadeMs && exitFadeMs > 0 && local >= durationMs - exitFadeMs) {
+    contentOpacity = Math.max(0, (durationMs - local) / exitFadeMs);
+  }
+
+  const inner = (
+    <ClockProvider value={{ ...clock, ms: local, durationMs, epochMs: clock.epochMs + start }}>
+      {children}
+    </ClockProvider>
+  );
+
+  return (
+    <div style={{ position: "absolute", inset: 0, opacity }}>
+      {contentOpacity < 1 ? (
+        <div style={{ position: "absolute", inset: 0, opacity: contentOpacity }}>{inner}</div>
+      ) : (
+        inner
+      )}
+    </div>
+  );
+};
+
+export interface SeriesProps {
+  children?: React.ReactNode;
+  /** data-driven scenes, an alternative (or addition) to JSX children */
+  scenes?: SceneItem[];
+}
+
+export interface SeriesComponent extends React.FC<SeriesProps> {
   Scene: React.FC<SceneProps>;
 }
 
-const SeriesBase: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const clock = useClock();
-  const scenes = React.Children.toArray(children).filter(
-    (c): c is React.ReactElement<SceneProps> =>
-      React.isValidElement(c) && c.type === SeriesScene,
+const SeriesBase: React.FC<SeriesProps> = ({ children, scenes }) => {
+  const [regs, setRegs] = useState<Array<{ id: string } & SceneSpec>>([]);
+  // id -> source order. Persistent (never deleted) so a scene that re-registers
+  // (StrictMode remount, prop change) keeps its place; assigned once, in the
+  // order scenes first register, which is their layout-effect (source) order.
+  const order = useRef(new Map<string, number>());
+  const counter = useRef(0);
+
+  const register = useCallback((id: string, spec: SceneSpec) => {
+    setRegs((prev) => {
+      if (!order.current.has(id)) order.current.set(id, counter.current++);
+      const existing = prev.find((r) => r.id === id);
+      if (
+        existing &&
+        existing.durationMs === spec.durationMs &&
+        existing.crossfadeMs === spec.crossfadeMs &&
+        existing.exitFadeMs === spec.exitFadeMs
+      ) {
+        return prev; // unchanged — keep the same reference, no re-render loop
+      }
+      const next = prev.filter((r) => r.id !== id);
+      next.push({ id, ...spec });
+      next.sort((a, b) => order.current.get(a.id)! - order.current.get(b.id)!);
+      return next;
+    });
+  }, []);
+
+  const unregister = useCallback((id: string) => {
+    setRegs((prev) => (prev.some((r) => r.id === id) ? prev.filter((r) => r.id !== id) : prev));
+  }, []);
+
+  const layout = useMemo(() => {
+    const placed = seriesLayout(regs);
+    const map = new Map<string, SceneLayout>();
+    regs.forEach((r, i) => map.set(r.id, placed[i]!));
+    return map;
+  }, [regs]);
+
+  const ctx = useMemo<SeriesContextValue>(
+    () => ({ register, unregister, layout }),
+    [register, unregister, layout],
   );
 
-  // start_i = start_{i-1} + dur_{i-1} - crossfade_i
-  const starts: number[] = [];
-  let cursor = 0;
-  scenes.forEach((s, i) => {
-    const xf = i === 0 ? 0 : (s.props.crossfadeMs ?? 0);
-    cursor -= xf;
-    starts.push(cursor);
-    cursor += s.props.durationMs;
-  });
-
   return (
-    <>
-      {scenes.map((scene, i) => {
-        const start = starts[i]!;
-        const dur = scene.props.durationMs;
-        const end = start + dur;
-        if (clock.ms < start || clock.ms >= end) return null;
-        const local = clock.ms - start;
-
-        const xfIn = i > 0 ? (scene.props.crossfadeMs ?? 0) : 0;
-        const next = scenes[i + 1];
-        const xfOut = next ? (next.props.crossfadeMs ?? 0) : 0;
-        let opacity = 1;
-        if (xfIn > 0 && local < xfIn) opacity = Math.min(opacity, local / xfIn);
-        if (xfOut > 0 && local >= dur - xfOut) {
-          opacity = Math.min(opacity, (dur - local) / xfOut);
-        }
-
-        return (
-          <div key={i} style={{ position: "absolute", inset: 0, opacity }}>
-            <ClockProvider
-              value={{ ...clock, ms: local, durationMs: dur, epochMs: clock.epochMs + start }}
-            >
-              {scene.props.children}
-            </ClockProvider>
-          </div>
-        );
-      })}
-    </>
+    <SeriesContext.Provider value={ctx}>
+      {children}
+      {scenes?.map((s, i) => (
+        <SeriesScene
+          key={`__series_scene_${i}`}
+          durationMs={s.durationMs}
+          crossfadeMs={s.crossfadeMs}
+          exitFadeMs={s.exitFadeMs}
+        >
+          {s.content}
+        </SeriesScene>
+      ))}
+    </SeriesContext.Provider>
   );
 };
 

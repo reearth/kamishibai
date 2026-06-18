@@ -94,8 +94,12 @@ Sugar API:
 - `<Cue at hold>` — render children only during a window, with a **local clock**
   that restarts at 0 at `at`
 - `<Enter at dur lift ease>` — fade + rise in
-- `<Series>` / `<Series.Scene durationMs crossfadeMs>` — sequence scenes
-  back-to-back, each with its own local clock, with optional crossfades
+- `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>` — sequence
+  scenes back-to-back, each with its own local clock, with optional crossfades.
+  Scenes **self-register**, so one wrapped in your own component works at any
+  depth. Drive it from data with `<Series scenes={[{ durationMs, crossfadeMs,
+  exitFadeMs, content }]} />`, and size the reel with `seriesDuration(scenes)`
+  (see **Scenes** below)
 - `<Audio src delayMs atMs gain>` — declare audio inside a scene; it starts at
   the scene's start (+`delayMs`) and is collected for muxing automatically
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
@@ -110,15 +114,45 @@ Sugar API:
   `subtitle`, also burns the line's text as a caption for the clip's window
 
 ```tsx
-import { mount, Series, Audio } from "kamishibai/react";
-const Movie = () => (
-  <Series>
-    <Series.Scene durationMs={4000}><Audio src="vo/a.m4a" delayMs={500} /><A /></Series.Scene>
-    <Series.Scene durationMs={6000} crossfadeMs={600}><Audio src="vo/b.m4a" /><B /></Series.Scene>
-  </Series>
-);
-mount(<Movie />, { fps: 30, durationMs: 10000, width: 1920, height: 1080 });
+import { mount, Series, Audio, seriesDuration } from "kamishibai/react";
+// Timing as data: lay out the scenes and derive meta.durationMs from the same
+// specs, so the total can't drift from what renders.
+const scenes = [
+  { durationMs: 4000, content: <><Audio src="vo/a.m4a" delayMs={500} /><A /></> },
+  { durationMs: 6000, crossfadeMs: 600, content: <><Audio src="vo/b.m4a" /><B /></> },
+];
+mount(<Series scenes={scenes} />, {
+  fps: 30, durationMs: seriesDuration(scenes), width: 1920, height: 1080,
+});
 ```
+
+The JSX form is equivalent and composes the same way — `<Series><Series.Scene
+durationMs={4000}>…</Series.Scene>…</Series>`, including scenes returned from
+your own wrapper components.
+
+### Scenes (`<Series>`)
+
+- **Sizing.** A crossfade *overlaps* the previous scene, so a reel is
+  `Σ durations − Σ crossfades` long. Pass `seriesDuration(scenes)` to
+  `meta.durationMs` (or `seriesLayout(scenes)` for the per-scene start times);
+  both live framework-free in `kamishibai/series`. A hand-summed total that
+  forgets crossfades leaves **trailing blank frames** (too long) or **cuts the
+  last scene** (too short).
+- **Local clocks.** Inside a scene the clock is scene-local: `useClock()` returns
+  `ms`/`durationMs` measured from the scene start, and `<Audio>` / `<Narration>`
+  `delayMs` is relative to the scene (use `atMs` for an absolute time). `<Cue>`
+  nests the same way, resetting the local clock again.
+- **Wrapping.** Scenes self-register with the enclosing `<Series>` (the same
+  mechanism `<Audio>` uses), so `const MyScene = (p) => <Series.Scene
+  durationMs={p.d}>…</Series.Scene>` renders correctly whether it's a direct
+  child or nested in your own components. Keep scenes statically ordered —
+  registration order is source order.
+- **Transitions / anti-ghosting.** A crossfade composites *both* scenes at
+  partial opacity, so two different layouts **ghost** (e.g. a centered title
+  bleeding through the incoming slide). Set `exitFadeMs` on the outgoing scene to
+  fade its *content* out just before it ends, so only the backgrounds blend.
+  Other transitions (wipe/swipe) are a few lines of `ramp()` + `transform` on the
+  scene content.
 
 ## Easing (framework-free)
 
@@ -156,7 +190,7 @@ kamishibai render <entry|url> [options]
 GIF frame delays are quantized to 1/100s, so pair `.gif` output with `--fps` set
 to a divisor of 100 (e.g. 25 or 50) for exact timing; other rates drift in speed
 (60fps gif effectively plays at 100fps).
-| `--audio` | `-a` | audio manifest JSON `[{ "src", "atMs", "gain"? }, …]` |
+| `--audio` | `-a` | audio manifest JSON `[{ "src", "atMs", "gain"? }, …]` — **replaces** page-declared audio (see Audio) |
 | `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--crf` | | H.264 quality, lower = better (default 18) |
@@ -219,8 +253,19 @@ window.kamishibai = {
 };
 ```
 
-`src` must be a path ffmpeg can read (relative to the render's working dir, or
-absolute). An explicit `--audio` manifest takes precedence over collected markers.
+`src` is read **from the filesystem by ffmpeg** (relative to the render's working
+directory, or absolute) — unlike `<Video>` / `staticFile` paths, which the
+*browser* fetches and so must be served via `--public`. Run the render from a
+stable cwd: relative audio paths **and** the `.kamishibai-tts/` cache resolve
+against it, so running from elsewhere silently misses the cache (and re-bills
+TTS).
+
+⚠️ **`--audio` replaces page audio, it does not merge.** Passing `--audio` to add
+BGM silently drops your `<Narration>`/`<Audio>` tracks. To layer BGM *over*
+narration, declare the BGM in the page as another `<Audio>` (it muxes alongside
+the collected markers) — don't reach for `--audio`. There is also no built-in
+looping: if a BGM track is shorter than the reel, tile it yourself (repeat the
+clip at successive `atMs` with short `fadeInMs`/`fadeOutMs` seams).
 
 ## Video (frame-accurate)
 
@@ -254,18 +299,20 @@ worker reads the same file → deterministic. Durations come back before mount,
 so scenes can fit their narration. It rides the existing `<Audio>` mux path.
 
 ```tsx
-import { mount, Series, Narration } from "kamishibai/react";
+import { mount, Series, Narration, seriesDuration } from "kamishibai/react";
 import { sayAdapter, prepareNarration } from "kamishibai/tts";
 
 const voice = sayAdapter(); // dev default: free, offline, deterministic
 const vo = await prepareNarration(voice, { intro: "Welcome.", body: "Pure functions of time." });
-mount(
-  <Series>
-    <Series.Scene durationMs={vo.intro.durationMs + 500}><Narration clip={vo.intro} subtitle /></Series.Scene>
-    <Series.Scene durationMs={vo.body.durationMs + 500}><Narration clip={vo.body} subtitle /></Series.Scene>
-  </Series>,
-  { fps: 30, durationMs: 9999, width: 1280, height: 720 },
-);
+// Each scene is sized to its line (+ breathing room); the reel length is then
+// derived from the same specs, so it always ends exactly with the last line.
+const scenes = [
+  { durationMs: vo.intro.durationMs + 500, content: <Narration clip={vo.intro} subtitle /> },
+  { durationMs: vo.body.durationMs + 500, crossfadeMs: 400, content: <Narration clip={vo.body} subtitle /> },
+];
+mount(<Series scenes={scenes} />, {
+  fps: 30, durationMs: seriesDuration(scenes), width: 1280, height: 720,
+});
 ```
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
@@ -282,6 +329,12 @@ it via `render({ ttsAdapters })`; the reel references it by a matching
 `provider`. (Browser/Node split: the reel's adapter is a serializable ref;
 synthesis runs in Node, served to the page over `POST /__tts`.)
 
+The cache key folds in the adapter id + text + per-line opts. Change one
+character of a line and **only that line** re-synthesizes; change
+`voice`/`model`/`instructions` and **every** line is re-billed. So the cheap
+workflow is: **finalize the narration text first, then iterate on timing and
+visuals** (those are free) — text and voice changes cost money.
+
 ## Library (programmatic)
 
 ```ts
@@ -297,6 +350,16 @@ await render({
 });
 ```
 
+## Debugging
+
+When a frame looks wrong, **dump the frames and look.** Render with
+`--frames-dir <dir>` (`-f`) and open the PNGs — it's the fastest way to pin a
+glitch (a stray colour, a misplaced element, a blank tail) to an exact frame.
+Frames are named `f000123.png` by index, so `index ÷ fps` is the timestamp, and
+a blank run at the end almost always means `meta.durationMs` is longer than the
+content (see **Scenes** — size it with `seriesDuration`). Iterate with
+`--workers 1` for stable frame-to-frame comparison.
+
 ## Determinism checklist
 
 - Await fonts before drawing text (the renderer awaits `document.fonts.ready`,
@@ -304,6 +367,10 @@ await render({
 - Pin Chromium via your Playwright version; emoji and sub-pixel rendering are
   Chrome-build dependent.
 - Never read wall-clock time or unseeded randomness inside `seek`.
+- Make `seek` resolve only **after** the DOM reflects the target `ms` — commit
+  the state, then settle, then resolve. (`kamishibai/react` does this for you;
+  with the raw API, don't resolve on a frame that still shows the previous `ms`,
+  or parallel workers can screenshot a stale frame.)
 
 ## Requirements
 
