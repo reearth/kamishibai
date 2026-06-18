@@ -31,7 +31,8 @@ export interface RenderOptions {
   gifLoop?: number;
   /** static assets to serve at the server root (for staticFile-style paths) */
   publicDir?: string;
-  /** audio clips to mux in */
+  /** extra audio clips to mux, merged with the markers the page declares
+   *  (e.g. add audio to a URL entry you don't control) */
   audio?: AudioManifest;
   /** H.264 quality (lower = better); default 18 */
   crf?: number;
@@ -162,8 +163,11 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       onChunkDone: (c) => log(`  ✓ chunk ${c.id}: frames ${c.start}..${c.end - 1}`),
     });
 
-    // An explicit manifest wins; otherwise use markers the page declared.
-    const declared = opts.audio && opts.audio.length > 0 ? opts.audio : collectedAudio;
+    // Programmatic clips are *merged* with the markers the page declared (not a
+    // replacement) — so passing `audio` adds to a page's <Audio>/<Narration>
+    // instead of silently dropping it, and still works for a URL entry you
+    // don't control (where there are no page markers).
+    const declared = [...collectedAudio, ...(opts.audio ?? [])];
     const audioClips = await prepareAudio(declared, opts.publicDir, log);
 
     if (out.toLowerCase().endsWith(".gif")) {

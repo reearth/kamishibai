@@ -5,17 +5,13 @@
 //
 //   --out, -o <file>      output mp4 (default: out.mp4)
 //   --workers, -w <n>     parallel Chrome instances (default: ~cpus-2)
-//   --audio, -a <file>    audio manifest JSON: [{ src, atMs, gain? }, …]
 //   --crf <n>             H.264 quality, lower = better (default: 18)
 //   --keep-frames         keep intermediate PNG frames
 //   --verbose             stream ffmpeg output
 //   --help, -h            show this help
 // ------------------------------------------------------------------
 import { parseArgs } from "node:util";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { render } from "./render.ts";
-import type { AudioManifest } from "./audio.ts";
 import SKILL from "./skill.md";
 
 const HELP = `kamishibai — seek a web page frame by frame and bake it into an mp4.
@@ -33,7 +29,6 @@ Options:
   -w, --workers <n>     parallel Chrome instances (default: ~cpus-2, max 8)
       --fps <n>         override the page's fps (re-samples the same reel)
   -s, --scale <n>       device scale factor; output px = meta size × scale (default: 1)
-  -a, --audio <file>    audio manifest JSON: [{ "src", "atMs", "gain"? }, …]
   -p, --public <dir>    static assets dir served at the root (staticFile paths)
   -f, --frames-dir <d>  write PNG frames here (created if needed; kept after)
       --max-width <n>   downscale the output (mp4 or gif) to at most n px wide
@@ -47,18 +42,9 @@ Examples:
   kamishibai render reel.tsx -o reel.mp4 -w 4
   kamishibai render reel.tsx -s 2 -o reel@2x.mp4
   kamishibai render http://localhost:3000 -o page.mp4
-  kamishibai render reel.tsx -a audio.json -p public -o reel.mp4
+  kamishibai render reel.tsx -p public -o reel.mp4
   kamishibai skill > kamishibai.md
 `;
-
-async function loadManifest(path: string): Promise<AudioManifest> {
-  const raw = await readFile(resolve(path), "utf8");
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) {
-    throw new Error(`Audio manifest ${path} must be a JSON array of { src, atMs, gain? }`);
-  }
-  return parsed as AudioManifest;
-}
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -68,7 +54,6 @@ async function main(): Promise<void> {
       workers: { type: "string", short: "w" },
       fps: { type: "string" },
       scale: { type: "string", short: "s" },
-      audio: { type: "string", short: "a" },
       public: { type: "string", short: "p" },
       "frames-dir": { type: "string", short: "f" },
       "max-width": { type: "string" },
@@ -103,7 +88,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const audio = values.audio ? await loadManifest(values.audio) : undefined;
   const workers = values.workers ? Number(values.workers) : undefined;
   const fps = values.fps ? Number(values.fps) : undefined;
   const scale = values.scale ? Number(values.scale) : undefined;
@@ -131,7 +115,6 @@ async function main(): Promise<void> {
     scale,
     maxWidth,
     gifLoop,
-    audio,
     publicDir: values.public,
     framesDir: values["frames-dir"],
     crf,

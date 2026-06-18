@@ -193,7 +193,6 @@ kamishibai render <entry|url> [options]
 GIF frame delays are quantized to 1/100s, so pair `.gif` output with `--fps` set
 to a divisor of 100 (e.g. 25 or 50) for exact timing; other rates drift in speed
 (60fps gif effectively plays at 100fps).
-| `--audio` | `-a` | audio manifest JSON `[{ "src", "atMs", "gain"? }, …]` — **replaces** page-declared audio (see Audio) |
 | `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--crf` | | H.264 quality, lower = better (default 18) |
@@ -209,7 +208,7 @@ Examples:
 ```
 kamishibai render reel.tsx -o reel.mp4 -w 4
 kamishibai render reel.tsx -s 2 -o reel@2x.mp4          # 2× resolution
-kamishibai render reel.tsx -a audio.json -p public -o reel.mp4
+kamishibai render reel.tsx -p public -o reel.mp4        # serve ./public at root
 kamishibai render http://localhost:3000 -o page.mp4
 ```
 
@@ -222,28 +221,12 @@ multiplies only the captured pixels: a 1920×1080 reel at `-s 2` outputs
 
 ## Audio
 
-kamishibai does not generate sound. Declare files + start times; they're muxed
-at the end. `atMs` is the clip's start in milliseconds; `gain` is dB (negative =
-quieter). The output is clamped to the reel length (video is the master
-timeline). Two ways:
-
-**1. A manifest** via `--audio file.json`:
-
-```json
-[
-  { "src": "voiceover/intro.m4a", "atMs": 0 },
-  { "src": "bgm.mp3", "atMs": 0, "gain": -18, "trimStartMs": 5000, "durationMs": 20000, "fadeOutMs": 800 }
-]
-```
-
-Per-clip: `gain` (dB), `trimStartMs`/`durationMs` (use a sub-section),
-`fadeInMs`/`fadeOutMs` (fade-out needs `durationMs`), and `gainKeyframes`
-(`[{ atMs, gain }]`) — dB volume automation over the clip's timeline, linearly
-interpolated, for ducking/swells.
-
-**2. Declared in the page** (composable, no manifest). The renderer reads
-`window.kamishibai.audio` after capture and muxes it. With React, use `<Audio>`
-(above). With the raw API, push markers yourself:
+kamishibai does not generate sound. **Audio is declared in the page** — files +
+start times — and muxed at the end. `atMs` is the clip's start in milliseconds;
+`gain` is dB (negative = quieter). The output is clamped to the reel length
+(video is the master timeline). The renderer reads `window.kamishibai.audio`
+after capture and muxes it. With React, use `<Audio>` / `<Narration>` / `<Bgm>`
+(above); with the raw API, push markers yourself:
 
 ```ts
 window.kamishibai = {
@@ -256,6 +239,18 @@ window.kamishibai = {
 };
 ```
 
+Per-clip: `gain` (dB), `trimStartMs`/`durationMs` (use a sub-section),
+`fadeInMs`/`fadeOutMs`, `loop` (tile the source to the reel length), and
+`gainKeyframes` (`[{ atMs, gain }]`) — dB volume automation over the clip's
+timeline, linearly interpolated, for ducking/swells.
+
+**Background music:** declare it like any other clip — `<Bgm src="theme.mp3"
+gain={-18} fadeOutMs={1500} />` at the top level (or `<Audio loop>`). It muxes
+*alongside* the narration markers (they mix; nothing is dropped), **tiles** a
+short track to fill the whole reel, and clamps to the video length, so you never
+hand-stitch loops; `fadeOutMs` lands at the reel end. For automated ducking under
+narration, use `gainKeyframes`.
+
 `src` is read **from the filesystem by ffmpeg** (relative to the render's working
 directory, or absolute) — unlike `<Video>` / `staticFile` paths, which the
 *browser* fetches and so must be served via `--public`. Run the render from a
@@ -263,12 +258,10 @@ stable cwd: relative audio paths **and** the `.kamishibai-tts/` cache resolve
 against it, so running from elsewhere silently misses the cache (and re-bills
 TTS).
 
-⚠️ **`--audio` replaces page audio, it does not merge.** Passing `--audio` to add
-BGM silently drops your `<Narration>`/`<Audio>` tracks. To layer BGM *over*
-narration, declare it in the page — `<Bgm src="theme.mp3" gain={-18} fadeOutMs={1500} />`
-at the top level — which muxes alongside the collected narration markers. `<Bgm>`
-(or `<Audio loop>`) **tiles** a short track to fill the reel and clamps it to the
-video length, so you don't hand-stitch loops; `fadeOutMs` lands at the reel end.
+There is no `--audio` CLI flag — audio belongs to the reel. The library
+`render({ audio })` option still accepts clips, but they're **merged** with the
+page's markers (not a replacement), which is useful for adding audio to a URL
+entry you don't control.
 
 ## Video (frame-accurate)
 

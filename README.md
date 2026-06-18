@@ -47,29 +47,29 @@ frames 1370–…    → Chrome #3 ┘
 
 ### Audio
 
-kamishibai never generates sound. You declare files + start times (from a TTS, a music track, anything) and they're muxed at assembly time. Two ways:
+kamishibai never generates sound. You declare files + start times (from a TTS, a music track, anything) and they're muxed at assembly time.
 
-**1. An explicit manifest** (CLI `--audio`, or the `audio` render option):
+**Declared in the page** — composable, and the way to do it. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain?, … }`) and the renderer collects + muxes it automatically. With React, drop an `<Audio>` into a scene (see below), or `<Bgm src="theme.mp3" gain={-18} fadeOutMs={1500} />` at the top level for looped background music; with the raw API, push entries onto the array yourself.
 
 ```ts
 [
   { src: "voiceover/intro.m4a", atMs: 0 },
-  // trim to a sub-section, duck under narration, fade out:
-  { src: "bgm.mp3", atMs: 0, gain: -18, trimStartMs: 5000, durationMs: 20000, fadeOutMs: 800 },
+  // a short loop tiled to fill the whole reel, ducked, fading out at the end:
+  { src: "bgm.mp3", atMs: 0, gain: -18, loop: true, fadeOutMs: 1500 },
 ]
 ```
 
-Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), `fadeInMs` / `fadeOutMs` (fade-out needs `durationMs`), and `gainKeyframes` — dB volume automation over the clip's timeline, linearly interpolated, for ducking/swells:
+Each clip supports `gain` (dB), `trimStartMs` / `durationMs` (use a sub-section of the file), `fadeInMs` / `fadeOutMs`, `loop` (tile the source to the reel length), and `gainKeyframes` — dB volume automation over the clip's timeline, linearly interpolated, for ducking/swells:
 
 ```ts
 // duck the music under narration between 1s and 3s
-{ src: "bgm.mp3", atMs: 0, gainKeyframes: [
+{ src: "bgm.mp3", atMs: 0, loop: true, gainKeyframes: [
   { atMs: 0, gain: -10 }, { atMs: 1000, gain: -24 },
   { atMs: 3000, gain: -24 }, { atMs: 3500, gain: -10 },
 ] }
 ```
 
-**2. Declared in the page** — composable. The page populates `window.kamishibai.audio` (an array of `{ src, atMs, gain? }`) and the renderer collects + muxes it automatically, no manifest needed. With React this is just an `<Audio>` component dropped into a scene (see below); with the raw API, push entries onto the array yourself.
+There's no `--audio` CLI flag — audio is part of the reel. You can still pass clips programmatically via the `audio` render option; they're **merged** with whatever the page declared (handy for adding audio to a URL entry you don't control).
 
 ### Video (frame-accurate)
 
@@ -121,7 +121,6 @@ kamishibai render <entry|url> [options]
 | `--fps` | | override the page's fps — re-samples the same reel at this rate |
 | `--scale` | `-s` | device scale factor; output px = meta size × scale (default: 1) |
 | `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
-| `--audio` | `-a` | audio manifest JSON: `[{ "src", "atMs", "gain"? }, …]` |
 | `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
@@ -142,7 +141,7 @@ kamishibai render reel.tsx -s 2 -o reel@2x.mp4          # 2× resolution
 kamishibai render reel.tsx -o reel.gif --fps 25 --max-width 720  # animated GIF
 kamishibai render reel.tsx -o reel.mp4 --max-width 1280          # downscaled mp4
 kamishibai render http://localhost:3000 -o page.mp4
-kamishibai render reel.tsx -a audio.json -p public -o reel.mp4
+kamishibai render reel.tsx -p public -o reel.mp4              # serve ./public at the root
 ```
 
 Resolution comes from `meta.width`/`meta.height` (your CSS is authored in those

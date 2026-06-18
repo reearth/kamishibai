@@ -220,7 +220,7 @@ export const Audio: React.FC<{
  * Background music: a looped <Audio> placed at the reel start. Tiles `src` to
  * fill the whole video (so a short loop covers a long reel) and clamps to the
  * reel end — drop it at the top level, alongside your scenes' narration, and it
- * muxes underneath them (no `--audio`, which would replace page audio).
+ * mixes in underneath them (narration and BGM both mux; neither is dropped).
  */
 export const Bgm: React.FC<{
   src: string;
