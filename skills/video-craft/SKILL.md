@@ -1,6 +1,6 @@
 ---
 name: video-craft
-description: Direct and edit good videos with kamishibai — the craft layer, not the engine. Use when authoring or improving a narrated explainer / lecture video, a product walkthrough, or a brand/company film: pacing and pauses, narration scripting, audio-synced reveals, motion graphics, transitions, voice direction, music, and the review loop. Pairs with the `kamishibai` skill, which covers the API.
+description: "Direct and edit good videos with kamishibai — the craft layer, not the engine. Use when authoring or improving a narrated explainer / lecture video, a product walkthrough, or a brand/company film: pacing and pauses, narration scripting, audio-synced reveals, motion graphics, transitions, voice direction, music, and the review loop. Pairs with the `kamishibai` skill, which covers the API."
 ---
 
 # video-craft — making kamishibai videos *good*

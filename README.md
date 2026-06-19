@@ -56,12 +56,27 @@ Then iterate: **render → look at the frames → fix the code → render again.
 
 ## Agent skills
 
-Building videos with an AI coding agent? Two installable [skills](https://github.com/vercel-labs/skills) teach it kamishibai — install one or both by name:
+Building videos with an AI coding agent? Two installable skills teach it kamishibai — install one or both by name.
+
+Using the [`skills`](https://github.com/vercel-labs/skills) CLI:
 
 ```sh
 npx skills add reearth/kamishibai --skill kamishibai    # the API / engine
 npx skills add reearth/kamishibai --skill video-craft   # the directing / editing craft
-# the gh extension works too:  gh skill install reearth/kamishibai
+npx skills add reearth/kamishibai --all                 # both, all agents, no prompts
+```
+
+Or with [`gh skills`](https://cli.github.com/manual/gh_skill) — the GitHub CLI's built-in skill manager (`gh skill`, alias `gh skills`):
+
+```sh
+gh skills install reearth/kamishibai kamishibai    # the API / engine
+gh skills install reearth/kamishibai video-craft   # the directing / editing craft
+
+# pick the target agent and scope (default: project scope, github-copilot)
+gh skills install reearth/kamishibai kamishibai --agent claude-code --scope user
+
+gh skills search kamishibai     # find skills across GitHub
+gh skills update --all          # update installed skills
 ```
 
 - **`kamishibai`** — points the agent at `kamishibai skill`, which prints the full authoring guide (the contract, the React sugar, audio / TTS, the render CLI, determinism) — always matching the installed version.
