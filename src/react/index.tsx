@@ -44,6 +44,7 @@ export type {
 } from "../tts/index.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
 import { seriesLayout, type SceneSpec, type SceneLayout } from "../series.ts";
+import { fnv1a64 } from "../fingerprint.ts";
 
 // Re-exported so authors can size meta.durationMs to a Series without
 // hand-summing crossfades (these live framework-free in kamishibai/series).
@@ -434,6 +435,50 @@ function registerSettler(fn: Settler): () => void {
   };
 }
 
+// ---- fingerprints -------------------------------------------------
+// After each seek, mount() hashes the committed DOM into a per-frame
+// fingerprint (see Driver). The DOM captures everything declared in JSX —
+// including imperative text/style mutations done in a settler, since the hash
+// is taken *after* settlers run. What it can't see is a <canvas>'s pixels:
+// they serialize to nothing. So anything that paints to a canvas (Video,
+// WebGL, hand-drawn ctx) contributes a cheap token here describing what it drew
+// for this ms, and that token folds into the frame's fingerprint.
+type Fingerprinter = (ms: number) => string;
+const fingerprinters = new Set<Fingerprinter>();
+
+function registerFingerprint(fn: Fingerprinter): () => void {
+  fingerprinters.add(fn);
+  return () => {
+    fingerprinters.delete(fn);
+  };
+}
+
+// The committed DOM is the realized JSX for this ms, so its serialization is a
+// complete description of what will paint — except canvas pixels, which the
+// fingerprinters fill in. Tokens are sorted so registration order (scenes
+// mounting/unmounting) doesn't perturb an otherwise-identical frame.
+function computeFingerprint(host: HTMLElement, ms: number): string {
+  const tokens: string[] = [];
+  for (const f of fingerprinters) tokens.push(f(ms));
+  tokens.sort();
+  return fnv1a64(host.innerHTML + " " + tokens.join(" "));
+}
+
+/**
+ * Contribute a per-frame fingerprint token for content the DOM hash can't see
+ * (canvas / WebGL pixels). Pass a stable string, or a function of the global
+ * ms that cheaply names what you draw for that ms (e.g. a frame index) — NOT a
+ * pixel hash. Frames whose every token (and DOM) match are treated as
+ * identical and skipped. Memoize a function token (useCallback) to avoid
+ * re-registering each render.
+ */
+export function useFingerprint(token: string | Fingerprinter): void {
+  useLayoutEffect(() => {
+    const fn: Fingerprinter = typeof token === "function" ? token : () => token;
+    return registerFingerprint(fn);
+  }, [token]);
+}
+
 // ---- Video --------------------------------------------------------
 // Frame-accurate video, decoded with WebCodecs (see kamishibai/video) and
 // drawn to a canvas for the current frame. Deterministic, unlike a raw
@@ -519,7 +564,19 @@ export const Video: React.FC<{
       ctx.clearRect(0, 0, c.width, c.height);
       if (bmp) ctx.drawImage(bmp, 0, 0);
     };
-    return registerSettler(settler);
+    // The canvas pixels are invisible to the DOM hash, so name the shown frame:
+    // a clip's pixels at ms are a pure function of (src, frame index), which we
+    // read decode-free. By fingerprint time the settler has loaded `video`.
+    const fingerprint: Fingerprinter = (globalMs) => {
+      const localMs = globalMs - epochRef.current - startMs;
+      return video ? `vid:${src}#${video.frameIndexAtMs(localMs)}` : `vid:${src}#pending`;
+    };
+    const offSettle = registerSettler(settler);
+    const offFingerprint = registerFingerprint(fingerprint);
+    return () => {
+      offSettle();
+      offFingerprint();
+    };
   }, [src, startMs]);
 
   return (
@@ -682,7 +739,9 @@ const Driver: React.FC<{
   scene: React.ReactNode;
   meta: KamishibaiMeta;
   livePreview: boolean;
-}> = ({ scene, meta, livePreview }) => {
+  /** the mount host whose committed DOM is hashed into each frame's print */
+  host: HTMLElement;
+}> = ({ scene, meta, livePreview, host }) => {
   const [ms, setMs] = useState(0);
   const [driven, setDriven] = useState(false);
 
@@ -693,7 +752,7 @@ const Driver: React.FC<{
     window.kamishibai = {
       meta,
       seek: (target: number) =>
-        new Promise<void>((resolve) => {
+        new Promise<string>((resolve) => {
           // Commit the new tree SYNCHRONOUSLY before doing anything else.
           // Without flushSync, React 18 may schedule the state update
           // concurrently and the rAF chain below can run (and a screenshot
@@ -710,7 +769,13 @@ const Driver: React.FC<{
           requestAnimationFrame(() => {
             Promise.all([...settlers].map((s) => s(target)))
               .catch(() => {})
-              .then(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+              .then(() =>
+                requestAnimationFrame(() =>
+                  // Fingerprint *after* the settled paint, so a settler's
+                  // imperative DOM writes (e.g. <Subtitle> text) are included.
+                  requestAnimationFrame(() => resolve(computeFingerprint(host, target))),
+                ),
+              );
           });
         }),
       audio: audioRegistry,
@@ -750,7 +815,7 @@ export function mount(
     `position:absolute;top:0;left:0;width:${meta.width}px;height:${meta.height}px;overflow:hidden;`;
   host.appendChild(stage);
   createRoot(stage).render(
-    <Driver scene={scene} meta={meta} livePreview={options.livePreview ?? true} />,
+    <Driver scene={scene} meta={meta} livePreview={options.livePreview ?? true} host={stage} />,
   );
 }
 

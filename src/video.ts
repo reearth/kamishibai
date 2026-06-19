@@ -33,6 +33,9 @@ export interface DecodedVideo {
   /** the frame whose presentation time is the latest <= ms (clamped); decodes
    *  on demand, so it's async */
   frameAtMs(ms: number): Promise<ImageBitmap | undefined>;
+  /** the index (in presentation order) of the frame shown at ms — a cheap,
+   *  decode-free identifier for fingerprinting; -1 when the clip is empty */
+  frameIndexAtMs(ms: number): number;
   /** release the cached frames and the decoder */
   close(): void;
 }
@@ -242,6 +245,12 @@ export async function loadVideo(src: string): Promise<DecodedVideo> {
       const run = lock.then(() => resolveFrame(ms));
       lock = run.catch(() => undefined);
       return run;
+    },
+    // The same presentation-order lookup frameAtMs does, minus the decode — so
+    // a fingerprint can name the shown frame without touching the decoder.
+    frameIndexAtMs(ms: number) {
+      if (samples.length === 0) return -1;
+      return lastLE(byCts, ms, (i) => samples[i]!.ctsMs);
     },
     close() {
       releaseCache();

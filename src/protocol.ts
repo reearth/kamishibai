@@ -37,13 +37,19 @@ export interface KamishibaiPage {
    * Render the still state for `ms` and resolve once it has settled.
    * Must be deterministic: the same `ms` always yields the same pixels.
    *
-   * Return `false` to signal this frame is identical to the previous one:
-   * the renderer then copies the previous still instead of paying for a
-   * settle + screenshot, which cheaply skips static spans. Returning
-   * `void` or `true` captures normally (the default, fully backward
-   * compatible).
+   * The return value controls capture:
+   *   - `false`  — identical to the previous frame: the renderer copies the
+   *     previous still instead of paying for a settle + screenshot, cheaply
+   *     skipping static spans.
+   *   - `string` — a *fingerprint* of this frame's content. The renderer uses
+   *     it both to skip static spans (equal to the previous frame's print ->
+   *     copy) and, with --incremental, to reuse a cached PNG across runs
+   *     (equal to last run's print -> keep the file). kamishibai/react returns
+   *     one automatically by hashing the committed DOM.
+   *   - `void`/`true` — capture normally (the default, fully backward
+   *     compatible).
    */
-  seek(ms: number): Promise<boolean | void> | boolean | void;
+  seek(ms: number): Promise<boolean | string | void> | boolean | string | void;
   /**
    * Optional audio markers for muxing, collected from the page after capture
    * when the caller passes no explicit manifest. Either populated by

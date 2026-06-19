@@ -20,6 +20,12 @@ export interface RenderPoolOptions {
   onProgress?: (done: number, total: number) => void;
   /** called when a worker finishes its whole chunk */
   onChunkDone?: (chunk: Chunk) => void;
+  /** called with each frame's fingerprint (for the cross-run manifest) */
+  onFingerprint?: (index: number, fp: string) => void;
+  /** previous run's fingerprints, shared read-only across workers */
+  prevFingerprints?: Map<number, string>;
+  /** --only predicate: render just these frame indices, leave the rest */
+  shouldRender?: (index: number) => boolean;
 }
 
 /**
@@ -28,6 +34,7 @@ export interface RenderPoolOptions {
  */
 export async function renderPool(opts: RenderPoolOptions): Promise<AudioClip[]> {
   const { url, meta, chunks, framesDir, scale, onProgress, onChunkDone } = opts;
+  const { onFingerprint, prevFingerprints, shouldRender } = opts;
   const total = chunks.reduce((n, c) => n + (c.end - c.start), 0);
   let done = 0;
 
@@ -39,6 +46,9 @@ export async function renderPool(opts: RenderPoolOptions): Promise<AudioClip[]> 
         chunk,
         framesDir,
         scale,
+        onFingerprint,
+        prevFingerprints,
+        shouldRender,
         onFrame: () => {
           done += 1;
           onProgress?.(done, total);

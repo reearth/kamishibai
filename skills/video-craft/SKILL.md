@@ -125,6 +125,9 @@ Both share the principles below; B adds the "Brand-film extras" section.
 4. **Render → watch on a real device → inspect the frames.** Eyeballing stills is
    the fastest way to catch flicker, overflow, or mistimed reveals.
 5. Iterate freely on visuals and timing; change narration wording/voice sparingly.
+   Re-rendering after a small edit is cheap — unchanged frames are reused and
+   unchanged narration isn't re-synthesized — so lean on a tight render-and-watch
+   loop rather than batching edits. (See the `kamishibai` skill for how.)
 6. Keep a reusable scene/component layer and data-driven slides so 40 slides aren't
    40 hand-built files.
 

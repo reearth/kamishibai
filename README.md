@@ -121,6 +121,18 @@ frames 1370–…    → Chrome #3 ┘
 
 `seek(ms)` can return `false` to mean "identical to the previous frame". The renderer then copies the previous still instead of paying for a settle + screenshot, cheaply skipping held frames. Returning `void`/`true` captures normally, so existing pages are unaffected.
 
+### Incremental builds
+
+`seek(ms)` can also return a **fingerprint** — a stable string key for the frame's content. The renderer copies the previous still when two adjacent prints match (the static-span case, generalized), and with `--incremental` it reuses a cached PNG across runs whenever a print matches the previous run's, stored in `<frames-dir>/.kamishibai-cache.json`. So after you edit a reel, only the frames that actually changed are re-captured; the rest are kept byte-for-byte.
+
+```sh
+kamishibai render reel.tsx -f frames -o reel.mp4        # seed the cache
+# …edit the reel…
+kamishibai render reel.tsx -f frames -i -o reel.mp4     # re-render only what changed
+```
+
+`kamishibai/react` returns the fingerprint automatically by hashing the committed DOM — so React reels get this for free, no annotation needed. The only thing the DOM hash can't see is `<canvas>`/WebGL pixels; those contribute a cheap token via `useFingerprint(token)` (`<Video>` already does). The cache auto-invalidates when the output geometry (fps/size/scale) changes, and `--only 0-30,90,120-150` is a manual escape hatch that renders just the frames you name. Both need a persisted `--frames-dir`. Caching trusts determinism — a frame that isn't a pure function of its ms can be wrongly reused; omit `-i` for a clean full render.
+
 ---
 
 ## Writing reels — the React sugar
@@ -327,6 +339,8 @@ kamishibai render <entry|url> [options]
 | `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
 | `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
+| `--incremental` | `-i` | reuse cached frames; re-render only changed ones (needs `--frames-dir`) |
+| `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
 | `--crf` | | H.264 quality, lower = better (default: 18) |
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |

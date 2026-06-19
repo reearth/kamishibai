@@ -31,6 +31,10 @@ Options:
   -s, --scale <n>       device scale factor; output px = meta size × scale (default: 1)
   -p, --public <dir>    static assets dir served at the root (staticFile paths)
   -f, --frames-dir <d>  write PNG frames here (created if needed; kept after)
+  -i, --incremental     reuse cached frames; re-render only changed ones
+                        (needs --frames-dir; compares per-frame fingerprints)
+      --only <ranges>   render only these frames, e.g. 0-30,90,120-150
+                        (needs --frames-dir with a prior full render)
       --max-width <n>   downscale the output (mp4 or gif) to at most n px wide
       --gif-loop <n>    gif loops: 0 = infinite (default), -1 = once, n = times
       --crf <n>         H.264 quality, lower = better (default: 18)
@@ -43,6 +47,9 @@ Examples:
   kamishibai render reel.tsx -s 2 -o reel@2x.mp4
   kamishibai render http://localhost:3000 -o page.mp4
   kamishibai render reel.tsx -p public -o reel.mp4
+  kamishibai render reel.tsx -f frames -o reel.mp4            # seed the cache
+  kamishibai render reel.tsx -f frames -i -o reel.mp4         # incremental rebuild
+  kamishibai render reel.tsx -f frames --only 0-30 -o reel.mp4
   kamishibai skill > kamishibai.md
 `;
 
@@ -56,6 +63,8 @@ async function main(): Promise<void> {
       scale: { type: "string", short: "s" },
       public: { type: "string", short: "p" },
       "frames-dir": { type: "string", short: "f" },
+      incremental: { type: "boolean", short: "i" },
+      only: { type: "string" },
       "max-width": { type: "string" },
       "gif-loop": { type: "string" },
       crf: { type: "string" },
@@ -117,6 +126,8 @@ async function main(): Promise<void> {
     gifLoop,
     publicDir: values.public,
     framesDir: values["frames-dir"],
+    incremental: values.incremental,
+    only: values.only,
     crf,
     keepFrames: values["keep-frames"],
     verbose: values.verbose,

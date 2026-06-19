@@ -32,6 +32,19 @@ export type { KamishibaiMeta, KamishibaiPage } from "./protocol.ts";
 export { splitFrames, chunkIndices } from "./segment.ts";
 export type { Chunk } from "./segment.ts";
 
+export { fnv1a64 } from "./fingerprint.ts";
+export {
+  parseFrameRanges,
+  manifestMatches,
+  manifestFrames,
+  buildManifest,
+  readManifest,
+  writeManifest,
+  MANIFEST_FILE,
+  MANIFEST_VERSION,
+} from "./incremental.ts";
+export type { FrameManifest, ManifestKey } from "./incremental.ts";
+
 // Lower-level building blocks, in case you want to assemble your own pipeline.
 export { probeMeta, captureChunk } from "./renderer.ts";
 export { renderPool } from "./pool.ts";

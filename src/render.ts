@@ -13,6 +13,15 @@ import { frameCount, type KamishibaiMeta } from "./protocol.ts";
 import { assertFfmpeg, encodeFrames, encodeGif, muxAudio, hasAudioStream } from "./ffmpeg.ts";
 import { applyDucking, type AudioManifest, type AudioClip } from "./audio.ts";
 import { createTTSEngine, type TTSAdapter } from "./tts/engine.ts";
+import {
+  buildManifest,
+  manifestFrames,
+  manifestMatches,
+  parseFrameRanges,
+  readManifest,
+  writeManifest,
+  type ManifestKey,
+} from "./incremental.ts";
 
 export interface RenderOptions {
   /** a URL, an .html file, or a script entry (.ts/.tsx/.js/.jsx) */
@@ -47,6 +56,18 @@ export interface RenderOptions {
    * keepFrames is set) removed afterwards.
    */
   framesDir?: string;
+  /**
+   * Reuse cached frames: each frame's fingerprint is compared to the previous
+   * run's (stored in the frames dir), and unchanged frames keep their PNG —
+   * only changed frames are re-captured. Requires `framesDir`.
+   */
+  incremental?: boolean;
+  /**
+   * Render only these frame indices (e.g. "0-30,90,120-150"); every other PNG
+   * is left untouched. A manual alternative to `incremental`. Requires
+   * `framesDir` with a prior full render to fill the gaps.
+   */
+  only?: string;
   /** progress / status callback */
   onLog?: (msg: string) => void;
   /** custom TTS adapters for <Narration>/prepareNarration (a matching
@@ -124,6 +145,15 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     tts: (body) => tts.handle(body as Parameters<typeof tts.handle>[0]),
   });
 
+  // Incremental / --only reuse PNGs on disk across runs, so they need a
+  // persisted frames dir and must NOT wipe it first.
+  const reuse = !!(opts.incremental || opts.only);
+  if (reuse && !opts.framesDir) {
+    throw new Error(
+      `${opts.incremental ? "incremental" : "only"} needs a persisted frames dir — pass framesDir (--frames-dir)`,
+    );
+  }
+
   // Explicit framesDir -> create it, clear stale frames, and keep it.
   // Otherwise use a temp dir that's removed afterwards (unless keepFrames).
   const usingTempFrames = !opts.framesDir;
@@ -131,7 +161,9 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     ? resolve(opts.framesDir)
     : await mkdtemp(join(tmpdir(), "kamishibai-frames-"));
   await mkdir(framesDir, { recursive: true });
-  if (!usingTempFrames) await clearFrames(framesDir);
+  // Clear stale frames for a fresh explicit-dir run, but keep them when we're
+  // reusing (incremental/--only) so cached frames survive into this run.
+  if (!usingTempFrames && !reuse) await clearFrames(framesDir);
 
   const out = resolve(opts.out);
   await mkdir(dirname(out), { recursive: true });
@@ -148,10 +180,32 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     const scale = opts.scale ?? 1;
     const outW = meta.width * scale;
     const outH = meta.height * scale;
+
+    // Incremental: load the previous run's fingerprints, but only if they
+    // describe the same geometry (fps / size / scale) — otherwise the old
+    // prints don't match these pixels and we rebuild from scratch.
+    const manifestKey: ManifestKey = { fps: meta.fps, width: meta.width, height: meta.height, scale };
+    let prevFingerprints: Map<number, string> | undefined;
+    if (opts.incremental) {
+      const prev = await readManifest(framesDir);
+      if (prev && !manifestMatches(prev, manifestKey)) {
+        log(`Cache geometry changed — rebuilding all frames.`);
+      }
+      prevFingerprints = manifestFrames(prev, manifestKey);
+    }
+
+    // --only: restrict capture to the named frames; the rest stay on disk.
+    const selected = opts.only ? parseFrameRanges(opts.only, total) : undefined;
+    const shouldRender = selected ? (i: number) => selected.has(i) : undefined;
+
+    // New fingerprints accumulate here (across all workers) for the manifest.
+    const fingerprints = new Map<number, string>();
+
     log(
-      `Capturing ${total} frames (${outW}×${outH}` +
+      `Capturing ${selected ? `${selected.size} of ${total}` : `${total}`} frames (${outW}×${outH}` +
         `${scale !== 1 ? ` @${scale}x` : ""} @ ${meta.fps}fps) ` +
-        `on ${chunks.length} Chrome instance(s)…`,
+        `on ${chunks.length} Chrome instance(s)…` +
+        `${opts.incremental && prevFingerprints?.size ? ` (incremental: ${prevFingerprints.size} cached)` : ""}`,
     );
 
     const collectedAudio = await renderPool({
@@ -160,8 +214,20 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       chunks,
       framesDir,
       scale,
+      prevFingerprints,
+      shouldRender,
+      onFingerprint: (i, fp) => fingerprints.set(i, fp),
       onChunkDone: (c) => log(`  ✓ chunk ${c.id}: frames ${c.start}..${c.end - 1}`),
     });
+
+    // Persist the manifest whenever frames are kept, so the next run can build
+    // incrementally. Merge over the previous prints so frames skipped by --only
+    // (which produced no new print this run) keep their old entry.
+    if (!usingTempFrames) {
+      const prevForMerge = opts.only ? manifestFrames(await readManifest(framesDir), manifestKey) : undefined;
+      const merged = prevForMerge ? new Map([...prevForMerge, ...fingerprints]) : fingerprints;
+      if (merged.size > 0) await writeManifest(framesDir, buildManifest(manifestKey, merged));
+    }
 
     // Programmatic clips are *merged* with the markers the page declared (not a
     // replacement) — so passing `audio` adds to a page's <Audio>/<Narration>

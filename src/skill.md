@@ -114,6 +114,38 @@ seek(ms) {
 }
 ```
 
+`seek` can also return a **fingerprint string** — a stable key for the frame's
+content. The renderer copies the previous still when two adjacent prints match,
+and (with `--incremental`) reuses a cached PNG across runs when a print matches
+the previous run's. `kamishibai/react` returns one automatically by hashing the
+committed DOM, so React reels get both for free; raw pages can return their own.
+
+## Incremental builds
+
+Re-render only what changed and reuse the rest. Both modes keep PNGs on disk,
+so both need a persisted `--frames-dir`:
+
+- `--incremental` (`-i`) — compares each frame's fingerprint to the previous
+  run's (stored in `<frames-dir>/.kamishibai-cache.json`). Unchanged frames keep
+  their PNG; only changed frames are re-captured. The cache auto-invalidates if
+  the output geometry (fps / size / scale) changes.
+- `--only 0-30,90,120-150` — render just the named frames, leaving every other
+  PNG untouched (needs a prior full render to fill the gaps).
+
+```sh
+kamishibai render reel.tsx -f frames -o reel.mp4        # seed the cache
+# …edit the reel…
+kamishibai render reel.tsx -f frames -i -o reel.mp4     # re-render only changes
+```
+
+For React reels the fingerprint is automatic from the DOM. Content the DOM hash
+can't see — `<canvas>` / WebGL pixels — must contribute a cheap token via
+`useFingerprint(token)` (a string, or a function of ms naming what you draw,
+e.g. a frame index — NOT a pixel hash). `<Video>` already does this. Determinism
+is required: a frame that isn't a pure function of its ms can be wrongly reused —
+for a clean full render, just omit `-i` (an explicit `--frames-dir` is cleared
+and rebuilt when not incremental).
+
 ## Writing a reel
 
 ### Raw (no framework)
@@ -255,6 +287,8 @@ kamishibai render <entry|url> [options]
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
 | `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths) |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
+| `--incremental` | `-i` | reuse cached frames; re-render only changed ones (needs `--frames-dir`) |
+| `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
 | `--crf` | | H.264 quality, lower = better (default 18) |
 | `--keep-frames` | | keep intermediate PNGs (temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
