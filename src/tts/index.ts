@@ -75,7 +75,7 @@ export function sayAdapter(opts: { voice?: string; rate?: number } = {}): TTSAda
 export function openaiAdapter(opts: {
   model?: string;
   voice?: string;
-  /** playback rate 0.25–4.0 (tts-1 / tts-1-hd only; ignored by gpt-4o-mini-tts) */
+  /** playback rate 0.25–4.0; forwarded to the API for all OpenAI TTS models */
   speed?: number;
   /** voice/style direction, e.g. pace or tone (gpt-4o-mini-tts) */
   instructions?: string;
