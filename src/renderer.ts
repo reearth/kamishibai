@@ -10,6 +10,13 @@ import { join } from "node:path";
 import { GLOBAL_KEY, frameTimeMs, type KamishibaiMeta } from "./protocol.ts";
 import { chunkIndices, type Chunk } from "./segment.ts";
 import type { AudioClip } from "./audio.ts";
+import type { Cue } from "./subtitle.ts";
+
+/** What a chunk collected from the page: audio + subtitle markers. */
+export interface ChunkMarkers {
+  audio: AudioClip[];
+  subtitles: Cue[];
+}
 
 const frameName = (i: number): string => `f${String(i).padStart(6, "0")}.png`;
 
@@ -71,9 +78,10 @@ export interface CaptureChunkOptions {
 
 /**
  * Render every frame in `chunk` into `framesDir` as f000000.png …, and
- * return any audio markers the page collected while these frames mounted.
+ * return the audio + subtitle markers the page collected while these frames
+ * mounted.
  */
-export async function captureChunk(opts: CaptureChunkOptions): Promise<AudioClip[]> {
+export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMarkers> {
   const { url, meta, chunk, framesDir, onFrame, onFingerprint, prevFingerprints, shouldRender } = opts;
   const browser = opts.browser ?? (await chromium.launch());
   const owns = !opts.browser;
@@ -146,11 +154,15 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<AudioClip
       prevFp = fp;
       onFrame?.(i);
     }
-    // Audio markers <Audio> pushed (or a raw page set) over this frame range.
+    // Audio + subtitle markers the page pushed (or a raw page set) over this
+    // frame range.
     const markers = (await page.evaluate((key) => {
       const k = (window as any)[key];
-      return k && Array.isArray(k.audio) ? k.audio : [];
-    }, GLOBAL_KEY)) as AudioClip[];
+      return {
+        audio: k && Array.isArray(k.audio) ? k.audio : [],
+        subtitles: k && Array.isArray(k.subtitles) ? k.subtitles : [],
+      };
+    }, GLOBAL_KEY)) as ChunkMarkers;
     await page.close();
     return markers;
   } finally {

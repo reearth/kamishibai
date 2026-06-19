@@ -28,6 +28,8 @@ export interface ManifestKey {
   width: number;
   height: number;
   scale: number;
+  /** burned-in captions change the pixels, so cached frames don't carry over */
+  burnSubtitles: boolean;
 }
 
 export interface FrameManifest extends ManifestKey {
@@ -51,7 +53,8 @@ export function manifestMatches(m: FrameManifest | undefined, key: ManifestKey):
     m.fps === key.fps &&
     m.width === key.width &&
     m.height === key.height &&
-    m.scale === key.scale
+    m.scale === key.scale &&
+    !!m.burnSubtitles === key.burnSubtitles
   );
 }
 

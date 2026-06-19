@@ -47,7 +47,9 @@ export type { FrameManifest, ManifestKey } from "./incremental.ts";
 
 // Lower-level building blocks, in case you want to assemble your own pipeline.
 export { probeMeta, captureChunk } from "./renderer.ts";
+export type { ChunkMarkers } from "./renderer.ts";
 export { renderPool } from "./pool.ts";
+export type { PoolMarkers } from "./pool.ts";
 export { serveEntry } from "./serve.ts";
 export type { Served } from "./serve.ts";
 export {
@@ -55,7 +57,18 @@ export {
   encodeFrames,
   encodeGif,
   muxAudio,
+  muxSubtitles,
   buildAudioGraph,
   volumeExpr,
   hasAudioStream,
 } from "./ffmpeg.ts";
+
+// Subtitle parsing / serialization (also its own entry: kamishibai/subtitle).
+export {
+  parseSubtitles,
+  loadSubtitles,
+  cueAt,
+  mergeCues,
+  cuesToSrt,
+} from "./subtitle.ts";
+export type { Cue } from "./subtitle.ts";

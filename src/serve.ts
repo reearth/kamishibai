@@ -38,6 +38,12 @@ export interface ServeOptions {
    * bundled script entries.
    */
   tts?: TTSRequestHandler;
+  /**
+   * Burn subtitles into the frames (pixels) instead of the default soft track.
+   * Injected as a global the page reads before it mounts. Only applies to
+   * bundled script entries.
+   */
+  burnSubtitles?: boolean;
 }
 
 const SCRIPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
@@ -64,7 +70,11 @@ function isUrl(entry: string): boolean {
 }
 
 /** Minimal self-contained host page for a bundled script entry. */
-function hostHtml(): string {
+function hostHtml(burnSubtitles = false): string {
+  // Set the burn flag before the bundle runs, so <Subtitle> sees it at mount.
+  const config = burnSubtitles
+    ? `\n    <script>window.__KAMISHIBAI_BURN_SUBTITLES__=true</script>`
+    : "";
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -74,7 +84,7 @@ function hostHtml(): string {
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { overflow: hidden; background: #fff; }
       #kamishibai-root { position: absolute; inset: 0; }
-    </style>
+    </style>${config}
   </head>
   <body>
     <div id="kamishibai-root"></div>
@@ -205,7 +215,7 @@ export async function serveEntry(entry: string, opts: ServeOptions = {}): Promis
       },
       logLevel: "silent",
     });
-    await writeFile(join(dir, "index.html"), hostHtml(), "utf8");
+    await writeFile(join(dir, "index.html"), hostHtml(opts.burnSubtitles), "utf8");
     // Copy static assets so the page can reach them at the server root.
     if (opts.publicDir) {
       await cp(resolve(opts.publicDir), dir, { recursive: true });

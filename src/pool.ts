@@ -8,6 +8,13 @@ import { captureChunk } from "./renderer.ts";
 import type { Chunk } from "./segment.ts";
 import type { KamishibaiMeta } from "./protocol.ts";
 import type { AudioClip } from "./audio.ts";
+import { mergeCues, type Cue } from "./subtitle.ts";
+
+/** The merged markers a full render collected: audio clips + subtitle cues. */
+export interface PoolMarkers {
+  audio: AudioClip[];
+  subtitles: Cue[];
+}
 
 export interface RenderPoolOptions {
   url: string;
@@ -30,9 +37,10 @@ export interface RenderPoolOptions {
 
 /**
  * Capture all chunks concurrently; resolves once every frame is on disk.
- * Returns the merged, de-duplicated audio markers collected across workers.
+ * Returns the merged, de-duplicated audio + subtitle markers collected across
+ * workers.
  */
-export async function renderPool(opts: RenderPoolOptions): Promise<AudioClip[]> {
+export async function renderPool(opts: RenderPoolOptions): Promise<PoolMarkers> {
   const { url, meta, chunks, framesDir, scale, onProgress, onChunkDone } = opts;
   const { onFingerprint, prevFingerprints, shouldRender } = opts;
   const total = chunks.reduce((n, c) => n + (c.end - c.start), 0);
@@ -62,13 +70,17 @@ export async function renderPool(opts: RenderPoolOptions): Promise<AudioClip[]> 
 
   // Merge + dedup (a scene spanning a chunk boundary reports in both).
   const seen = new Set<string>();
-  const merged: AudioClip[] = [];
-  for (const clip of perChunk.flat()) {
+  const audio: AudioClip[] = [];
+  for (const clip of perChunk.flatMap((m) => m.audio)) {
     const key = `${clip.src}@${clip.atMs}@${clip.gain ?? 0}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    merged.push(clip);
+    audio.push(clip);
   }
-  merged.sort((a, b) => a.atMs - b.atMs);
-  return merged;
+  audio.sort((a, b) => a.atMs - b.atMs);
+
+  // mergeCues handles cue dedup + sort by start.
+  const subtitles = mergeCues(perChunk.flatMap((m) => m.subtitles));
+
+  return { audio, subtitles };
 }

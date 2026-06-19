@@ -9,7 +9,7 @@ import {
   type ManifestKey,
 } from "../src/incremental.ts";
 
-const KEY: ManifestKey = { fps: 30, width: 1920, height: 1080, scale: 1 };
+const KEY: ManifestKey = { fps: 30, width: 1920, height: 1080, scale: 1, burnSubtitles: false };
 
 describe("parseFrameRanges", () => {
   it("parses single indices and ranges", () => {
@@ -49,10 +49,11 @@ describe("manifest validity", () => {
     expect(manifestMatches(make(), KEY)).toBe(true);
   });
 
-  it("rejects a different fps / size / scale", () => {
+  it("rejects a different fps / size / scale / burn", () => {
     expect(manifestMatches(make(), { ...KEY, fps: 24 })).toBe(false);
     expect(manifestMatches(make(), { ...KEY, width: 1280 })).toBe(false);
     expect(manifestMatches(make(), { ...KEY, scale: 2 })).toBe(false);
+    expect(manifestMatches(make(), { ...KEY, burnSubtitles: true })).toBe(false);
   });
 
   it("rejects an older manifest version", () => {

@@ -175,6 +175,36 @@ function resetAudio(): void {
   audioSeen.clear();
 }
 
+// ---- subtitle markers ---------------------------------------------
+// Like audio: by default a <Subtitle> declares its cues (in reel-global ms)
+// instead of drawing pixels, and the renderer reads window.kamishibai.subtitles
+// after capture to bake them into a soft mp4 track + a sidecar .srt. Burn mode
+// (a global flag the renderer injects) draws pixels instead and registers
+// nothing — for full CSS styling, or for GIF output, which has no soft track.
+const subtitleRegistry: SubtitleCue[] = [];
+const subtitleSeen = new Set<string>();
+
+function registerSubtitleCues(cues: SubtitleCue[]): void {
+  for (const c of cues) {
+    if (!c.text) continue;
+    const key = `${c.start}@${c.end}@${c.text}`;
+    if (subtitleSeen.has(key)) continue;
+    subtitleSeen.add(key);
+    subtitleRegistry.push(c);
+  }
+}
+
+function resetSubtitles(): void {
+  subtitleRegistry.length = 0;
+  subtitleSeen.clear();
+}
+
+/** Whether the renderer asked for burned-in (pixel) captions instead of the
+ *  default soft track. Injected on window by serve; false in a plain browser. */
+function burnSubtitlesOn(): boolean {
+  return typeof window !== "undefined" && !!(window as { __KAMISHIBAI_BURN_SUBTITLES__?: boolean }).__KAMISHIBAI_BURN_SUBTITLES__;
+}
+
 /**
  * Declare an audio clip. It starts at this scope's epoch (e.g. the enclosing
  * Series.Scene / Cue start) plus `delayMs`, or at an explicit `atMs`.
@@ -585,10 +615,19 @@ export const Video: React.FC<{
 };
 
 // ---- Subtitle -----------------------------------------------------
-// Burn captions from an SRT/VTT file into the frames: the active cue for the
-// current (scene-local) ms is drawn. Composable — drop it into a scene and
-// its cue times count from that scene's start (+ delayMs). The src must be
-// fetchable by the browser (e.g. --public).
+// By DEFAULT captions are a *soft track*, not pixels: <Subtitle> declares its
+// cues (in reel-global ms) like <Audio> declares clips, and the renderer bakes
+// them into an mp4 mov_text track + a sidecar .srt. They cost no frames, so the
+// captured pixels (and their fingerprints) are unaffected by the caption text.
+//
+// Turn on burn mode globally (render({ burnSubtitles }) / --burn-subtitles) to
+// draw captions as pixels instead, with the full CSS styling below — needed for
+// GIF output (no soft track) or pixel-perfect styled captions.
+//
+// Three timing modes, either way: a src file (SRT/VTT), inline `cues`, or static
+// string `children` (timed by the enclosing <Cue>/<Series.Scene>). cue times
+// count from that scope's start (+ delayMs). A src must be browser-fetchable
+// (e.g. --public).
 const subtitleCache = new Map<string, Promise<SubtitleCue[]>>();
 function loadSubtitlesCached(src: string): Promise<SubtitleCue[]> {
   let p = subtitleCache.get(src);
@@ -608,39 +647,78 @@ export const Subtitle: React.FC<{
   children?: React.ReactNode;
   /** shift all cue times by this many ms (src / cues modes) */
   delayMs?: number;
-  /** distance from the bottom edge, in px (default 80) */
+  /** distance from the bottom edge, in px (default 80) — burn mode only */
   bottom?: number;
-  /** style overrides for the caption text box */
+  /** style overrides for the caption text box — burn mode only */
   style?: React.CSSProperties;
 }> = ({ src, cues, children, delayMs = 0, bottom = 80, style }) => {
-  const { epochMs } = useClock();
+  const { epochMs, durationMs } = useClock();
   const ref = useRef<HTMLDivElement>(null);
   const epochRef = useRef(epochMs);
   epochRef.current = epochMs;
+  const durationRef = useRef(durationMs);
+  durationRef.current = durationMs;
 
+  const burn = burnSubtitlesOn();
   // src/cues drive the active cue per frame; otherwise children is a static
   // caption (timing comes from the enclosing <Cue>/<Series.Scene>).
   const dynamic = src != null || cues != null;
   const cuesKey = cues ? JSON.stringify(cues) : "";
+  const childText = typeof children === "string" ? children : "";
 
   useLayoutEffect(() => {
-    if (!dynamic) return;
-    const pending = cues ? null : loadSubtitlesCached(src!);
-    let resolved: SubtitleCue[] | undefined = cues ?? undefined;
-    if (pending) void pending.then((c) => (resolved = c));
-    const settler: Settler = async (globalMs) => {
-      const cs = resolved ?? (await pending!);
-      resolved = cs;
-      const el = ref.current;
-      if (!el) return;
-      const cue = cueAt(cs, globalMs - epochRef.current - delayMs);
-      el.textContent = cue ? cue.text : "";
-      // Only show the box when there's a cue (so gaps are invisible).
-      el.style.background = cue ? "rgba(0,0,0,0.62)" : "transparent";
-      el.style.padding = cue ? "8px 22px" : "0";
-    };
-    return registerSettler(settler);
-  }, [dynamic, src, cuesKey, delayMs]);
+    // BURN: draw the active cue's pixels per frame (dynamic only; static text
+    // is rendered straight from JSX below).
+    if (burn) {
+      if (!dynamic) return;
+      const pending = cues ? null : loadSubtitlesCached(src!);
+      let resolved: SubtitleCue[] | undefined = cues ?? undefined;
+      if (pending) void pending.then((c) => (resolved = c));
+      const settler: Settler = async (globalMs) => {
+        const cs = resolved ?? (await pending!);
+        resolved = cs;
+        const el = ref.current;
+        if (!el) return;
+        const cue = cueAt(cs, globalMs - epochRef.current - delayMs);
+        el.textContent = cue ? cue.text : "";
+        // Only show the box when there's a cue (so gaps are invisible).
+        el.style.background = cue ? "rgba(0,0,0,0.62)" : "transparent";
+        el.style.padding = cue ? "8px 22px" : "0";
+      };
+      return registerSettler(settler);
+    }
+
+    // SOFT (default): register cues in reel-global ms for the muxer. No cleanup —
+    // markers are read once after capture (dedup makes re-registration safe).
+    const place = (cs: SubtitleCue[]) =>
+      registerSubtitleCues(
+        cs.map((c) => ({
+          start: epochRef.current + delayMs + c.start,
+          end: epochRef.current + delayMs + c.end,
+          text: c.text,
+        })),
+      );
+    if (cues) place(cues);
+    else if (src) void loadSubtitlesCached(src).then(place);
+    else if (childText) {
+      // Static caption: spans the enclosing scope (epoch .. epoch + duration).
+      registerSubtitleCues([
+        {
+          start: epochRef.current + delayMs,
+          end: epochRef.current + delayMs + durationRef.current,
+          text: childText,
+        },
+      ]);
+    } else if (children) {
+      console.warn(
+        "kamishibai: <Subtitle> with non-string children can't be a soft caption — " +
+          "use string text, or render with burnSubtitles for styled JSX captions.",
+      );
+    }
+  }, [burn, dynamic, src, cuesKey, delayMs, childText]);
+
+  // SOFT mode draws nothing — it's a marker, like <Audio>.
+  if (!burn) return null;
 
   const boxStyle: React.CSSProperties = {
     display: "inline-block",
@@ -779,6 +857,7 @@ const Driver: React.FC<{
           });
         }),
       audio: audioRegistry,
+      subtitles: subtitleRegistry,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -808,6 +887,7 @@ export function mount(
   options: MountOptions = {},
 ): void {
   resetAudio();
+  resetSubtitles();
   const host =
     options.container ?? document.getElementById("kamishibai-root") ?? document.body;
   const stage = document.createElement("div");

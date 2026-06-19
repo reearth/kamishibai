@@ -35,6 +35,8 @@ Options:
                         (needs --frames-dir; compares per-frame fingerprints)
       --only <ranges>   render only these frames, e.g. 0-30,90,120-150
                         (needs --frames-dir with a prior full render)
+      --burn-subtitles  burn captions into the frames (pixels) instead of the
+                        default soft mp4 track + sidecar .srt (needed for gif)
       --max-width <n>   downscale the output (mp4 or gif) to at most n px wide
       --gif-loop <n>    gif loops: 0 = infinite (default), -1 = once, n = times
       --crf <n>         H.264 quality, lower = better (default: 18)
@@ -69,6 +71,7 @@ async function main(): Promise<void> {
       "gif-loop": { type: "string" },
       crf: { type: "string" },
       "keep-frames": { type: "boolean" },
+      "burn-subtitles": { type: "boolean" },
       verbose: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -128,6 +131,7 @@ async function main(): Promise<void> {
     framesDir: values["frames-dir"],
     incremental: values.incremental,
     only: values.only,
+    burnSubtitles: values["burn-subtitles"],
     crf,
     keepFrames: values["keep-frames"],
     verbose: values.verbose,

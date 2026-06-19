@@ -60,3 +60,37 @@ export async function loadSubtitles(src: string): Promise<Cue[]> {
   const res = await fetch(src);
   return parseSubtitles(await res.text());
 }
+
+/** Sort cues by start and drop exact duplicates (same start/end/text) — used to
+ *  merge cues collected from several <Subtitle>s across parallel capture. */
+export function mergeCues(cues: Cue[]): Cue[] {
+  const seen = new Set<string>();
+  const out: Cue[] = [];
+  for (const c of cues) {
+    const key = `${c.start}@${c.end}@${c.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  out.sort((a, b) => a.start - b.start || a.end - b.end);
+  return out;
+}
+
+/** Format ms as an SRT timestamp: HH:MM:SS,mmm. */
+function srtTime(ms: number): string {
+  const total = Math.max(0, Math.round(ms));
+  const h = Math.floor(total / 3_600_000);
+  const m = Math.floor((total % 3_600_000) / 60_000);
+  const s = Math.floor((total % 60_000) / 1000);
+  const millis = total % 1000;
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${p2(h)}:${p2(m)}:${p2(s)},${String(millis).padStart(3, "0")}`;
+}
+
+/** Serialize cues to SRT text (merged + sorted first). Empty for no cues. */
+export function cuesToSrt(cues: Cue[]): string {
+  const merged = mergeCues(cues);
+  return merged
+    .map((c, i) => `${i + 1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`)
+    .join("\n");
+}

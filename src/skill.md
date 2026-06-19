@@ -204,13 +204,17 @@ Sugar API:
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
   video via WebCodecs (see Video below); draws the clip frame for the current
   scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
-- `<Subtitle src | cues | children>` — burn captions from an SRT/VTT file
-  (`src`), inline `cues`, or direct text (`children`, timed via the enclosing
-  `<Cue>`). Cue times count from the enclosing scene. Parser also at
-  kamishibai/subtitle (parseSubtitles, cueAt) for the raw API.
+- `<Subtitle src | cues | children>` — captions from an SRT/VTT file (`src`),
+  inline `cues`, or direct text (`children`, timed via the enclosing `<Cue>`).
+  Cue times count from the enclosing scene. By DEFAULT a soft track (like
+  `<Audio>`: declared, then muxed into an mp4 mov_text track + a sidecar .srt;
+  no pixels, no effect on frame fingerprints). Render with `--burn-subtitles` to
+  draw them as pixels instead (full CSS via `bottom`/`style`; required for gif).
+  Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
+  cuesToSrt) for the raw API.
 - `<Narration clip delayMs gain fadeInMs fadeOutMs subtitle>` — play a clip
   from `prepareNarration` (synthesized up front, see Narration below); with
-  `subtitle`, also burns the line's text as a caption for the clip's window
+  `subtitle`, also adds the line's text as a caption for the clip's window
 
 ```tsx
 import { mount, Series, Audio, seriesDuration } from "kamishibai/react";
@@ -289,6 +293,7 @@ kamishibai render <entry|url> [options]
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--incremental` | `-i` | reuse cached frames; re-render only changed ones (needs `--frames-dir`) |
 | `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
+| `--burn-subtitles` | | burn captions into the frames instead of a soft track + sidecar `.srt` (needed for gif) |
 | `--crf` | | H.264 quality, lower = better (default 18) |
 | `--keep-frames` | | keep intermediate PNGs (temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |

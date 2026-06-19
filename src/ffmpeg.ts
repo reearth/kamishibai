@@ -245,6 +245,37 @@ export function buildAudioGraph(
   return { inputs, filterComplex: [...filters, mix].join(";") };
 }
 
+export interface MuxSubtitlesOptions {
+  /** video to add the subtitle track to (its streams are copied) */
+  video: string;
+  /** an SRT file to embed */
+  srt: string;
+  out: string;
+  verbose?: boolean;
+}
+
+/**
+ * Embed an SRT as a soft subtitle track (mov_text) in an mp4, copying the
+ * existing video/audio streams. The track is toggleable in players; styling is
+ * the player's (burn captions in if you need pixel-perfect styling).
+ */
+export async function muxSubtitles(opts: MuxSubtitlesOptions): Promise<void> {
+  const { video, srt, out, verbose = false } = opts;
+  await runFfmpeg(
+    [
+      "-y",
+      "-i", video,
+      "-i", srt,
+      "-map", "0",
+      "-map", "1",
+      "-c", "copy",
+      "-c:s", "mov_text",
+      out,
+    ],
+    verbose,
+  );
+}
+
 /**
  * Mux an audio manifest onto a video: each clip is trimmed, faded, gained,
  * delayed to its start time, then mixed together. Video stream is copied.

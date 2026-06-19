@@ -1,6 +1,6 @@
 // The orchestrator: serve -> probe -> split -> capture -> assemble.
 // ------------------------------------------------------------------
-import { mkdtemp, mkdir, rm, readdir, unlink } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, readdir, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
@@ -10,8 +10,16 @@ import { probeMeta } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
-import { assertFfmpeg, encodeFrames, encodeGif, muxAudio, hasAudioStream } from "./ffmpeg.ts";
+import {
+  assertFfmpeg,
+  encodeFrames,
+  encodeGif,
+  muxAudio,
+  muxSubtitles,
+  hasAudioStream,
+} from "./ffmpeg.ts";
 import { applyDucking, type AudioManifest, type AudioClip } from "./audio.ts";
+import { cuesToSrt } from "./subtitle.ts";
 import { createTTSEngine, type TTSAdapter } from "./tts/engine.ts";
 import {
   buildManifest,
@@ -68,6 +76,12 @@ export interface RenderOptions {
    * `framesDir` with a prior full render to fill the gaps.
    */
   only?: string;
+  /**
+   * Burn <Subtitle> captions into the frames (pixels, full CSS styling) instead
+   * of the default soft mp4 track + sidecar .srt. Needed for GIF output, which
+   * has no subtitle track.
+   */
+  burnSubtitles?: boolean;
   /** progress / status callback */
   onLog?: (msg: string) => void;
   /** custom TTS adapters for <Narration>/prepareNarration (a matching
@@ -143,6 +157,7 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
   const served = await serveEntry(opts.entry, {
     publicDir: opts.publicDir,
     tts: (body) => tts.handle(body as Parameters<typeof tts.handle>[0]),
+    burnSubtitles: opts.burnSubtitles,
   });
 
   // Incremental / --only reuse PNGs on disk across runs, so they need a
@@ -184,7 +199,13 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     // Incremental: load the previous run's fingerprints, but only if they
     // describe the same geometry (fps / size / scale) — otherwise the old
     // prints don't match these pixels and we rebuild from scratch.
-    const manifestKey: ManifestKey = { fps: meta.fps, width: meta.width, height: meta.height, scale };
+    const manifestKey: ManifestKey = {
+      fps: meta.fps,
+      width: meta.width,
+      height: meta.height,
+      scale,
+      burnSubtitles: !!opts.burnSubtitles,
+    };
     let prevFingerprints: Map<number, string> | undefined;
     if (opts.incremental) {
       const prev = await readManifest(framesDir);
@@ -208,7 +229,7 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
         `${opts.incremental && prevFingerprints?.size ? ` (incremental: ${prevFingerprints.size} cached)` : ""}`,
     );
 
-    const collectedAudio = await renderPool({
+    const { audio: collectedAudio, subtitles: collectedSubtitles } = await renderPool({
       url: served.url,
       meta,
       chunks,
@@ -238,8 +259,19 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     // narration line doesn't leave a phantom dip in the music).
     const audioClips = applyDucking(await prepareAudio(declared, opts.publicDir, log));
 
+    // Soft subtitle cues only exist when not burning in (burn renders pixels and
+    // registers no markers). The sidecar .srt is written next to the output.
+    const hasSoftSubs = collectedSubtitles.length > 0;
+    const srtSidecar = out.replace(/\.[^.]+$/, ".srt");
+
     if (out.toLowerCase().endsWith(".gif")) {
       if (audioClips.length > 0) log(`(gif has no audio — ignoring ${audioClips.length} clip(s))`);
+      if (hasSoftSubs) {
+        log(
+          `(gif has no subtitle track — writing ${srtSidecar} only; ` +
+            `use burnSubtitles to render captions into the gif)`,
+        );
+      }
       // GIF frame delays are quantized to 1/100s, so only fps values that
       // divide 100 (25, 50, 20, 10, …) are exact; others drift in speed.
       const cs = Math.max(1, Math.round(100 / meta.fps));
@@ -262,28 +294,48 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     } else {
       log(`Encoding video…`);
       const hasAudio = audioClips.length > 0;
-      const silent = hasAudio ? join(framesDir, "_silent.mp4") : out;
+      // Build the output in stages, each into a temp, so the last stage writes
+      // `out`: encode -> (audio) -> (subtitles).
+      const encoded = hasAudio || hasSoftSubs ? join(framesDir, "_encoded.mp4") : out;
       await encodeFrames({
         framesDir,
         fps: meta.fps,
-        out: silent,
+        out: encoded,
         crf: opts.crf,
         maxWidth: opts.maxWidth,
         verbose: opts.verbose,
       });
 
+      let videoPath = encoded;
       if (hasAudio) {
+        const next = hasSoftSubs ? join(framesDir, "_audio.mp4") : out;
         log(`Muxing ${audioClips.length} audio clip(s)…`);
         await muxAudio({
-          video: silent,
+          video: videoPath,
           clips: audioClips,
-          out,
+          out: next,
           videoDurationSec: total / meta.fps,
           verbose: opts.verbose,
         });
-        // Don't leave the intermediate in a kept frames dir.
-        await rm(silent, { force: true });
+        await rm(videoPath, { force: true }); // don't leave intermediates in a kept dir
+        videoPath = next;
       }
+
+      if (hasSoftSubs) {
+        const srtTmp = join(framesDir, "_subs.srt");
+        await writeFile(srtTmp, cuesToSrt(collectedSubtitles), "utf8");
+        log(`Muxing ${collectedSubtitles.length} subtitle cue(s)…`);
+        await muxSubtitles({ video: videoPath, srt: srtTmp, out, verbose: opts.verbose });
+        await rm(videoPath, { force: true });
+        await rm(srtTmp, { force: true });
+      }
+    }
+
+    // Always emit the sidecar .srt alongside the output when there are soft cues
+    // (handy for editing / portability, and the only delivery for gif).
+    if (hasSoftSubs) {
+      await writeFile(srtSidecar, cuesToSrt(collectedSubtitles), "utf8");
+      log(`Subtitles → ${srtSidecar}`);
     }
 
     const elapsedMs = Date.now() - started;

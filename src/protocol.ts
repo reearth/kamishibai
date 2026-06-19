@@ -68,6 +68,14 @@ export interface KamishibaiPage {
     duck?: boolean | { amountDb?: number; attackMs?: number; releaseMs?: number };
     gainKeyframes?: Array<{ atMs: number; gain: number }>;
   }>;
+  /**
+   * Optional subtitle cues for muxing, collected from the page after capture —
+   * the visual counterpart of `audio`. By default kamishibai/react's <Subtitle>
+   * pushes its cues here (with absolute, reel-global ms) instead of drawing
+   * pixels, and the renderer bakes them into a soft mp4 track + a sidecar .srt.
+   * Populate by hand for a raw page: push { start, end, text } in global ms.
+   */
+  subtitles?: Array<{ start: number; end: number; text: string }>;
 }
 
 declare global {
