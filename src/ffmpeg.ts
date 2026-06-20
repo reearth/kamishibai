@@ -62,6 +62,9 @@ export interface EncodeOptions {
   out: string;
   /** H.264 quality, lower = better; default 18 */
   crf?: number;
+  /** libx264 speed/compression preset (e.g. ultrafast for quick previews);
+   *  omit for x264's default (medium) */
+  preset?: string;
   /** downscale to at most this width (keeps aspect); omit for native size */
   maxWidth?: number;
   verbose?: boolean;
@@ -69,7 +72,7 @@ export interface EncodeOptions {
 
 /** Encode the f000000.png … sequence into a silent H.264 mp4. */
 export async function encodeFrames(opts: EncodeOptions): Promise<void> {
-  const { framesDir, fps, out, crf = 18, maxWidth, verbose = false } = opts;
+  const { framesDir, fps, out, crf = 18, preset, maxWidth, verbose = false } = opts;
   // yuv420p needs even dimensions: cap width to an even number, height -2.
   const vf = maxWidth
     ? ["-vf", `scale='min(${Math.floor(maxWidth / 2) * 2},iw)':-2:flags=lanczos`]
@@ -81,6 +84,7 @@ export async function encodeFrames(opts: EncodeOptions): Promise<void> {
       "-i", join(framesDir, "f%06d.png"),
       ...vf,
       "-c:v", "libx264",
+      ...(preset ? ["-preset", preset] : []),
       "-pix_fmt", "yuv420p",
       "-crf", String(crf),
       out,

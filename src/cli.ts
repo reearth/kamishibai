@@ -40,6 +40,9 @@ Options:
       --max-width <n>   downscale the output (mp4 or gif) to at most n px wide
       --gif-loop <n>    gif loops: 0 = infinite (default), -1 = once, n = times
       --crf <n>         H.264 quality, lower = better (default: 18)
+      --preset <name>   libx264 speed/compression preset (ultrafast … veryslow);
+                        ultrafast speeds up the mp4 encode for quick confirms
+      --preview         shortcut for --preset ultrafast (fast confirm encode)
       --keep-frames     keep the intermediate PNG frames
       --verbose         stream ffmpeg output
   -h, --help            show this help
@@ -51,9 +54,17 @@ Examples:
   kamishibai render reel.tsx -p public -o reel.mp4
   kamishibai render reel.tsx -f frames -o reel.mp4            # seed the cache
   kamishibai render reel.tsx -f frames -i -o reel.mp4         # incremental rebuild
+  kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
   kamishibai render reel.tsx -f frames --only 0-30 -o reel.mp4
   kamishibai skill > kamishibai.md
 `;
+
+// libx264's speed presets, slowest-compressing last. Validated so a typo fails
+// fast with a helpful message instead of ffmpeg erroring out mid-encode.
+const X264_PRESETS = [
+  "ultrafast", "superfast", "veryfast", "faster", "fast",
+  "medium", "slow", "slower", "veryslow", "placebo",
+];
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -70,6 +81,8 @@ async function main(): Promise<void> {
       "max-width": { type: "string" },
       "gif-loop": { type: "string" },
       crf: { type: "string" },
+      preset: { type: "string" },
+      preview: { type: "boolean" },
       "keep-frames": { type: "boolean" },
       "burn-subtitles": { type: "boolean" },
       verbose: { type: "boolean" },
@@ -119,6 +132,12 @@ async function main(): Promise<void> {
     throw new Error(`--max-width must be a positive number, got "${values["max-width"]}"`);
   }
 
+  // --preview is sugar for --preset ultrafast; an explicit --preset wins.
+  const preset = values.preset ?? (values.preview ? "ultrafast" : undefined);
+  if (preset !== undefined && !X264_PRESETS.includes(preset)) {
+    throw new Error(`--preset must be one of ${X264_PRESETS.join(", ")}, got "${preset}"`);
+  }
+
   await render({
     entry,
     out: values.out ?? "out.mp4",
@@ -133,6 +152,7 @@ async function main(): Promise<void> {
     only: values.only,
     burnSubtitles: values["burn-subtitles"],
     crf,
+    preset,
     keepFrames: values["keep-frames"],
     verbose: values.verbose,
     onLog: (msg) => process.stderr.write(`${msg}\n`),

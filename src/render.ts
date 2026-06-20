@@ -53,6 +53,11 @@ export interface RenderOptions {
   audio?: AudioManifest;
   /** H.264 quality (lower = better); default 18 */
   crf?: number;
+  /** libx264 speed/compression preset for the mp4 encode (e.g. "ultrafast" for
+   *  a quick confirm pass); omit for x264's default. Pairs well with
+   *  incremental/only — once capture is skipped, the full re-encode dominates.
+   *  No effect on GIF output. */
+  preset?: string;
   /** stream ffmpeg output to the console */
   verbose?: boolean;
   /** keep the intermediate PNG frames instead of deleting them */
@@ -266,6 +271,7 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
 
     if (out.toLowerCase().endsWith(".gif")) {
       if (audioClips.length > 0) log(`(gif has no audio — ignoring ${audioClips.length} clip(s))`);
+      if (opts.preset) log(`(gif encode ignores --preset/--preview — it applies to the mp4 H.264 pass only)`);
       if (hasSoftSubs) {
         log(
           `(gif has no subtitle track — writing ${srtSidecar} only; ` +
@@ -302,6 +308,7 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
         fps: meta.fps,
         out: encoded,
         crf: opts.crf,
+        preset: opts.preset,
         maxWidth: opts.maxWidth,
         verbose: opts.verbose,
       });

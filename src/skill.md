@@ -143,6 +143,17 @@ kamishibai render reel.tsx -f frames -o reel.mp4        # seed the cache
 kamishibai render reel.tsx -f frames -i -o reel.mp4     # re-render only changes
 ```
 
+Once capture is reduced to a few frames (by `-i`/`--only`), the remaining cost
+is the **full re-encode** of the whole PNG sequence — every confirm re-encodes
+the entire reel, not just the changed frames. For a fast confirm loop, pair the
+reuse flag with `--preview` (= `--preset ultrafast`), which trades a larger file
+for a much quicker H.264 pass; drop it for the final render. `--preset <name>`
+sets any libx264 preset directly (preview only affects the mp4 encode, not gif).
+
+```sh
+kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
+```
+
 For React reels the fingerprint is automatic from the DOM. Content the DOM hash
 can't see — `<canvas>` / WebGL pixels — must contribute a cheap token via
 `useFingerprint(token)` (a string, or a function of ms naming what you draw,
@@ -300,6 +311,8 @@ kamishibai render <entry|url> [options]
 | `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
 | `--burn-subtitles` | | burn captions into the frames instead of a soft track + sidecar `.srt` (needed for gif) |
 | `--crf` | | H.264 quality, lower = better (default 18) |
+| `--preset` | | libx264 speed preset (`ultrafast`…`veryslow`); `ultrafast` speeds up the mp4 encode (mp4 only) |
+| `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
 | `--keep-frames` | | keep intermediate PNGs (temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
 
