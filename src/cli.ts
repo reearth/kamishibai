@@ -11,13 +11,14 @@
 //   --help, -h            show this help
 // ------------------------------------------------------------------
 import { parseArgs } from "node:util";
-import { render } from "./render.ts";
+import { render, encode } from "./render.ts";
 import SKILL from "./skill.md";
 
 const HELP = `kamishibai — seek a web page frame by frame and bake it into an mp4.
 
 Usage:
   kamishibai render <entry|url> [options]
+  kamishibai encode -f <frames-dir> [options]   re-encode kept frames, no capture
   kamishibai skill                    print the full usage guide (markdown)
 
 Arguments:
@@ -60,6 +61,8 @@ Examples:
   kamishibai render reel.tsx -f frames -i -o reel.mp4         # incremental rebuild
   kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
   kamishibai render reel.tsx -f frames --only 0-30 -o reel.mp4
+  kamishibai encode -f frames -o reel.mp4                     # re-encode kept frames
+  kamishibai encode -f frames --preview -o preview.mp4        # fast, no capture
   kamishibai skill > kamishibai.md
 `;
 
@@ -133,12 +136,10 @@ async function main(): Promise<void> {
     process.exit(values.help ? 0 : 1);
   }
 
-  if (command !== "render") {
-    process.stderr.write(`Unknown command "${command}". Try: kamishibai render <entry|url>\n`);
-    process.exit(1);
-  }
-  if (!entry) {
-    process.stderr.write(`Missing <entry|url>.\n\n${HELP}`);
+  if (command !== "render" && command !== "encode") {
+    process.stderr.write(
+      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: kamishibai encode -f <frames-dir>)\n`,
+    );
     process.exit(1);
   }
 
@@ -173,6 +174,35 @@ async function main(): Promise<void> {
   const splitArgs = (s: string | undefined) => (s?.trim() ? s.trim().split(/\s+/) : undefined);
   const encodeArgs = splitArgs(enc.value);
   const muxArgs = splitArgs(mux.value);
+
+  // `kamishibai encode` re-assembles a frames dir into a video without
+  // re-capturing — no entry, no browser. fps/audio/subtitles come from the dir.
+  if (command === "encode") {
+    const framesDir = values["frames-dir"];
+    if (!framesDir) {
+      process.stderr.write(`encode needs a frames dir — pass -f/--frames-dir <dir>.\n`);
+      process.exit(1);
+    }
+    await encode({
+      framesDir,
+      out: values.out ?? "out.mp4",
+      fps,
+      maxWidth,
+      gifLoop,
+      crf,
+      preset,
+      encodeArgs,
+      muxArgs,
+      verbose: values.verbose,
+      onLog: (msg) => process.stderr.write(`${msg}\n`),
+    });
+    return;
+  }
+
+  if (!entry) {
+    process.stderr.write(`Missing <entry|url>.\n\n${HELP}`);
+    process.exit(1);
+  }
 
   await render({
     entry,

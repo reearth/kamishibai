@@ -350,6 +350,34 @@ kamishibai render reel.tsx -p public -o reel.mp4        # serve ./public at root
 kamishibai render http://localhost:3000 -o page.mp4
 ```
 
+### Re-encoding kept frames (`encode`, no capture)
+
+```
+kamishibai encode -f <frames-dir> [options]
+```
+
+`encode` rebuilds a video from a `--frames-dir` a prior render kept — **no
+browser, no probe, no TTS, just ffmpeg.** It's the fastest path when the PNGs are
+already correct and you only want to change encode/mux settings (a different
+`--crf`/`--preset`, a `--max-width`, `--encode-args`, or a `.gif`). It's a full
+video, not silent: a *full* render writes a mux sidecar next to the frames (the
+resolved + ducked audio clips and the soft subtitle cues), and `encode` replays
+it — so audio and captions come back without re-capturing.
+
+- fps comes from the frames dir's manifest (override with `--fps`).
+- A `--only` render does **not** update the sidecar (it seeks just the selected
+  frames, so its markers are partial); the prior full render's sidecar is kept.
+- Without a sidecar (e.g. a raw dir of PNGs, where you must pass `--fps`) the
+  output is silent.
+- Honors `--out`, `--fps`, `--crf`, `--preset`/`--preview`, `--max-width`,
+  `--gif-loop`, `--encode-args`, `--mux-args`, `--verbose`.
+
+```
+kamishibai render reel.tsx -f frames -o reel.mp4        # capture once (writes the sidecar)
+kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio + subs intact
+kamishibai encode -f frames --crf 28 -o smaller.mp4     # try a setting without re-capturing
+```
+
 ## Resolution
 
 Resolution is **not** a CLI flag of its own — it comes from `meta.width`/

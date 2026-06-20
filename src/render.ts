@@ -1,6 +1,6 @@
 // The orchestrator: serve -> probe -> split -> capture -> assemble.
 // ------------------------------------------------------------------
-import { mkdtemp, mkdir, rm, readdir, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, readdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
@@ -10,16 +10,9 @@ import { probeMeta } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
-import {
-  assertFfmpeg,
-  encodeFrames,
-  encodeGif,
-  muxAudio,
-  muxSubtitles,
-  hasAudioStream,
-} from "./ffmpeg.ts";
+import { assertFfmpeg, hasAudioStream } from "./ffmpeg.ts";
 import { applyDucking, type AudioManifest, type AudioClip } from "./audio.ts";
-import { cuesToSrt } from "./subtitle.ts";
+import { assemble, writeMuxSidecar, readMuxSidecar } from "./assemble.ts";
 import { createTTSEngine, type TTSAdapter } from "./tts/engine.ts";
 import {
   buildManifest,
@@ -270,97 +263,31 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     // narration line doesn't leave a phantom dip in the music).
     const audioClips = applyDucking(await prepareAudio(declared, opts.publicDir, log));
 
-    // Soft subtitle cues only exist when not burning in (burn renders pixels and
-    // registers no markers). The sidecar .srt is written next to the output.
-    const hasSoftSubs = collectedSubtitles.length > 0;
-    const srtSidecar = out.replace(/\.[^.]+$/, ".srt");
-
-    if (out.toLowerCase().endsWith(".gif")) {
-      if (audioClips.length > 0) log(`(gif has no audio — ignoring ${audioClips.length} clip(s))`);
-      if (opts.preset) log(`(gif encode ignores --preset/--preview — it applies to the mp4 H.264 pass only)`);
-      if (opts.encodeArgs?.length || opts.muxArgs?.length) {
-        log(`(gif ignores --encode-args/--mux-args — they apply to the mp4 encode/mux passes only)`);
-      }
-      if (hasSoftSubs) {
-        log(
-          `(gif has no subtitle track — writing ${srtSidecar} only; ` +
-            `use burnSubtitles to render captions into the gif)`,
-        );
-      }
-      // GIF frame delays are quantized to 1/100s, so only fps values that
-      // divide 100 (25, 50, 20, 10, …) are exact; others drift in speed.
-      const cs = Math.max(1, Math.round(100 / meta.fps));
-      const effFps = 100 / cs;
-      if (Math.abs(effFps - meta.fps) > 0.01) {
-        log(
-          `(gif timing is quantized to 1/100s — ${meta.fps}fps plays as ~${effFps.toFixed(2)}fps; ` +
-            `use --fps with a divisor of 100 like 25 or 50)`,
-        );
-      }
-      log(`Encoding GIF…`);
-      await encodeGif({
-        framesDir,
-        fps: meta.fps,
-        out,
-        maxWidth: opts.maxWidth,
-        loop: opts.gifLoop,
-        verbose: opts.verbose,
-      });
-    } else {
-      log(`Encoding video…`);
-      const hasAudio = audioClips.length > 0;
-      // Build the output in stages, each into a temp, so the last stage writes
-      // `out`: encode -> (audio) -> (subtitles).
-      const encoded = hasAudio || hasSoftSubs ? join(framesDir, "_encoded.mp4") : out;
-      await encodeFrames({
-        framesDir,
-        fps: meta.fps,
-        out: encoded,
-        crf: opts.crf,
-        preset: opts.preset,
-        maxWidth: opts.maxWidth,
-        extraArgs: opts.encodeArgs,
-        verbose: opts.verbose,
-      });
-
-      // Write the soft-subtitle srt once; it's embedded in whichever mux pass
-      // runs (folded into the audio pass when there's audio, so the encoded
-      // video is only ever read/written once for muxing).
-      let srtTmp: string | undefined;
-      if (hasSoftSubs) {
-        srtTmp = join(framesDir, "_subs.srt");
-        await writeFile(srtTmp, cuesToSrt(collectedSubtitles), "utf8");
-      }
-
-      if (hasAudio) {
-        log(
-          `Muxing ${audioClips.length} audio clip(s)` +
-            `${hasSoftSubs ? ` + ${collectedSubtitles.length} subtitle cue(s)` : ""}…`,
-        );
-        await muxAudio({
-          video: encoded,
-          clips: audioClips,
-          out,
-          srt: srtTmp,
-          videoDurationSec: total / meta.fps,
-          extraArgs: opts.muxArgs,
-          verbose: opts.verbose,
-        });
-        await rm(encoded, { force: true }); // don't leave intermediates in a kept dir
-      } else if (hasSoftSubs) {
-        log(`Muxing ${collectedSubtitles.length} subtitle cue(s)…`);
-        await muxSubtitles({ video: encoded, srt: srtTmp!, out, extraArgs: opts.muxArgs, verbose: opts.verbose });
-        await rm(encoded, { force: true });
-      }
-      if (srtTmp) await rm(srtTmp, { force: true });
+    // Persist the mux inputs next to the frames so `encode` can rebuild the
+    // full video later (audio + subtitles) without re-capturing — but only on a
+    // full or incremental render, which seeks every frame and so collects every
+    // marker. A --only run seeks just the selected frames, so its markers are
+    // partial; keep the prior full render's sidecar instead.
+    if (!usingTempFrames && !opts.only) {
+      await writeMuxSidecar(framesDir, audioClips, collectedSubtitles);
     }
 
-    // Always emit the sidecar .srt alongside the output when there are soft cues
-    // (handy for editing / portability, and the only delivery for gif).
-    if (hasSoftSubs) {
-      await writeFile(srtSidecar, cuesToSrt(collectedSubtitles), "utf8");
-      log(`Subtitles → ${srtSidecar}`);
-    }
+    await assemble({
+      framesDir,
+      fps: meta.fps,
+      totalFrames: total,
+      out,
+      audio: audioClips,
+      subtitles: collectedSubtitles,
+      crf: opts.crf,
+      preset: opts.preset,
+      maxWidth: opts.maxWidth,
+      gifLoop: opts.gifLoop,
+      encodeArgs: opts.encodeArgs,
+      muxArgs: opts.muxArgs,
+      verbose: opts.verbose,
+      log,
+    });
 
     const elapsedMs = Date.now() - started;
     log(`Done → ${out} (${(elapsedMs / 1000).toFixed(1)}s)`);
@@ -372,4 +299,89 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     if (keep) log(`Frames kept in ${framesDir}`);
     else await rm(framesDir, { recursive: true, force: true });
   }
+}
+
+export interface EncodeFramesDirOptions {
+  /** dir holding a prior render's f000000.png … sequence */
+  framesDir: string;
+  /** output mp4/gif path */
+  out: string;
+  /** fps for the output; defaults to the frames dir's manifest fps */
+  fps?: number;
+  crf?: number;
+  preset?: string;
+  maxWidth?: number;
+  gifLoop?: number;
+  encodeArgs?: string[];
+  muxArgs?: string[];
+  verbose?: boolean;
+  onLog?: (msg: string) => void;
+}
+
+export interface EncodeResult {
+  out: string;
+  frames: number;
+  fps: number;
+  elapsedMs: number;
+}
+
+/**
+ * Re-encode a frames dir into a video WITHOUT re-capturing — no browser, no
+ * probe, no TTS, just ffmpeg. fps comes from the dir's manifest (or `fps`), and
+ * the audio + soft subtitles come from the mux sidecar a prior *full* render
+ * left behind (so the output is the full video, not silent). The fast path when
+ * the frames are already correct and you only changed encode/mux settings.
+ */
+export async function encode(opts: EncodeFramesDirOptions): Promise<EncodeResult> {
+  const log = opts.onLog ?? (() => {});
+  const started = Date.now();
+  await assertFfmpeg();
+
+  const framesDir = resolve(opts.framesDir);
+  const out = resolve(opts.out);
+  await mkdir(dirname(out), { recursive: true });
+
+  // Count the PNGs already on disk; that's the reel length here.
+  const entries = await readdir(framesDir).catch(() => [] as string[]);
+  const totalFrames = entries.filter((f) => /^f\d{6}\.png$/.test(f)).length;
+  if (totalFrames === 0) {
+    throw new Error(`no frames (f000000.png …) found in ${framesDir} — render there first`);
+  }
+
+  // fps: an explicit override, else the geometry the manifest recorded.
+  const manifest = await readManifest(framesDir);
+  const fps = opts.fps ?? manifest?.fps;
+  if (!fps) {
+    throw new Error(
+      `no fps for ${framesDir} — pass fps (--fps), or render once with --frames-dir to write its manifest`,
+    );
+  }
+
+  // Audio + soft subtitles from the sidecar a full render left; absent ⇒ silent.
+  const sidecar = await readMuxSidecar(framesDir);
+  if (!sidecar) {
+    log(`(no mux sidecar in ${framesDir} — encoding without audio/subtitles)`);
+  }
+
+  log(`Encoding ${totalFrames} frame(s) from ${framesDir} @ ${fps}fps…`);
+  await assemble({
+    framesDir,
+    fps,
+    totalFrames,
+    out,
+    audio: sidecar?.audio ?? [],
+    subtitles: sidecar?.subtitles ?? [],
+    crf: opts.crf,
+    preset: opts.preset,
+    maxWidth: opts.maxWidth,
+    gifLoop: opts.gifLoop,
+    encodeArgs: opts.encodeArgs,
+    muxArgs: opts.muxArgs,
+    verbose: opts.verbose,
+    log,
+  });
+
+  const elapsedMs = Date.now() - started;
+  log(`Done → ${out} (${(elapsedMs / 1000).toFixed(1)}s)`);
+  return { out, frames: totalFrames, fps, elapsedMs };
 }

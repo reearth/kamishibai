@@ -3,8 +3,8 @@
 // Slice a web page into parallel-capturable units, seek through time,
 // and bake each frame into an mp4. A mechanism, not a framework.
 // ------------------------------------------------------------------
-export { render } from "./render.ts";
-export type { RenderOptions, RenderResult } from "./render.ts";
+export { render, encode } from "./render.ts";
+export type { RenderOptions, RenderResult, EncodeFramesDirOptions, EncodeResult } from "./render.ts";
 
 export { audio } from "./audio.ts";
 export type { AudioClip, AudioManifest } from "./audio.ts";
@@ -62,6 +62,10 @@ export {
   volumeExpr,
   hasAudioStream,
 } from "./ffmpeg.ts";
+
+// Assembling kept frames into a video (the stage `render`/`encode` share).
+export { assemble, readMuxSidecar, writeMuxSidecar } from "./assemble.ts";
+export type { AssembleOptions, MuxSidecar } from "./assemble.ts";
 
 // Subtitle parsing / serialization (also its own entry: kamishibai/subtitle).
 export {
