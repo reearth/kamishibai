@@ -58,6 +58,12 @@ export interface RenderOptions {
    *  incremental/only — once capture is skipped, the full re-encode dominates.
    *  No effect on GIF output. */
   preset?: string;
+  /** extra raw ffmpeg args for the video (H.264) encode pass — appended before
+   *  the output so they add to or override the fixed settings (mp4 only) */
+  encodeArgs?: string[];
+  /** extra raw ffmpeg args for the audio/subtitle mux pass — appended before
+   *  the output (mp4 only; no effect when the reel has no audio or subtitles) */
+  muxArgs?: string[];
   /** stream ffmpeg output to the console */
   verbose?: boolean;
   /** keep the intermediate PNG frames instead of deleting them */
@@ -272,6 +278,9 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     if (out.toLowerCase().endsWith(".gif")) {
       if (audioClips.length > 0) log(`(gif has no audio — ignoring ${audioClips.length} clip(s))`);
       if (opts.preset) log(`(gif encode ignores --preset/--preview — it applies to the mp4 H.264 pass only)`);
+      if (opts.encodeArgs?.length || opts.muxArgs?.length) {
+        log(`(gif ignores --encode-args/--mux-args — they apply to the mp4 encode/mux passes only)`);
+      }
       if (hasSoftSubs) {
         log(
           `(gif has no subtitle track — writing ${srtSidecar} only; ` +
@@ -310,6 +319,7 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
         crf: opts.crf,
         preset: opts.preset,
         maxWidth: opts.maxWidth,
+        extraArgs: opts.encodeArgs,
         verbose: opts.verbose,
       });
 
@@ -333,12 +343,13 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
           out,
           srt: srtTmp,
           videoDurationSec: total / meta.fps,
+          extraArgs: opts.muxArgs,
           verbose: opts.verbose,
         });
         await rm(encoded, { force: true }); // don't leave intermediates in a kept dir
       } else if (hasSoftSubs) {
         log(`Muxing ${collectedSubtitles.length} subtitle cue(s)…`);
-        await muxSubtitles({ video: encoded, srt: srtTmp!, out, verbose: opts.verbose });
+        await muxSubtitles({ video: encoded, srt: srtTmp!, out, extraArgs: opts.muxArgs, verbose: opts.verbose });
         await rm(encoded, { force: true });
       }
       if (srtTmp) await rm(srtTmp, { force: true });

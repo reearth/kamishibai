@@ -43,6 +43,10 @@ Options:
       --preset <name>   libx264 speed/compression preset (ultrafast … veryslow);
                         ultrafast speeds up the mp4 encode for quick confirms
       --preview         shortcut for --preset ultrafast (fast confirm encode)
+      --encode-args <s> extra ffmpeg args for the video encode pass, e.g.
+                        --encode-args "-tune animation" (mp4 only)
+      --mux-args <s>    extra ffmpeg args for the audio/subtitle mux pass, e.g.
+                        --mux-args "-movflags +faststart" (mp4 only)
       --keep-frames     keep the intermediate PNG frames
       --verbose         stream ffmpeg output
   -h, --help            show this help
@@ -66,8 +70,33 @@ const X264_PRESETS = [
   "medium", "slow", "slower", "veryslow", "placebo",
 ];
 
+/**
+ * Pull a raw passthrough option (and its value) out of an argv list before it
+ * reaches parseArgs, which otherwise rejects a value starting with "-" (nearly
+ * every ffmpeg flag) unless written as `--opt=…`. Supports both `--name value`
+ * and `--name=value`; returns the value and the argv with both tokens removed.
+ */
+function takeRawOption(argv: string[], name: string): { value?: string; rest: string[] } {
+  const rest: string[] = [];
+  const eq = `--${name}=`;
+  let value: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === `--${name}`) value = argv[++i]; // next token is the value, even if it starts with "-"
+    else if (a.startsWith(eq)) value = a.slice(eq.length);
+    else rest.push(a);
+  }
+  return { value, rest };
+}
+
 async function main(): Promise<void> {
+  // Extract the raw ffmpeg-passthrough options first (their dash-prefixed values
+  // confuse parseArgs), then hand the rest to parseArgs as usual.
+  const enc = takeRawOption(process.argv.slice(2), "encode-args");
+  const mux = takeRawOption(enc.rest, "mux-args");
+
   const { values, positionals } = parseArgs({
+    args: mux.rest,
     allowPositionals: true,
     options: {
       out: { type: "string", short: "o" },
@@ -138,6 +167,13 @@ async function main(): Promise<void> {
     throw new Error(`--preset must be one of ${X264_PRESETS.join(", ")}, got "${preset}"`);
   }
 
+  // Raw ffmpeg passthrough, split on whitespace (so quote the whole string).
+  // Kept separate for the encode and mux passes since they differ in nature
+  // (H.264 compression vs. stream-copy mux).
+  const splitArgs = (s: string | undefined) => (s?.trim() ? s.trim().split(/\s+/) : undefined);
+  const encodeArgs = splitArgs(enc.value);
+  const muxArgs = splitArgs(mux.value);
+
   await render({
     entry,
     out: values.out ?? "out.mp4",
@@ -153,6 +189,8 @@ async function main(): Promise<void> {
     burnSubtitles: values["burn-subtitles"],
     crf,
     preset,
+    encodeArgs,
+    muxArgs,
     keepFrames: values["keep-frames"],
     verbose: values.verbose,
     onLog: (msg) => process.stderr.write(`${msg}\n`),

@@ -67,12 +67,15 @@ export interface EncodeOptions {
   preset?: string;
   /** downscale to at most this width (keeps aspect); omit for native size */
   maxWidth?: number;
+  /** extra raw ffmpeg args appended just before the output, so they add to or
+   *  override the fixed encode settings (e.g. ["-tune","animation"]) */
+  extraArgs?: string[];
   verbose?: boolean;
 }
 
 /** Encode the f000000.png … sequence into a silent H.264 mp4. */
 export async function encodeFrames(opts: EncodeOptions): Promise<void> {
-  const { framesDir, fps, out, crf = 18, preset, maxWidth, verbose = false } = opts;
+  const { framesDir, fps, out, crf = 18, preset, maxWidth, extraArgs = [], verbose = false } = opts;
   // yuv420p needs even dimensions: cap width to an even number, height -2.
   const vf = maxWidth
     ? ["-vf", `scale='min(${Math.floor(maxWidth / 2) * 2},iw)':-2:flags=lanczos`]
@@ -87,6 +90,7 @@ export async function encodeFrames(opts: EncodeOptions): Promise<void> {
       ...(preset ? ["-preset", preset] : []),
       "-pix_fmt", "yuv420p",
       "-crf", String(crf),
+      ...extraArgs,
       out,
     ],
     verbose,
@@ -149,6 +153,9 @@ export interface MuxOptions {
    * the output runs as long as its longest stream.
    */
   videoDurationSec?: number;
+  /** extra raw ffmpeg args appended just before the output, to add to or
+   *  override the mux settings (e.g. ["-c:a","libopus"], ["-movflags","+faststart"]) */
+  extraArgs?: string[];
   verbose?: boolean;
 }
 
@@ -262,6 +269,8 @@ export interface MuxSubtitlesOptions {
   /** an SRT file to embed */
   srt: string;
   out: string;
+  /** extra raw ffmpeg args appended just before the output (mux passthrough) */
+  extraArgs?: string[];
   verbose?: boolean;
 }
 
@@ -271,7 +280,7 @@ export interface MuxSubtitlesOptions {
  * the player's (burn captions in if you need pixel-perfect styling).
  */
 export async function muxSubtitles(opts: MuxSubtitlesOptions): Promise<void> {
-  const { video, srt, out, verbose = false } = opts;
+  const { video, srt, out, extraArgs = [], verbose = false } = opts;
   await runFfmpeg(
     [
       "-y",
@@ -281,6 +290,7 @@ export async function muxSubtitles(opts: MuxSubtitlesOptions): Promise<void> {
       "-map", "1",
       "-c", "copy",
       "-c:s", "mov_text",
+      ...extraArgs,
       out,
     ],
     verbose,
@@ -292,7 +302,7 @@ export async function muxSubtitles(opts: MuxSubtitlesOptions): Promise<void> {
  * delayed to its start time, then mixed together. Video stream is copied.
  */
 export async function muxAudio(opts: MuxOptions): Promise<void> {
-  const { video, clips, out, srt, videoDurationSec, verbose = false } = opts;
+  const { video, clips, out, srt, videoDurationSec, extraArgs = [], verbose = false } = opts;
   if (clips.length === 0) {
     throw new Error("muxAudio called with an empty manifest");
   }
@@ -328,6 +338,7 @@ export async function muxAudio(opts: MuxOptions): Promise<void> {
       "-c:a", "aac",
       ...subs.codec,
       ...clamp,
+      ...extraArgs,
       out,
     ],
     verbose,

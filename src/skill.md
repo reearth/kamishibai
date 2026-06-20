@@ -313,12 +313,22 @@ kamishibai render <entry|url> [options]
 | `--crf` | | H.264 quality, lower = better (default 18) |
 | `--preset` | | libx264 speed preset (`ultrafast`…`veryslow`); `ultrafast` speeds up the mp4 encode (mp4 only) |
 | `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
+| `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
+| `--mux-args` | | raw ffmpeg args for the audio/subtitle mux pass, e.g. `"-movflags +faststart"` (mp4 only) |
 | `--keep-frames` | | keep intermediate PNGs (temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
 
 GIF frame delays are quantized to 1/100s, so pair `.gif` output with `--fps` set
 to a divisor of 100 (e.g. 25 or 50) for exact timing; other rates drift in speed
 (60fps gif effectively plays at 100fps).
+
+`--encode-args` and `--mux-args` are raw ffmpeg escape hatches, kept separate
+because the two passes differ: the **encode** pass compresses the PNGs to H.264
+(where `-tune` / `-x264-params` / `-profile:v` belong), the **mux** pass
+stream-copies that video while adding audio/subtitles (where `-c:a` / `-movflags`
+belong). Each string is appended just before the output, so it can override the
+built-in flags. The string is split on whitespace, so wrap each in quotes and
+don't rely on spaces inside a single argument's value. Both are mp4-only.
 
 The `<entry|url>` can be:
 - a **URL** you already serve,
