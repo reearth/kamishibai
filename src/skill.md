@@ -556,6 +556,26 @@ When a render finishes, show it to whoever asked: on macOS, `open out.mp4` plays
 it straight away (QuickTime) — a small courtesy that lets them watch immediately.
 Follow any explicit instruction about the output instead, if given.
 
+### Output & logs
+
+The output is **concise and bounded — roughly a dozen lines for a whole render**,
+no matter how many frames: one line per phase (`Probing` / `Capturing` /
+`Encoding` / `Muxing` / `Done → <path>`) plus one `✓ chunk …` per Chrome worker
+(at most ~8). There is **no per-frame logging**, and **ffmpeg is silent unless
+`--verbose`** — its output is captured and only printed (the last lines) if it
+*fails*. `encode` prints even less.
+
+So **run it in the foreground and read all of the output — don't pipe it through
+`tail`/`head`.** There's no flood to trim, and trimming hides the very lines you
+need: the final `Done → <path>` and, on failure, the ffmpeg error tail. Reach for
+`--verbose` only when debugging an ffmpeg failure — *that* is a flood, and the one
+time `tail` earns its keep.
+
+One caveat on granularity: during capture the only progress is a `✓ chunk` line
+as each worker finishes its whole range, so a long reel can sit quiet for a while
+between lines — that's normal, not a hang. (For per-step visibility while
+iterating, render and then `encode` separately: each phase is its own command.)
+
 ## Determinism checklist
 
 - Await fonts before drawing text (the renderer awaits `document.fonts.ready`,
