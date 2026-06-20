@@ -3,8 +3,15 @@
 // Slice a web page into parallel-capturable units, seek through time,
 // and bake each frame into an mp4. A mechanism, not a framework.
 // ------------------------------------------------------------------
-export { render, encode } from "./render.ts";
-export type { RenderOptions, RenderResult, EncodeFramesDirOptions, EncodeResult } from "./render.ts";
+export { render, capture, encode } from "./render.ts";
+export type {
+  RenderOptions,
+  RenderResult,
+  CaptureOptions,
+  CaptureResult,
+  EncodeFramesDirOptions,
+  EncodeResult,
+} from "./render.ts";
 
 export { audio } from "./audio.ts";
 export type { AudioClip, AudioManifest } from "./audio.ts";

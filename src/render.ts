@@ -12,6 +12,7 @@ import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
 import { assertFfmpeg, hasAudioStream } from "./ffmpeg.ts";
 import { applyDucking, type AudioManifest, type AudioClip } from "./audio.ts";
+import type { Cue } from "./subtitle.ts";
 import { assemble, writeMuxSidecar, readMuxSidecar } from "./assemble.ts";
 import { createTTSEngine, type TTSAdapter } from "./tts/engine.ts";
 import {
@@ -86,6 +87,9 @@ export interface RenderOptions {
    * has no subtitle track.
    */
   burnSubtitles?: boolean;
+  /** emit a "captured/encoded X/total" heartbeat at most this often (ms;
+   *  default 60s). Short jobs finish before the first tick, so stay quiet. */
+  progressEveryMs?: number;
   /** progress / status callback */
   onLog?: (msg: string) => void;
   /** custom TTS adapters for <Narration>/prepareNarration (a matching
@@ -147,14 +151,65 @@ async function clearFrames(dir: string): Promise<void> {
   );
 }
 
-/** Render an entry into an mp4. Returns once the file is written. */
-export async function render(opts: RenderOptions): Promise<RenderResult> {
-  const log = opts.onLog ?? (() => {});
-  const started = Date.now();
+export interface CaptureOptions {
+  /** a URL, an .html file, or a script entry (.ts/.tsx/.js/.jsx) */
+  entry: string;
+  /** dir to write the f000000.png … sequence into (created if needed) */
+  framesDir: string;
+  /** override the page's meta.fps (re-samples the same reel at this rate) */
+  fps?: number;
+  /** number of parallel Chrome instances; defaults to ~cpus-2 (max 8) */
+  workers?: number;
+  /** device scale factor — output pixels = meta size × scale (default 1) */
+  scale?: number;
+  /** static assets to serve at the server root (for staticFile-style paths) */
+  publicDir?: string;
+  /** extra audio clips, merged with the markers the page declares */
+  audio?: AudioManifest;
+  /** reuse cached frames by fingerprint; only re-capture changed frames */
+  incremental?: boolean;
+  /** render only these frame indices (e.g. "0-30,90"); leave the rest on disk */
+  only?: string;
+  /** burn <Subtitle> captions into the frames instead of a soft track */
+  burnSubtitles?: boolean;
+  /** write the manifest + mux sidecar to the frames dir for later reuse
+   *  (`encode`/incremental). Default true; render sets it false for a temp dir. */
+  persist?: boolean;
+  /** emit a "captured X/total" heartbeat at most this often (ms; default 60s) */
+  progressEveryMs?: number;
+  /** progress / status callback */
+  onLog?: (msg: string) => void;
+  /** custom TTS adapters for <Narration>/prepareNarration */
+  ttsAdapters?: TTSAdapter[];
+  /** where baked narration audio is cached (default: <cwd>/.kamishibai-tts) */
+  ttsCacheDir?: string;
+}
 
+export interface CaptureResult {
+  framesDir: string;
+  meta: KamishibaiMeta;
+  /** number of frames captured (the reel length) */
+  frames: number;
+  workers: number;
+  /** final audio clips (resolved + ducked), ready to mux */
+  audio: AudioManifest;
+  /** soft subtitle cues collected from the page */
+  subtitles: Cue[];
+}
+
+/**
+ * Capture an entry's frames into `framesDir` — serve, probe, split, and run the
+ * parallel Chrome pool — WITHOUT encoding. Returns the geometry and the mux
+ * inputs (resolved audio + subtitle cues); with `persist` (default), also writes
+ * the manifest and mux sidecar so a later `encode` can rebuild the full video.
+ */
+export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
+  const log = opts.onLog ?? (() => {});
+  const persist = opts.persist ?? true;
+  const framesDir = resolve(opts.framesDir);
   await assertFfmpeg();
 
-  // The narration pre-pass: one engine for the whole render (probe + every
+  // The narration pre-pass: one engine for the whole capture (probe + every
   // worker share this server), so its cache + in-flight dedup make TTS run
   // once and freeze — deterministic across parallel capture.
   const tts = createTTSEngine({ adapters: opts.ttsAdapters, cacheDir: opts.ttsCacheDir });
@@ -164,28 +219,10 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     burnSubtitles: opts.burnSubtitles,
   });
 
-  // Incremental / --only reuse PNGs on disk across runs, so they need a
-  // persisted frames dir and must NOT wipe it first.
+  // Reuse (incremental/--only) keeps PNGs on disk, so don't wipe first.
   const reuse = !!(opts.incremental || opts.only);
-  if (reuse && !opts.framesDir) {
-    throw new Error(
-      `${opts.incremental ? "incremental" : "only"} needs a persisted frames dir — pass framesDir (--frames-dir)`,
-    );
-  }
-
-  // Explicit framesDir -> create it, clear stale frames, and keep it.
-  // Otherwise use a temp dir that's removed afterwards (unless keepFrames).
-  const usingTempFrames = !opts.framesDir;
-  const framesDir = opts.framesDir
-    ? resolve(opts.framesDir)
-    : await mkdtemp(join(tmpdir(), "kamishibai-frames-"));
   await mkdir(framesDir, { recursive: true });
-  // Clear stale frames for a fresh explicit-dir run, but keep them when we're
-  // reusing (incremental/--only) so cached frames survive into this run.
-  if (!usingTempFrames && !reuse) await clearFrames(framesDir);
-
-  const out = resolve(opts.out);
-  await mkdir(dirname(out), { recursive: true });
+  if (!reuse) await clearFrames(framesDir);
 
   try {
     log(`Probing ${served.url} …`);
@@ -233,22 +270,40 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
         `${opts.incremental && prevFingerprints?.size ? ` (incremental: ${prevFingerprints.size} cached)` : ""}`,
     );
 
-    const { audio: collectedAudio, subtitles: collectedSubtitles } = await renderPool({
-      url: served.url,
-      meta,
-      chunks,
-      framesDir,
-      scale,
-      prevFingerprints,
-      shouldRender,
-      onFingerprint: (i, fp) => fingerprints.set(i, fp),
-      onChunkDone: (c) => log(`  ✓ chunk ${c.id}: frames ${c.start}..${c.end - 1}`),
-    });
+    // Heartbeat: capture only reports per chunk (one Chrome finishing its whole
+    // range), so a long reel can sit quiet for minutes. Emit a periodic
+    // "captured X/total" so progress is visible without per-frame spam.
+    let doneFrames = 0;
+    const heartbeat = setInterval(() => {
+      if (doneFrames > 0 && doneFrames < total) log(`  …captured ${doneFrames}/${total} frame(s)`);
+    }, opts.progressEveryMs ?? 60_000);
+    heartbeat.unref?.();
 
-    // Persist the manifest whenever frames are kept, so the next run can build
-    // incrementally. Merge over the previous prints so frames skipped by --only
-    // (which produced no new print this run) keep their old entry.
-    if (!usingTempFrames) {
+    let collected;
+    try {
+      collected = await renderPool({
+        url: served.url,
+        meta,
+        chunks,
+        framesDir,
+        scale,
+        prevFingerprints,
+        shouldRender,
+        onProgress: (done) => {
+          doneFrames = done;
+        },
+        onFingerprint: (i, fp) => fingerprints.set(i, fp),
+        onChunkDone: (c) => log(`  ✓ chunk ${c.id}: frames ${c.start}..${c.end - 1}`),
+      });
+    } finally {
+      clearInterval(heartbeat);
+    }
+    const collectedSubtitles = collected.subtitles;
+
+    // Persist the manifest so the next run can build incrementally. Merge over
+    // the previous prints so frames skipped by --only (which produced no new
+    // print this run) keep their old entry.
+    if (persist) {
       const prevForMerge = opts.only ? manifestFrames(await readManifest(framesDir), manifestKey) : undefined;
       const merged = prevForMerge ? new Map([...prevForMerge, ...fingerprints]) : fingerprints;
       if (merged.size > 0) await writeManifest(framesDir, buildManifest(manifestKey, merged));
@@ -258,27 +313,86 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     // replacement) — so passing `audio` adds to a page's <Audio>/<Narration>
     // instead of silently dropping it, and still works for a URL entry you
     // don't control (where there are no page markers).
-    const declared = [...collectedAudio, ...(opts.audio ?? [])];
+    const declared = [...collected.audio, ...(opts.audio ?? [])];
     // Resolve srcs and drop silent clips first, then auto-duck (so a dropped
     // narration line doesn't leave a phantom dip in the music).
     const audioClips = applyDucking(await prepareAudio(declared, opts.publicDir, log));
 
     // Persist the mux inputs next to the frames so `encode` can rebuild the
     // full video later (audio + subtitles) without re-capturing — but only on a
-    // full or incremental render, which seeks every frame and so collects every
+    // full or incremental capture, which seeks every frame and so collects every
     // marker. A --only run seeks just the selected frames, so its markers are
     // partial; keep the prior full render's sidecar instead.
-    if (!usingTempFrames && !opts.only) {
+    if (persist && !opts.only) {
       await writeMuxSidecar(framesDir, audioClips, collectedSubtitles);
     }
 
-    await assemble({
+    return {
       framesDir,
-      fps: meta.fps,
-      totalFrames: total,
-      out,
+      meta,
+      frames: total,
+      workers: chunks.length,
       audio: audioClips,
       subtitles: collectedSubtitles,
+    };
+  } finally {
+    await served.close();
+  }
+}
+
+/**
+ * Render an entry into an mp4/gif: capture the frames, then assemble (encode +
+ * mux). Just composes `capture` and the assemble stage — no extra modes — so
+ * `kamishibai capture` + `kamishibai encode` reproduce exactly what it does.
+ */
+export async function render(opts: RenderOptions): Promise<RenderResult> {
+  const log = opts.onLog ?? (() => {});
+  const started = Date.now();
+
+  // Incremental / --only reuse PNGs across runs, so they need a persisted dir.
+  const reuse = !!(opts.incremental || opts.only);
+  if (reuse && !opts.framesDir) {
+    throw new Error(
+      `${opts.incremental ? "incremental" : "only"} needs a persisted frames dir — pass framesDir (--frames-dir)`,
+    );
+  }
+
+  // Explicit framesDir -> keep it. Otherwise a temp dir, removed afterwards
+  // (unless keepFrames). The temp case skips persisting manifest/sidecar.
+  const usingTempFrames = !opts.framesDir;
+  const framesDir = opts.framesDir
+    ? resolve(opts.framesDir)
+    : await mkdtemp(join(tmpdir(), "kamishibai-frames-"));
+
+  const out = resolve(opts.out);
+  await mkdir(dirname(out), { recursive: true });
+
+  try {
+    const cap = await capture({
+      entry: opts.entry,
+      framesDir,
+      fps: opts.fps,
+      workers: opts.workers,
+      scale: opts.scale,
+      publicDir: opts.publicDir,
+      audio: opts.audio,
+      incremental: opts.incremental,
+      only: opts.only,
+      burnSubtitles: opts.burnSubtitles,
+      persist: !usingTempFrames,
+      progressEveryMs: opts.progressEveryMs,
+      onLog: log,
+      ttsAdapters: opts.ttsAdapters,
+      ttsCacheDir: opts.ttsCacheDir,
+    });
+
+    await assemble({
+      framesDir,
+      fps: cap.meta.fps,
+      totalFrames: cap.frames,
+      out,
+      audio: cap.audio,
+      subtitles: cap.subtitles,
       crf: opts.crf,
       preset: opts.preset,
       maxWidth: opts.maxWidth,
@@ -286,14 +400,14 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       encodeArgs: opts.encodeArgs,
       muxArgs: opts.muxArgs,
       verbose: opts.verbose,
+      progressEveryMs: opts.progressEveryMs,
       log,
     });
 
     const elapsedMs = Date.now() - started;
     log(`Done → ${out} (${(elapsedMs / 1000).toFixed(1)}s)`);
-    return { out, meta, frames: total, workers: chunks.length, elapsedMs };
+    return { out, meta: cap.meta, frames: cap.frames, workers: cap.workers, elapsedMs };
   } finally {
-    await served.close();
     // Keep frames when the user picked the directory, or asked to keep them.
     const keep = opts.keepFrames || !usingTempFrames;
     if (keep) log(`Frames kept in ${framesDir}`);
@@ -314,6 +428,8 @@ export interface EncodeFramesDirOptions {
   gifLoop?: number;
   encodeArgs?: string[];
   muxArgs?: string[];
+  /** emit an "encoded X/total" heartbeat at most this often (ms; default 60s) */
+  progressEveryMs?: number;
   verbose?: boolean;
   onLog?: (msg: string) => void;
 }
@@ -377,6 +493,7 @@ export async function encode(opts: EncodeFramesDirOptions): Promise<EncodeResult
     gifLoop: opts.gifLoop,
     encodeArgs: opts.encodeArgs,
     muxArgs: opts.muxArgs,
+    progressEveryMs: opts.progressEveryMs,
     verbose: opts.verbose,
     log,
   });

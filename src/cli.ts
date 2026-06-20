@@ -11,14 +11,15 @@
 //   --help, -h            show this help
 // ------------------------------------------------------------------
 import { parseArgs } from "node:util";
-import { render, encode } from "./render.ts";
+import { render, encode, capture } from "./render.ts";
 import SKILL from "./skill.md";
 
 const HELP = `kamishibai — seek a web page frame by frame and bake it into an mp4.
 
 Usage:
-  kamishibai render <entry|url> [options]
-  kamishibai encode -f <frames-dir> [options]   re-encode kept frames, no capture
+  kamishibai render <entry|url> [options]        capture + encode (the usual one)
+  kamishibai capture <entry|url> -f <dir> [opts] capture frames only, no encode
+  kamishibai encode -f <frames-dir> [options]    re-encode kept frames, no capture
   kamishibai skill                    print the full usage guide (markdown)
 
 Arguments:
@@ -61,7 +62,8 @@ Examples:
   kamishibai render reel.tsx -f frames -i -o reel.mp4         # incremental rebuild
   kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
   kamishibai render reel.tsx -f frames --only 0-30 -o reel.mp4
-  kamishibai encode -f frames -o reel.mp4                     # re-encode kept frames
+  kamishibai capture reel.tsx -f frames                       # capture frames only
+  kamishibai encode -f frames -o reel.mp4                     # then encode them
   kamishibai encode -f frames --preview -o preview.mp4        # fast, no capture
   kamishibai skill > kamishibai.md
 `;
@@ -136,9 +138,9 @@ async function main(): Promise<void> {
     process.exit(values.help ? 0 : 1);
   }
 
-  if (command !== "render" && command !== "encode") {
+  if (command !== "render" && command !== "encode" && command !== "capture") {
     process.stderr.write(
-      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: kamishibai encode -f <frames-dir>)\n`,
+      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / encode -f <frames-dir>)\n`,
     );
     process.exit(1);
   }
@@ -174,6 +176,34 @@ async function main(): Promise<void> {
   const splitArgs = (s: string | undefined) => (s?.trim() ? s.trim().split(/\s+/) : undefined);
   const encodeArgs = splitArgs(enc.value);
   const muxArgs = splitArgs(mux.value);
+
+  // `kamishibai capture` captures frames into a dir WITHOUT encoding — pair it
+  // with `kamishibai encode` to split a render into its two halves.
+  if (command === "capture") {
+    if (!entry) {
+      process.stderr.write(`Missing <entry|url>.\n\n${HELP}`);
+      process.exit(1);
+    }
+    const framesDir = values["frames-dir"];
+    if (!framesDir) {
+      process.stderr.write(`capture needs a frames dir — pass -f/--frames-dir <dir>.\n`);
+      process.exit(1);
+    }
+    const cap = await capture({
+      entry,
+      framesDir,
+      fps,
+      workers,
+      scale,
+      publicDir: values.public,
+      incremental: values.incremental,
+      only: values.only,
+      burnSubtitles: values["burn-subtitles"],
+      onLog: (msg) => process.stderr.write(`${msg}\n`),
+    });
+    process.stderr.write(`Captured ${cap.frames} frame(s) → ${cap.framesDir}\n`);
+    return;
+  }
 
   // `kamishibai encode` re-assembles a frames dir into a video without
   // re-capturing — no entry, no browser. fps/audio/subtitles come from the dir.

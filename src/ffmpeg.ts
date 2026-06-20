@@ -39,14 +39,26 @@ export async function hasAudioStream(src: string): Promise<boolean> {
   }
 }
 
-function runFfmpeg(args: string[], verbose: boolean): Promise<void> {
+function runFfmpeg(
+  args: string[],
+  verbose: boolean,
+  onProgress?: (frame: number) => void,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ffmpeg", args, {
       stdio: verbose ? "inherit" : ["ignore", "ignore", "pipe"],
     });
     let stderr = "";
     proc.stderr?.on("data", (d) => {
-      stderr += d.toString();
+      const s = d.toString();
+      stderr += s;
+      // ffmpeg prints a "frame=  NNN …" stats line to stderr as it encodes;
+      // surface the latest count so callers can show progress (verbose pipes
+      // straight to the console, so there's no stderr to parse there).
+      if (onProgress) {
+        const m = s.match(/frame=\s*(\d+)/g);
+        if (m) onProgress(Number(m[m.length - 1]!.match(/(\d+)/)![1]));
+      }
     });
     proc.on("error", reject);
     proc.on("close", (code) => {
@@ -70,12 +82,14 @@ export interface EncodeOptions {
   /** extra raw ffmpeg args appended just before the output, so they add to or
    *  override the fixed encode settings (e.g. ["-tune","animation"]) */
   extraArgs?: string[];
+  /** called with the latest encoded frame number as ffmpeg reports it */
+  onProgress?: (frame: number) => void;
   verbose?: boolean;
 }
 
 /** Encode the f000000.png … sequence into a silent H.264 mp4. */
 export async function encodeFrames(opts: EncodeOptions): Promise<void> {
-  const { framesDir, fps, out, crf = 18, preset, maxWidth, extraArgs = [], verbose = false } = opts;
+  const { framesDir, fps, out, crf = 18, preset, maxWidth, extraArgs = [], onProgress, verbose = false } = opts;
   // yuv420p needs even dimensions: cap width to an even number, height -2.
   const vf = maxWidth
     ? ["-vf", `scale='min(${Math.floor(maxWidth / 2) * 2},iw)':-2:flags=lanczos`]
@@ -94,6 +108,7 @@ export async function encodeFrames(opts: EncodeOptions): Promise<void> {
       out,
     ],
     verbose,
+    onProgress,
   );
 }
 

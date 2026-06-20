@@ -69,6 +69,8 @@ export interface AssembleOptions {
   gifLoop?: number;
   encodeArgs?: string[];
   muxArgs?: string[];
+  /** emit an "encoded X/total" heartbeat at most this often (ms; default 60s) */
+  progressEveryMs?: number;
   verbose?: boolean;
   log?: (msg: string) => void;
 }
@@ -118,16 +120,30 @@ export async function assemble(opts: AssembleOptions): Promise<void> {
     // Encode into a temp first when there's a mux pass to follow, so the last
     // pass writes `out`: encode -> (audio + subtitles, one pass).
     const encoded = hasAudio || hasSoftSubs ? join(framesDir, "_encoded.mp4") : out;
-    await encodeFrames({
-      framesDir,
-      fps,
-      out: encoded,
-      crf: opts.crf,
-      preset: opts.preset,
-      maxWidth: opts.maxWidth,
-      extraArgs: opts.encodeArgs,
-      verbose: opts.verbose,
-    });
+    // Heartbeat: the encode is one long ffmpeg call, so emit a periodic
+    // "encoded X/total" from the frame count ffmpeg reports, without spam.
+    let encFrame = 0;
+    const heartbeat = setInterval(() => {
+      if (encFrame > 0 && encFrame < totalFrames) log(`  …encoded ${encFrame}/${totalFrames} frame(s)`);
+    }, opts.progressEveryMs ?? 60_000);
+    heartbeat.unref?.();
+    try {
+      await encodeFrames({
+        framesDir,
+        fps,
+        out: encoded,
+        crf: opts.crf,
+        preset: opts.preset,
+        maxWidth: opts.maxWidth,
+        extraArgs: opts.encodeArgs,
+        onProgress: (f) => {
+          encFrame = f;
+        },
+        verbose: opts.verbose,
+      });
+    } finally {
+      clearInterval(heartbeat);
+    }
 
     // Write the soft-subtitle srt once; it's embedded in whichever mux pass
     // runs (folded into the audio pass when there's audio, so the encoded
