@@ -133,6 +133,12 @@ kamishibai render reel.tsx -f frames -i -o reel.mp4     # re-render only what ch
 
 `kamishibai/react` returns the fingerprint automatically by hashing the committed DOM — so React reels get this for free, no annotation needed. The only thing the DOM hash can't see is `<canvas>`/WebGL pixels; those contribute a cheap token via `useFingerprint(token)` (`<Video>` already does). The cache auto-invalidates when the output geometry (fps/size/scale) changes, and `--only 0-30,90,120-150` is a manual escape hatch that renders just the frames you name. Both need a persisted `--frames-dir`. Caching trusts determinism — a frame that isn't a pure function of its ms can be wrongly reused; omit `-i` for a clean full render.
 
+Once `-i`/`--only` reduce capture to a handful of frames, the **full re-encode** of the PNG sequence becomes the dominant cost (every confirm re-encodes the whole reel, not just the changed frames). For a fast confirm loop, pair the reuse flag with `--preview` (= `--preset ultrafast`), which trades a larger file for a much quicker H.264 pass; drop it for the final render.
+
+```sh
+kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
+```
+
 ---
 
 ## Writing reels — the React sugar
@@ -347,6 +353,10 @@ kamishibai render <entry|url> [options]
 | `--burn-subtitles` | | burn captions into the frames instead of a soft track + sidecar `.srt` |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
 | `--crf` | | H.264 quality, lower = better (default: 18) |
+| `--preset` | | libx264 speed preset (`ultrafast`…`veryslow`); speeds up the mp4 encode (mp4 only) |
+| `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
+| `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
+| `--mux-args` | | raw ffmpeg args for the audio/subtitle mux pass, e.g. `"-movflags +faststart"` (mp4 only) |
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
 
@@ -357,10 +367,14 @@ kamishibai render reel.tsx -o reel.mp4 -w 4
 kamishibai render reel.tsx -s 2 -o reel@2x.mp4                   # 2× resolution
 kamishibai render reel.tsx -o reel.gif --fps 25 --max-width 720 # animated GIF
 kamishibai render reel.tsx -p public -o reel.mp4                # serve ./public at the root
+kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm encode
+kamishibai render reel.tsx --encode-args "-tune animation" -o reel.mp4
 kamishibai render http://localhost:3000 -o page.mp4
 ```
 
 Resolution comes from `meta.width`/`meta.height` (your CSS is authored in those pixels); `--scale` multiplies only the captured pixels, so a 1920×1080 reel at `-s 2` outputs 3840×2160 with the same layout. GIF frame delays are quantized to 1/100s, so pair `.gif` with `--fps` set to a divisor of 100 (25, 50, …) for exact timing.
+
+`--encode-args` and `--mux-args` are raw ffmpeg escape hatches, kept separate because the two passes differ: the **encode** pass compresses the PNGs to H.264 (`-tune`, `-x264-params`, `-profile:v`), while the **mux** pass stream-copies that video while adding audio/subtitles (`-c:a`, `-movflags`). Each string is appended just before the output, so it can override the built-in flags; it's split on whitespace, so quote the whole string.
 
 ---
 
