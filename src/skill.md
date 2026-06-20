@@ -125,12 +125,17 @@ committed DOM, so React reels get both for free; raw pages can return their own.
 Re-render only what changed and reuse the rest. Both modes keep PNGs on disk,
 so both need a persisted `--frames-dir`:
 
-- `--incremental` (`-i`) — compares each frame's fingerprint to the previous
-  run's (stored in `<frames-dir>/.kamishibai-cache.json`). Unchanged frames keep
-  their PNG; only changed frames are re-captured. The cache auto-invalidates if
-  the output geometry (fps / size / scale) changes.
+- `--incremental` (`-i`) — walks **every** frame and compares its fingerprint to
+  the previous run's (stored in `<frames-dir>/.kamishibai-cache.json`). Unchanged
+  frames keep their PNG (the screenshot is skipped, but the page is still seeked
+  to compute the print); only changed frames are re-captured. The cache
+  auto-invalidates if the output geometry (fps / size / scale) changes. Use it
+  when the change is **scattered** and you don't know which frames moved.
 - `--only 0-30,90,120-150` — render just the named frames, leaving every other
-  PNG untouched (needs a prior full render to fill the gaps).
+  PNG untouched (needs a prior full render to fill the gaps). It never visits the
+  other frames at all, so when you know exactly what changed — especially a
+  **tail-only edit** — it's far faster than `-i`, which still has to walk the
+  whole reel to fingerprint it.
 
 ```sh
 kamishibai render reel.tsx -f frames -o reel.mp4        # seed the cache
