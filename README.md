@@ -376,15 +376,23 @@ Resolution comes from `meta.width`/`meta.height` (your CSS is authored in those 
 
 `--encode-args` and `--mux-args` are raw ffmpeg escape hatches, kept separate because the two passes differ: the **encode** pass compresses the PNGs to H.264 (`-tune`, `-x264-params`, `-profile:v`), while the **mux** pass stream-copies that video while adding audio/subtitles (`-c:a`, `-movflags`). Each string is appended just before the output, so it can override the built-in flags; it's split on whitespace, so quote the whole string.
 
-### Re-encoding kept frames
+### Splitting a render: `capture` + `encode`
 
-`kamishibai encode -f <frames-dir>` rebuilds a video from a `--frames-dir` a prior render kept — **no browser, no capture, just ffmpeg.** It's the fastest path when the PNGs are already correct and you only want to change encode/mux settings (`--crf`, `--preset`/`--preview`, `--max-width`, `--encode-args`, or a `.gif`). It's a full video, not silent: a *full* render persists a mux sidecar next to the frames (the resolved + ducked audio clips and soft subtitle cues), and `encode` replays it, so audio and captions come back without re-capturing. fps comes from the frames dir's manifest (override with `--fps`); a `--only` render leaves the sidecar untouched (its markers are partial).
+A render is **capture** (seek the page into PNG frames) then **encode** (frames into a video). `render` does both, and the two halves are also their own subcommands — so you can capture once and re-encode many times:
 
 ```sh
-kamishibai render reel.tsx -f frames -o reel.mp4        # capture once (writes the sidecar)
+kamishibai capture reel.tsx -f frames                   # frames + manifest + mux sidecar, no video
+kamishibai encode  -f frames -o reel.mp4                # frames → video, no browser
+```
+
+`render reel.tsx -f frames -o out.mp4` is exactly those two in sequence. `encode` rebuilds the video from the dir — **no browser, no capture, just ffmpeg** — and replays the mux sidecar a full capture left (the resolved + ducked audio clips and soft subtitle cues), so audio and captions come back without re-capturing. It's the fastest path when the PNGs are already correct and you only want different encode/mux settings (`--crf`, `--preset`/`--preview`, `--max-width`, `--encode-args`, or a `.gif`). fps comes from the dir's manifest (override with `--fps`); a `--only` capture leaves the sidecar untouched (its markers are partial), and a dir of raw PNGs with no sidecar encodes silent.
+
+```sh
 kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio + subs intact
 kamishibai encode -f frames --crf 28 -o smaller.mp4     # try a setting without re-capturing
 ```
+
+For long jobs, capture and encode each print a `…captured X/total` / `…encoded X/total` heartbeat at most once a minute, so a slow reel shows it's advancing; short jobs finish before the first tick and stay quiet.
 
 ---
 
@@ -403,7 +411,7 @@ await render({
 });
 ```
 
-`encode({ framesDir, out })` re-assembles a kept frames dir into a video without re-capturing (the programmatic form of the `encode` subcommand above). Lower-level building blocks (`probeMeta`, `captureChunk`, `renderPool`, `serveEntry`, `encodeFrames`, `muxAudio`, `assemble`, `splitFrames`) are exported too if you want to assemble your own pipeline.
+`render` is just `capture` then `assemble`, and both are exported: `capture({ entry, framesDir })` captures frames (+ manifest + mux sidecar) without encoding, and `encode({ framesDir, out })` re-assembles a kept frames dir into a video without re-capturing (the programmatic forms of the subcommands above). Lower-level building blocks (`probeMeta`, `captureChunk`, `renderPool`, `serveEntry`, `encodeFrames`, `muxAudio`, `assemble`, `splitFrames`) are exported too if you want to assemble your own pipeline.
 
 ---
 

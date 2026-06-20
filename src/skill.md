@@ -350,27 +350,38 @@ kamishibai render reel.tsx -p public -o reel.mp4        # serve ./public at root
 kamishibai render http://localhost:3000 -o page.mp4
 ```
 
-### Re-encoding kept frames (`encode`, no capture)
+### Splitting a render: `capture` + `encode`
+
+A render is **capture** (seek the page → PNG frames) then **encode** (frames →
+video). `render` does both; the two halves are also their own subcommands, so you
+can capture once and encode many times:
 
 ```
-kamishibai encode -f <frames-dir> [options]
+kamishibai capture <entry|url> -f <frames-dir> [options]   # frames only, no video
+kamishibai encode  -f <frames-dir> [options]               # frames → video, no capture
 ```
 
-`encode` rebuilds a video from a `--frames-dir` a prior render kept — **no
-browser, no probe, no TTS, just ffmpeg.** It's the fastest path when the PNGs are
-already correct and you only want to change encode/mux settings (a different
-`--crf`/`--preset`, a `--max-width`, `--encode-args`, or a `.gif`). It's a full
-video, not silent: a *full* render writes a mux sidecar next to the frames (the
-resolved + ducked audio clips and the soft subtitle cues), and `encode` replays
-it — so audio and captions come back without re-capturing.
+`render reel.tsx -f frames -o out.mp4` is exactly `capture reel.tsx -f frames`
+then `encode -f frames -o out.mp4` — same frames, same output.
 
-- fps comes from the frames dir's manifest (override with `--fps`).
-- A `--only` render does **not** update the sidecar (it seeks just the selected
-  frames, so its markers are partial); the prior full render's sidecar is kept.
+**`capture`** writes the PNGs, the fingerprint manifest, and a **mux sidecar**
+(the resolved + ducked audio clips and the soft subtitle cues) into the dir. It
+takes the capture-time flags: `-w`, `--fps`, `-s/--scale`, `-p/--public`, `-i`,
+`--only`, `--burn-subtitles`.
+
+**`encode`** rebuilds the video from that dir — **no browser, no probe, no TTS,
+just ffmpeg** — and replays the sidecar, so audio and captions come back without
+re-capturing. The fastest path when the frames are already correct and you only
+want different encode/mux settings (a new `--crf`/`--preset`, a `--max-width`,
+`--encode-args`, or a `.gif`).
+
+- fps comes from the dir's manifest (override with `--fps`).
+- A `--only` capture does **not** update the sidecar (it seeks just the selected
+  frames, so its markers are partial); the prior full capture's sidecar is kept.
 - Without a sidecar (e.g. a raw dir of PNGs, where you must pass `--fps`) the
   output is silent.
-- Honors `--out`, `--fps`, `--crf`, `--preset`/`--preview`, `--max-width`,
-  `--gif-loop`, `--encode-args`, `--mux-args`, `--verbose`.
+- `encode` honors `--out`, `--fps`, `--crf`, `--preset`/`--preview`,
+  `--max-width`, `--gif-loop`, `--encode-args`, `--mux-args`, `--verbose`.
 
 ```
 kamishibai render reel.tsx -f frames -o reel.mp4        # capture once (writes the sidecar)
@@ -571,10 +582,11 @@ need: the final `Done → <path>` and, on failure, the ffmpeg error tail. Reach 
 `--verbose` only when debugging an ffmpeg failure — *that* is a flood, and the one
 time `tail` earns its keep.
 
-One caveat on granularity: during capture the only progress is a `✓ chunk` line
-as each worker finishes its whole range, so a long reel can sit quiet for a while
-between lines — that's normal, not a hang. (For per-step visibility while
-iterating, render and then `encode` separately: each phase is its own command.)
+For long jobs there's also a **heartbeat**: capture and encode each emit a
+`…captured X/total` / `…encoded X/total` line at most once a minute, so a slow
+reel shows it's advancing rather than sitting silent. Short jobs finish before the
+first tick, so nothing extra prints. So even on a long render the line rate stays
+low — still no reason to `tail`.
 
 ## Determinism checklist
 
