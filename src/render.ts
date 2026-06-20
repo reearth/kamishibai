@@ -313,29 +313,35 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
         verbose: opts.verbose,
       });
 
-      let videoPath = encoded;
+      // Write the soft-subtitle srt once; it's embedded in whichever mux pass
+      // runs (folded into the audio pass when there's audio, so the encoded
+      // video is only ever read/written once for muxing).
+      let srtTmp: string | undefined;
+      if (hasSoftSubs) {
+        srtTmp = join(framesDir, "_subs.srt");
+        await writeFile(srtTmp, cuesToSrt(collectedSubtitles), "utf8");
+      }
+
       if (hasAudio) {
-        const next = hasSoftSubs ? join(framesDir, "_audio.mp4") : out;
-        log(`Muxing ${audioClips.length} audio clip(s)…`);
+        log(
+          `Muxing ${audioClips.length} audio clip(s)` +
+            `${hasSoftSubs ? ` + ${collectedSubtitles.length} subtitle cue(s)` : ""}…`,
+        );
         await muxAudio({
-          video: videoPath,
+          video: encoded,
           clips: audioClips,
-          out: next,
+          out,
+          srt: srtTmp,
           videoDurationSec: total / meta.fps,
           verbose: opts.verbose,
         });
-        await rm(videoPath, { force: true }); // don't leave intermediates in a kept dir
-        videoPath = next;
-      }
-
-      if (hasSoftSubs) {
-        const srtTmp = join(framesDir, "_subs.srt");
-        await writeFile(srtTmp, cuesToSrt(collectedSubtitles), "utf8");
+        await rm(encoded, { force: true }); // don't leave intermediates in a kept dir
+      } else if (hasSoftSubs) {
         log(`Muxing ${collectedSubtitles.length} subtitle cue(s)…`);
-        await muxSubtitles({ video: videoPath, srt: srtTmp, out, verbose: opts.verbose });
-        await rm(videoPath, { force: true });
-        await rm(srtTmp, { force: true });
+        await muxSubtitles({ video: encoded, srt: srtTmp!, out, verbose: opts.verbose });
+        await rm(encoded, { force: true });
       }
+      if (srtTmp) await rm(srtTmp, { force: true });
     }
 
     // Always emit the sidecar .srt alongside the output when there are soft cues

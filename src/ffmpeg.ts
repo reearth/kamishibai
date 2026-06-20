@@ -138,6 +138,13 @@ export interface MuxOptions {
   clips: AudioManifest;
   out: string;
   /**
+   * The reel's soft subtitle track, if it has one. Audio and subtitle muxing
+   * are both stream-copy on the video, so they always go in this one pass — an
+   * srt here is embedded as mov_text alongside the audio, never as a separate
+   * read/write of the encoded video. Undefined simply means no subtitles.
+   */
+  srt?: string;
+  /**
    * Clamp the output to this many seconds (the reel length). When omitted,
    * the output runs as long as its longest stream.
    */
@@ -285,7 +292,7 @@ export async function muxSubtitles(opts: MuxSubtitlesOptions): Promise<void> {
  * delayed to its start time, then mixed together. Video stream is copied.
  */
 export async function muxAudio(opts: MuxOptions): Promise<void> {
-  const { video, clips, out, videoDurationSec, verbose = false } = opts;
+  const { video, clips, out, srt, videoDurationSec, verbose = false } = opts;
   if (clips.length === 0) {
     throw new Error("muxAudio called with an empty manifest");
   }
@@ -300,16 +307,26 @@ export async function muxAudio(opts: MuxOptions): Promise<void> {
   // trim the video down to a shorter audio track.)
   const clamp = videoDurationSec ? ["-t", String(videoDurationSec)] : [];
 
+  // An srt rides along as a soft mov_text track in this same pass. Its input
+  // index is after the video (0) and the N audio clips (1..N), so N+1.
+  const srtIndex = clips.length + 1;
+  const subs = srt
+    ? { input: ["-i", srt], map: ["-map", String(srtIndex)], codec: ["-c:s", "mov_text"] }
+    : { input: [], map: [], codec: [] };
+
   await runFfmpeg(
     [
       "-y",
       "-i", video,
       ...inputs,
+      ...subs.input,
       "-filter_complex", filterComplex,
       "-map", "0:v",
       "-map", "[aout]",
+      ...subs.map,
       "-c:v", "copy",
       "-c:a", "aac",
+      ...subs.codec,
       ...clamp,
       out,
     ],
