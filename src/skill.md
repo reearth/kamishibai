@@ -162,6 +162,13 @@ is required: a frame that isn't a pure function of its ms can be wrongly reused 
 for a clean full render, just omit `-i` (an explicit `--frames-dir` is cleared
 and rebuilt when not incremental).
 
+**Confirm loop & gotchas.** After a localized edit, the fastest *playable* check
+is `--only <range> --preview` — capture only the frames that moved, then a quick
+ultrafast encode you can scrub in a player (the encode still scales with reel
+length, so a long reel is minutes, not seconds). Run **one render per frames-dir
+at a time**: concurrent encodes just contend (both slow), and a render killed
+mid-encode leaves an mp4 with **no moov atom** that players reject — re-run.
+
 ## Writing a reel
 
 ### Raw (no framework)
