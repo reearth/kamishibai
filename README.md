@@ -311,14 +311,15 @@ Helpers (`kamishibai/tts`, also re-exported from `kamishibai/react`): `narration
 Adapters are deliberately dumb (`text → bytes`) — no SSML layer, no voice UI. `say` is **macOS-only** (it shells out to the `say` binary), so it's the free local dev default; on Linux/Windows/CI use a network adapter. **Run the dev loop on `say`, then swap one line for the final render** — same reel:
 
 ```ts
-import { openaiAdapter, googleAdapter, pollyAdapter, elevenLabsAdapter } from "kamishibai/tts";
+import { openaiAdapter, googleAdapter, geminiAdapter, pollyAdapter, elevenLabsAdapter } from "kamishibai/tts";
 const voice = openaiAdapter({ model: "tts-1-hd", voice: "nova" });    // OPENAI_API_KEY
 const voice = googleAdapter({ name: "en-US-Neural2-F" });             // GOOGLE_API_KEY
+const voice = geminiAdapter({ voice: "Kore" });                       // GEMINI_API_KEY
 const voice = pollyAdapter({ voiceId: "Matthew", engine: "neural" }); // AWS_ACCESS_KEY_ID/SECRET (+AWS_REGION)
 const voice = elevenLabsAdapter({ voiceId: "…" });                    // ELEVENLABS_API_KEY
 ```
 
-(Polly is signed with a minimal built-in SigV4 — no AWS SDK dependency. Google returns base64 audio, decoded for you.)
+(Polly is signed with a minimal built-in SigV4 — no AWS SDK dependency. Google returns base64 audio, decoded for you; Gemini returns raw PCM, wrapped as WAV.)
 
 The adapter sets the voice for the whole batch; a single line can override its options (merged over the adapter's) with the object form. The override folds into the cache key, so only that line re-synthesizes — and changing `voice`/`model` busts *every* line. **Finalize the narration text first, then iterate on timing/visuals** (those are free); text and voice changes cost money.
 

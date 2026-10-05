@@ -64,7 +64,7 @@ export interface NarrationClip {
 /**
  * macOS `say` — zero cost, offline, deterministic. The dev-loop default.
  * NOTE: macOS only (uses the `say` binary). On Linux/Windows/CI use a network
- * adapter (openai / google / polly / elevenlabs) — same reel, one line swapped.
+ * adapter (openai / google / gemini / polly / elevenlabs) — same reel, one line swapped.
  */
 export function sayAdapter(opts: { voice?: string; rate?: number } = {}): TTSAdapterRef {
   const id = ["say", opts.voice ?? "default", opts.rate ?? "-"].join(":");
@@ -119,6 +119,27 @@ export function googleAdapter(opts: {
     id: `google:${languageCode}:${opts.name ?? opts.ssmlGender ?? "default"}`,
     provider: "google",
     opts: voice,
+  };
+}
+
+/** Gemini text-to-speech (Gemini API). Needs GEMINI_API_KEY (or
+ *  GOOGLE_API_KEY) in the render env. */
+export function geminiAdapter(opts: {
+  /** a TTS-capable Gemini model (default "gemini-2.5-flash-preview-tts") */
+  model?: string;
+  /** a prebuilt voice name, e.g. "Kore", "Puck", "Charon" (default "Kore") */
+  voice?: string;
+  /** style direction prepended to each line, e.g. "Say cheerfully" */
+  instructions?: string;
+} = {}): TTSAdapterRef {
+  const model = opts.model ?? "gemini-2.5-flash-preview-tts";
+  const voice = opts.voice ?? "Kore";
+  const o: Record<string, unknown> = { model, voice };
+  if (opts.instructions != null) o.instructions = opts.instructions;
+  return {
+    id: `gemini:${model}:${voice}:${opts.instructions ?? ""}`,
+    provider: "gemini",
+    opts: o,
   };
 }
 

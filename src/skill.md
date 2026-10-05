@@ -521,6 +521,7 @@ const steps = narrationSequence([vo.a, vo.b, vo.c]); // within one scene
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
 for the final render (same reel): `openaiAdapter({ model, voice })`
 (`OPENAI_API_KEY`), `googleAdapter({ name })` (`GOOGLE_API_KEY`),
+`geminiAdapter({ voice, model, instructions })` (`GEMINI_API_KEY`),
 `pollyAdapter({ voiceId, engine })` (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`,
 `AWS_REGION`; signed with a built-in SigV4, no AWS SDK), or
 `elevenLabsAdapter({ voiceId, model })` (`ELEVENLABS_API_KEY`). The

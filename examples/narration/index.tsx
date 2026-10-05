@@ -9,6 +9,7 @@
 // For the final render, swap the adapter for one line — same reel:
 //   const voice = openaiAdapter({ model: "tts-1-hd", voice: "nova" });
 //   const voice = googleAdapter({ name: "en-US-Neural2-F" });
+//   const voice = geminiAdapter({ voice: "Kore" });
 //   const voice = pollyAdapter({ voiceId: "Matthew", engine: "neural" });
 //   const voice = elevenLabsAdapter({ voiceId: "…" });
 //

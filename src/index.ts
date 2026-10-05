@@ -22,6 +22,7 @@ export {
   openaiAdapter,
   elevenLabsAdapter,
   googleAdapter,
+  geminiAdapter,
   pollyAdapter,
   prepareNarration,
 } from "./tts/index.ts";

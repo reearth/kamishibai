@@ -1,8 +1,8 @@
 // kamishibai TTS engine — the Node half of the narration pre-pass.
 // ------------------------------------------------------------------
-// Holds the real adapters (say / OpenAI / ElevenLabs, plus any custom ones),
-// synthesizes on demand behind a content-hash cache, and measures duration
-// with ffprobe. Served to the reel over POST /__tts (see ../serve.ts), it is
+// Holds the real adapters (say / OpenAI / ElevenLabs / Google / Gemini / Polly,
+// plus any custom ones), synthesizes on demand behind a content-hash cache, and
+// measures duration with ffprobe. Served to the reel over POST /__tts (see ../serve.ts), it is
 // the single point where non-deterministic, billable TTS happens — exactly
 // once per (adapter, text), frozen to a file thereafter.
 //
@@ -74,7 +74,7 @@ const sayAdapter: TTSAdapter = {
   async synthesize(text, opts) {
     if (process.platform !== "darwin") {
       throw new Error(
-        "the `say` adapter only works on macOS — use openai / google / polly / " +
+        "the `say` adapter only works on macOS — use openai / google / gemini / polly / " +
           "elevenlabs on other platforms",
       );
     }
@@ -153,6 +153,64 @@ const googleAdapter: TTSAdapter = {
     const data = (await res.json()) as { audioContent?: string };
     if (!data.audioContent) throw new Error("Google TTS returned no audioContent");
     return { audio: new Uint8Array(Buffer.from(data.audioContent, "base64")), format: "mp3" };
+  },
+};
+
+/** Wrap raw little-endian 16-bit PCM in a WAV (RIFF) header so ffprobe and
+ *  the audio mux can read it. */
+export function pcmToWav(pcm: Uint8Array, sampleRate: number, channels = 1): Uint8Array {
+  const bytesPerSample = 2;
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16); // fmt chunk size
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * channels * bytesPerSample, 28); // byte rate
+  header.writeUInt16LE(channels * bytesPerSample, 32); // block align
+  header.writeUInt16LE(bytesPerSample * 8, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcm.length, 40);
+  return new Uint8Array(Buffer.concat([header, pcm]));
+}
+
+const geminiAdapter: TTSAdapter = {
+  provider: "gemini",
+  async synthesize(text, opts) {
+    const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
+    if (!key) throw new Error("GEMINI_API_KEY is not set");
+    const model = String(opts.model ?? "gemini-2.5-flash-preview-tts");
+    // Gemini TTS has no separate style field — direction is part of the prompt.
+    const prompt = opts.instructions ? `${opts.instructions}: ${text}` : text;
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: opts.voice ?? "Kore" } },
+            },
+          },
+        }),
+      },
+    );
+    if (!res.ok) throw new Error(`Gemini TTS ${res.status}: ${await res.text().catch(() => "")}`);
+    // The API returns base64 raw PCM (mimeType "audio/L16;codec=pcm;rate=24000"),
+    // not a container — wrap it as WAV.
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[];
+    };
+    const inline = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData;
+    if (!inline?.data) throw new Error("Gemini TTS returned no audio");
+    const rate = Number(/rate=(\d+)/.exec(inline.mimeType ?? "")?.[1] ?? 24000);
+    return { audio: pcmToWav(Buffer.from(inline.data, "base64"), rate), format: "wav" };
   },
 };
 
@@ -259,7 +317,14 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
   const cacheDir = resolve(opts.cacheDir ?? ".kamishibai-tts");
   const registry = new Map<string, TTSAdapter>();
   // Built-ins first, then customs — so a matching provider overrides.
-  const builtins = [sayAdapter, openaiAdapter, elevenLabsAdapter, googleAdapter, pollyAdapter];
+  const builtins = [
+    sayAdapter,
+    openaiAdapter,
+    elevenLabsAdapter,
+    googleAdapter,
+    geminiAdapter,
+    pollyAdapter,
+  ];
   for (const a of [...builtins, ...(opts.adapters ?? [])]) {
     registry.set(a.provider, a);
   }
