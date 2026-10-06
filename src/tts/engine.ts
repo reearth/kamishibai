@@ -417,8 +417,16 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         stats.cached += 1;
         return { src: existing, durationMs, text };
       } catch (err) {
-        stats.lastError = err instanceof Error ? err.message : String(err);
-        throw err;
+        // An unreadable cached clip (e.g. left by an older version, or
+        // corrupted on disk) would fail every run. Drop it so the next run
+        // synthesizes the line afresh, and count the line as failed.
+        await unlink(existing).catch(() => {});
+        stats.total += 1;
+        stats.failed += 1;
+        const msg = err instanceof Error ? err.message : String(err);
+        stats.lastError = `${msg} (removed from the cache; it will be synthesized again on the next run)`;
+        report();
+        throw new Error(stats.lastError);
       }
     }
 
@@ -434,11 +442,23 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         await mkdir(cacheDir, { recursive: true });
         const file = join(cacheDir, `${hash}.${format}`);
         // Write to a temp name then rename, so a half-written file can never be
-        // read by a parallel worker (atomic publish).
+        // read by a parallel worker (atomic publish). Measure the temp file
+        // first (ffprobe detects the format by content, not extension): a clip
+        // ffprobe can't read is never published, so it can't poison later runs.
         const tmp = join(cacheDir, `.${hash}.${randomUUID()}.tmp`);
         await writeFile(tmp, audio);
+        let durationMs: number;
+        try {
+          durationMs = await probeDurationMs(tmp);
+        } catch (err) {
+          await unlink(tmp).catch(() => {});
+          throw err;
+        } finally {
+          durations.delete(tmp);
+        }
         await rename(tmp, file);
-        return { src: file, durationMs: await probeDurationMs(file), text };
+        durations.set(file, durationMs);
+        return { src: file, durationMs, text };
       })();
       p.then(
         () => {

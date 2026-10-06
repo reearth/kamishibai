@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { createTTSEngine, pcmToWav, type TTSAdapter, type TTSStats } from "../src/tts/engine.ts";
@@ -74,26 +75,51 @@ describe("TTS engine", () => {
     expect(basename(r.b!.src)).toBe("aa4c3c218a8f7bb20a4cbf99d3f46646.wav");
   });
 
-  it("fails a line whose audio ffprobe can't read, instead of returning 0 ms", async () => {
+  it("fails a line whose audio ffprobe can't read, and never caches it", async () => {
     const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    let calls = 0;
     const garbage: TTSAdapter = {
       provider: "fake",
       async synthesize() {
-        return { audio: new TextEncoder().encode("not audio"), format: "mp3" };
+        calls += 1;
+        return { audio: new TextEncoder().encode("not audio"), format: "wav" };
       },
     };
     const engine = createTTSEngine({ adapters: [garbage], cacheDir });
     await expect(engine.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow(
       /ffprobe could not read/,
     );
-    expect(engine.stats()).toMatchObject({ total: 1, failed: 1 });
+    expect(engine.stats()).toMatchObject({ total: 1, failed: 1, cached: 0 });
+    expect(await readdir(cacheDir)).toEqual([]); // no published clip, no temp left behind
 
-    // The bad file is now cached; serving it from cache fails loudly too.
-    await expect(engine.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow(
+    // A second run asks the provider again instead of failing from cache.
+    const again = createTTSEngine({ adapters: [garbage], cacheDir });
+    await expect(again.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow(
       /ffprobe could not read/,
     );
+    expect(calls).toBe(2);
+    expect(again.stats()).toMatchObject({ total: 1, failed: 1, cached: 0 });
+  });
+
+  it("deletes an unreadable clip found in the cache and counts it as failed", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    // The cache file name for (fake:1, "hello"), see the cache-key test above.
+    const poisoned = join(cacheDir, "5a6cf92566a58561be9f68fcd3a161ed.wav");
+    await writeFile(poisoned, "not audio");
+    const spoken: string[] = [];
+    const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
+    await expect(engine.handle({ adapter: ref, items: { a: "hello" } })).rejects.toThrow(
+      /removed from the cache/,
+    );
     expect(engine.stats()).toMatchObject({ total: 1, failed: 1, cached: 0 });
-    expect(engine.stats().lastError).toMatch(/ffprobe could not read/);
+    expect(existsSync(poisoned)).toBe(false);
+
+    // The next run synthesizes the line afresh.
+    const again = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
+    const r = await again.handle({ adapter: ref, items: { a: "hello" } });
+    expect(spoken).toEqual(["hello"]);
+    expect(r.a!.src).toBe(poisoned);
+    expect(r.a!.durationMs).toBe(100);
   });
 
   it("names ffprobe when it is missing from PATH", async () => {

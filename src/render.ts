@@ -365,7 +365,9 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     const total = frameCount(meta);
     if (total < 1) {
       throw new Error(
-        `the reel has no frames: durationMs ${meta.durationMs} at ${meta.fps}fps is shorter than one frame`,
+        `the reel has no frames: durationMs ${meta.durationMs} at ${meta.fps}fps rounds to 0 frames ` +
+          `(the frame count is rounded, so the reel must last at least half a frame, ` +
+          `${500 / meta.fps}ms)`,
       );
     }
     const workers = Math.min(opts.workers ?? defaultWorkers(), total);
@@ -392,8 +394,10 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       if (opts.only) {
         throw new Error(
           `--only: ${framesDir} was captured with a different fps / size / scale / burn-subtitles ` +
-            `(${prev.fps}fps ${prev.width}×${prev.height} @${prev.scale}x) than this run ` +
-            `(${meta.fps}fps ${meta.width}×${meta.height} @${scale}x) — re-capture it without --only first`,
+            `(${prev.fps}fps ${prev.width}×${prev.height} @${prev.scale}x ` +
+            `burn-subtitles ${prev.burnSubtitles ? "on" : "off"}) than this run ` +
+            `(${meta.fps}fps ${meta.width}×${meta.height} @${scale}x ` +
+            `burn-subtitles ${opts.burnSubtitles ? "on" : "off"}) — re-capture it without --only first`,
         );
       }
       log(`Cache geometry changed — rebuilding all frames.`);
@@ -730,6 +734,14 @@ export interface SynthesizeResult {
  */
 export async function synthesize(opts: SynthesizeOptions): Promise<SynthesizeResult> {
   const log = opts.onLog ?? (() => {});
+  // A URL entry is hosted by its own server, so the page's POST /__tts never
+  // reaches this process's engine: nothing could be synthesized or counted.
+  if (/^https?:\/\//i.test(opts.entry)) {
+    throw new Error(
+      `tts needs a script or .html entry: a URL entry is served by its own server, so ` +
+        `kamishibai can't see or synthesize its narration ("${opts.entry}")`,
+    );
+  }
   await assertFfmpeg(); // ffprobe measures every line
   const narration = narrationEngine(opts, log);
   const { tts } = narration;

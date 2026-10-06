@@ -605,12 +605,14 @@ add a key for the whole word to pin its reading.
 page-load wait counts only *idle* time, so it keeps waiting while lines are in
 flight (`Synthesizing narration…`, then `…narration N/M line(s)` every few
 seconds). Prefer **`kamishibai tts reel.tsx`** before the first render: it only
-fills the TTS cache (no capture, no encode) and exits non-zero if a line fails,
+fills the TTS cache (no capture, no encode; a script or `.html` entry, not a
+URL) and exits non-zero if a line fails,
 so the render afterwards reads every line from cache. If a line fails, the run
 stops as soon as nothing else is in flight, naming the provider's error and how
 many lines finished; finished lines are cached, so re-running resumes.
 Durations are measured with ffprobe (ships with ffmpeg; must be on PATH) — an
-unreadable clip fails its line instead of returning 0 ms. `--probe-timeout <s>`
+unreadable clip fails its line instead of returning 0 ms and is never kept in
+the cache, so re-running synthesizes it again. `--probe-timeout <s>`
 (default 15) raises the idle limit for a page that is slow for other reasons.
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line

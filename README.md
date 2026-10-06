@@ -386,7 +386,7 @@ const vo = await prepareNarration(voice, {
 }, { lexicon: { "町字": "まちあざ", "Pub/Sub": "パブサブ" } });
 ```
 
-**Long narration.** The first synthesis of many lines can take minutes. The page-load wait only counts *idle* time — while lines are still synthesizing it keeps waiting, and `Synthesizing narration…` / `…narration 12/72 line(s)` show progress. To pay for (and check) every line up front, run `kamishibai tts reel.tsx` — it loads the page once to fill the cache and stops, so the render that follows reads every line from cache. If a line fails, the run stops as soon as nothing else is in flight, with the provider's error and how many lines finished; finished lines are cached, so re-running resumes. Durations are measured with ffprobe (it ships with ffmpeg), so it must be on PATH — a clip it can't read fails its line rather than coming back as 0 ms.
+**Long narration.** The first synthesis of many lines can take minutes. The page-load wait only counts *idle* time — while lines are still synthesizing it keeps waiting, and `Synthesizing narration…` / `…narration 12/72 line(s)` show progress. To pay for (and check) every line up front, run `kamishibai tts reel.tsx` — it loads the page once to fill the cache and stops, so the render that follows reads every line from cache. If a line fails, the run stops as soon as nothing else is in flight, with the provider's error and how many lines finished; finished lines are cached, so re-running resumes. Durations are measured with ffprobe (it ships with ffmpeg), so it must be on PATH — a clip it can't read fails its line rather than coming back as 0 ms, and is never kept in the cache (an unreadable clip already there is deleted), so re-running synthesizes that line again.
 
 A custom provider implements the Node `TTSAdapter` (`{ provider, synthesize }`) and registers it via `render({ ttsAdapters: [myAdapter] })`; the reel references it with an adapter whose `provider` matches. (Why the split: the reel is bundled for the browser, so its adapter is a serializable ref — `{ id, provider, opts }` — while the actual synthesis runs in Node, served to the page over `POST /__tts`.)
 
@@ -457,7 +457,7 @@ kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio 
 kamishibai encode -f frames --crf 28 -o smaller.mp4     # try a setting without re-capturing
 ```
 
-`kamishibai tts reel.tsx` is a third, smaller half: it only runs the narration pre-pass (load the page once, synthesize uncached lines into `.kamishibai-tts/`), with no capture or encode.
+`kamishibai tts reel.tsx` is a third, smaller half: it only runs the narration pre-pass (load the page once, synthesize uncached lines into `.kamishibai-tts/`), with no capture or encode. It needs a script or `.html` entry: a URL entry is served by its own server, so its narration requests never reach kamishibai.
 
 For long jobs, capture and encode each print a `…captured X/total` / `…encoded X/total` heartbeat at most once a minute, so a slow reel shows it's advancing; short jobs finish before the first tick and stay quiet.
 

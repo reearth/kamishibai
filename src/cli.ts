@@ -4,7 +4,7 @@
 //   kamishibai render  <entry|url> [options]   capture + encode
 //   kamishibai capture <entry|url> -f <dir>    frames only
 //   kamishibai encode  -f <dir> [options]      frames -> video
-//   kamishibai tts     <entry|url>             narration pre-pass only
+//   kamishibai tts     <entry>                 narration pre-pass only
 //   kamishibai skill                           print the usage guide
 //
 // HELP below is the option reference; FLAGS_FOR says which subcommand
@@ -20,7 +20,7 @@ Usage:
   kamishibai render <entry|url> [options]        capture + encode (the usual one)
   kamishibai capture <entry|url> -f <dir> [opts] capture frames only, no encode
   kamishibai encode -f <frames-dir> [options]    re-encode kept frames, no capture
-  kamishibai tts <entry|url> [options]           bake narration into the TTS cache only
+  kamishibai tts <entry> [options]               bake narration into the TTS cache only
   kamishibai skill                    print the full usage guide (markdown)
 
 Arguments:
@@ -258,7 +258,7 @@ async function main(): Promise<void> {
   // its prepareNarration fills the cache, then stop — no capture, no encode.
   if (command === "tts") {
     if (!entry) {
-      process.stderr.write(`Missing <entry|url>.\n\n${HELP}`);
+      process.stderr.write(`Missing <entry>.\n\n${HELP}`);
       process.exit(1);
     }
     const res = await synthesize({
