@@ -98,11 +98,32 @@ export const useClock = (): Clock => useContext(ClockContext);
 // ---- Stage --------------------------------------------------------
 // A <Series.Scene> with an exit-fade fades its whole content layer out —
 // every Stage, sibling and child in it. So that the scene's background still
-// blends with the next scene, each outermost <Stage> there also portals an
-// opaque, childless copy of its box (`background` + `style`, laid out against
-// the scene's frame) onto the scene's backdrop: a layer under the content that
-// shows only while the content is fading. Stages nested in those add no copy.
+// blends with the next scene, each Stage directly in its content (no Stage or
+// Series.Scene in between) also portals an opaque, childless copy of its box
+// (`background` + `style`, laid out against the scene's frame) onto the
+// scene's backdrop: a layer under the content that shows only while the
+// content is fading. Stages nested in those, Stages in a nested Series.Scene,
+// and Stages in a hidden sub-frame mount (see missedWindow) add no copy.
 const SceneBackdropContext = createContext<{ el: HTMLElement | null } | null>(null);
+
+// Each backdrop copy -> the box of the Stage it copies. Portals append as they
+// mount, so the copies' DOM order follows mount history (which depends on the
+// frames this worker seeked before); sortBackdrop restores tree order.
+const backdropSources = new WeakMap<Element, Element>();
+
+/** Reorder a backdrop's copies to the document order of their Stages, so they
+ *  stack the same however the scene got to this frame. */
+function sortBackdrop(el: HTMLElement): void {
+  const copies = [...el.children];
+  const sorted = [...copies].sort((a, b) => {
+    const sa = backdropSources.get(a);
+    const sb = backdropSources.get(b);
+    if (!sa || !sb || sa === sb) return 0;
+    return sa.compareDocumentPosition(sb) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+  });
+  if (sorted.every((c, i) => c === copies[i])) return;
+  for (const c of sorted) el.appendChild(c);
+}
 
 export const Stage: React.FC<{
   children: React.ReactNode;
@@ -110,6 +131,13 @@ export const Stage: React.FC<{
   style?: React.CSSProperties;
 }> = ({ children, background, style }) => {
   const backdrop = useContext(SceneBackdropContext);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const copyRef = useRef<HTMLDivElement>(null);
+  // Link the copy to its Stage before the scene sorts its backdrop (a parent's
+  // layout effect runs after its children's).
+  useLayoutEffect(() => {
+    if (copyRef.current && boxRef.current) backdropSources.set(copyRef.current, boxRef.current);
+  });
   const boxStyle: React.CSSProperties = {
     position: "absolute",
     inset: 0,
@@ -117,11 +145,15 @@ export const Stage: React.FC<{
     background,
     ...style,
   };
-  const body = <div style={boxStyle}>{children}</div>;
+  const body = (
+    <div ref={boxRef} style={boxStyle}>
+      {children}
+    </div>
+  );
   if (!backdrop) return body;
   return (
     <>
-      {backdrop.el ? createPortal(<div style={boxStyle} />, backdrop.el) : null}
+      {backdrop.el ? createPortal(<div ref={copyRef} style={boxStyle} />, backdrop.el) : null}
       <SceneBackdropContext.Provider value={null}>{body}</SceneBackdropContext.Provider>
     </>
   );
@@ -202,7 +234,14 @@ export const Cue: React.FC<{
       {children}
     </ClockProvider>
   );
-  if (hold != null && missedWindow(clock, frames, at, hold)) return <div style={hiddenStyle}>{inner}</div>;
+  if (hold != null && missedWindow(clock, frames, at, hold)) {
+    // Its Stages leave no backdrop copy: that would paint outside this wrapper.
+    return (
+      <div style={hiddenStyle}>
+        <SceneBackdropContext.Provider value={null}>{inner}</SceneBackdropContext.Provider>
+      </div>
+    );
+  }
   if (clock.ms < at) return null;
   if (hold != null && clock.ms >= at + hold) return null;
   return inner;
@@ -429,6 +468,11 @@ const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs
   // with their portal target; a ref callback's update commits before paint.
   const [backdropEl, setBackdropEl] = useState<HTMLElement | null>(null);
   const backdrop = useMemo(() => ({ el: backdropEl }), [backdropEl]);
+  // Every commit (each seek re-renders this scene, which reads the clock),
+  // after the Stages have linked their copies: put the copies in tree order.
+  useLayoutEffect(() => {
+    if (backdropEl) sortBackdrop(backdropEl);
+  });
 
   // No placement yet means the registry hasn't settled (first commit) or this
   // scene is outside a Series — render nothing until we know where it lands.
@@ -474,7 +518,8 @@ const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs
           <div style={{ position: "absolute", inset: 0, opacity: contentOpacity }}>{inner}</div>
         </SceneBackdropContext.Provider>
       ) : (
-        // A scene nested in an exit-fading one leaves no copies of its own.
+        // The Stages of a scene nested in an exit-fading one leave no copies
+        // on the outer backdrop (they would ignore this scene's own fades).
         <SceneBackdropContext.Provider value={null}>{inner}</SceneBackdropContext.Provider>
       )}
     </div>
@@ -1101,14 +1146,25 @@ const Driver: React.FC<{
     return () => cancelAnimationFrame(raf);
   }, [driven, livePreview, meta.durationMs]);
 
+  // The rate the renderer samples at (--fps overrides meta.fps): the sub-frame
+  // window math (missedWindow) must use the real sampling grid.
+  const fps = captureFps(meta);
   return (
-    <ReelFramesContext.Provider value={frameCount(meta)}>
-      <ClockProvider value={{ ms, durationMs: meta.durationMs, fps: meta.fps, epochMs: 0 }}>
+    <ReelFramesContext.Provider value={frameCount({ fps, durationMs: meta.durationMs })}>
+      <ClockProvider value={{ ms, durationMs: meta.durationMs, fps, epochMs: 0 }}>
         <RenderErrorBoundary onError={onRenderError}>{scene}</RenderErrorBoundary>
       </ClockProvider>
     </ReelFramesContext.Provider>
   );
 };
+
+/** The fps the renderer captures at, injected on window before the page loads
+ *  (it differs from meta.fps under --fps); meta.fps in a plain browser. */
+function captureFps(meta: KamishibaiMeta): number {
+  const fps =
+    typeof window !== "undefined" ? (window as { __KAMISHIBAI_FPS__?: unknown }).__KAMISHIBAI_FPS__ : undefined;
+  return typeof fps === "number" && fps > 0 ? fps : meta.fps;
+}
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);

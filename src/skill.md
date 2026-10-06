@@ -301,21 +301,28 @@ your own wrapper components.
   the incoming slide). Set `exitFadeMs` on the outgoing scene to fade its
   *content* out; the fade ends where the next scene's crossfade begins, so the
   old content is gone before the new one shows. Everything in the scene fades
-  (Stages, their children, content outside a Stage), but each outermost
-  `<Stage>` leaves an opaque, childless copy of its box (`background` + `style`,
-  laid out against the full frame) underneath, so only the backgrounds blend.
-  With no Stage, the scene fades to what's under the Series until the next
+  (Stages, their children, content outside a Stage), but each `<Stage>` with
+  no other Stage or `<Series.Scene>` between it and the fading scene leaves an
+  opaque, childless copy of its box (`background` + `style`, laid out against
+  the full frame) underneath, in tree order, so only the backgrounds blend. A
+  Stage inside a nested `<Series>` leaves no copy (it fades with the content;
+  give the inner scene its own `exitFadeMs` if needed). With no Stage, the scene fades to what's under the Series until the next
   scene fades in. The two add up: a 700ms crossfade + 600ms exit-fade starts
   dimming the content 1300ms before the outgoing scene ends.
 - **Checked timings.** A negative length, or a `crossfadeMs` longer than either
   scene it joins, throws a `RangeError` (seriesLayout / seriesDuration / Series).
-  Any error the reel throws while rendering fails the capture with its message;
-  one thrown before `mount()` fails the probe with it.
+  Any error the reel throws while rendering fails the capture with its message.
+  One thrown before `mount()` is logged as a page error at once, and the probe
+  fails with it when the idle page-load wait (`--probe-timeout`, default 15s)
+  runs out — a page error alone never stops the wait, as the page may still
+  mount.
 - **Sub-frame windows.** Markers (`<Audio>`, soft `<Subtitle>`) register when
   mounted, and only sampled frames (`i × 1000 / fps`) mount anything. A `<Cue
   hold>` or scene shorter than one frame that no frame lands in is mounted
   hidden for one frame (the next one, or the last frame for a window after
-  it), so its markers still count while nothing paints.
+  it), so its markers still count while nothing paints (a Stage in it leaves
+  no exit-fade copy). Frames are the capture's: under `--fps` the page is told
+  the override before it loads.
   Other transitions (wipe/swipe) are a few lines of `ramp()` + `transform` on the
   scene content.
 
@@ -622,7 +629,9 @@ stops as soon as nothing else is in flight, naming the provider's error and how
 many lines finished; finished lines are cached, so re-running resumes.
 Durations are measured with ffprobe (ships with ffmpeg; must be on PATH) — an
 unreadable clip fails its line instead of returning 0 ms and is never kept in
-the cache, so re-running synthesizes it again. `--probe-timeout <s>`
+the cache (a cached clip ffprobe ran on and could not read is deleted), so
+re-running synthesizes it again. If ffprobe itself can't run, the line fails
+but a cached clip is kept. `--probe-timeout <s>`
 (default 15) raises the idle limit for a page that is slow for other reasons.
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line

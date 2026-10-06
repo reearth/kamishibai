@@ -46,17 +46,28 @@ function eventPage() {
 const consoleMsg = (type: string, text: string) => ({ type: () => type, text: () => text });
 
 describe("watchPage", () => {
-  it("fails the wait with the error a page threw before mounting", async () => {
+  it("keeps waiting after a page error, then names it in the timeout", async () => {
     const { page, fire } = eventPage();
     const logs: string[] = [];
-    const wait = watchPage(page, { timeoutMs: 30_000, onPageLog: (m) => logs.push(m) });
+    const wait = watchPage(page, { timeoutMs: 2_500, onPageLog: (m) => logs.push(m) });
     fire("pageerror", new RangeError("kamishibai: scene 1: bad"));
     const t = Date.now();
     await expect(waitForReel(page, wait)).rejects.toThrow(
-      /the page threw: kamishibai: scene 1: bad$/,
+      /within 2.5s — the page threw: kamishibai: scene 1: bad$/,
     );
-    expect(Date.now() - t).toBeLessThan(5_000);
+    // Past the 1s failure grace: a page error alone never ends the wait.
+    expect(Date.now() - t).toBeGreaterThanOrEqual(2_400);
     expect(logs).toEqual(["page error: kamishibai: scene 1: bad"]);
+  });
+
+  it("adds the page error to another failure reason", async () => {
+    const { page, fire } = eventPage();
+    const wait = watchPage(page, { timeoutMs: 30_000, failed: () => "narration failed: boom" });
+    fire("pageerror", new Error("first"));
+    fire("pageerror", new Error("second"));
+    await expect(waitForReel(page, wait)).rejects.toThrow(
+      /narration failed: boom; the page threw: first$/,
+    );
   });
 
   it("forwards only kamishibai console warnings/errors, and only when asked", () => {

@@ -122,6 +122,29 @@ describe("TTS engine", () => {
     expect(r.a!.durationMs).toBe(100);
   });
 
+  it("keeps a cached clip when ffprobe itself can't run", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const spoken: string[] = [];
+    const r = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
+      adapter: ref,
+      items: { a: "hello" },
+    });
+    const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
+    const path = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      await expect(engine.handle({ adapter: ref, items: { a: "hello" } })).rejects.toThrow(
+        /ffprobe not found on PATH/,
+      );
+    } finally {
+      process.env.PATH = path;
+    }
+    expect(engine.stats()).toMatchObject({ total: 1, failed: 1, cached: 0 });
+    expect(engine.stats().lastError).not.toMatch(/removed from the cache/);
+    expect(existsSync(r.a!.src)).toBe(true);
+    expect(spoken).toEqual(["hello"]);
+  });
+
   it("names ffprobe when it is missing from PATH", async () => {
     const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
     const engine = createTTSEngine({ adapters: [fakeAdapter([])], cacheDir });

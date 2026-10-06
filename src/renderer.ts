@@ -43,10 +43,11 @@ export interface ReelWaitOptions {
 
 /**
  * Listen to a page before it loads: forward its uncaught errors (and, with
- * `forwardConsole`, its "kamishibai…" console warnings/errors) to `onPageLog`, and
- * return wait options that also fail — after the usual grace — once the page
- * has thrown, so a reel that throws before mount() reports its error instead
- * of idling out the timeout.
+ * `forwardConsole`, its "kamishibai…" console warnings/errors) to `onPageLog`,
+ * and return wait options whose failure messages name the first error the page
+ * threw. A page error never ends the wait by itself — the page may still mount
+ * (a stray async throw, or narration still synthesizing) — but a reel that
+ * throws before mount() then fails at the idle timeout with that error.
  */
 export function watchPage(page: Page, wait: ReelWaitOptions = {}, forwardConsole = false): ReelWaitOptions {
   let thrown: string | undefined;
@@ -62,9 +63,17 @@ export function watchPage(page: Page, wait: ReelWaitOptions = {}, forwardConsole
       }
     });
   }
+  const withThrown = (msg: string | undefined): string | undefined => {
+    const t = thrown ? `the page threw: ${thrown}` : undefined;
+    return msg && t ? `${msg}; ${t}` : (msg ?? t);
+  };
   return {
     ...wait,
-    failed: () => wait.failed?.() ?? (thrown ? `the page threw: ${thrown}` : undefined),
+    describe: () => withThrown(wait.describe?.()),
+    failed: () => {
+      const f = wait.failed?.();
+      return f ? withThrown(f) : undefined;
+    },
   };
 }
 
@@ -180,6 +189,12 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
       deviceScaleFactor: opts.scale ?? 1,
     });
     const watched = watchPage(page, opts.wait, true);
+    // The page samples at meta.fps (--fps may override the page's own), so
+    // tell it before any reel code runs: kamishibai/react sizes its sub-frame
+    // windows on this grid.
+    await page.addInitScript((fps) => {
+      (window as { __KAMISHIBAI_FPS__?: number }).__KAMISHIBAI_FPS__ = fps;
+    }, meta.fps);
     await page.goto(url, { waitUntil: "networkidle" });
     await waitForReel(page, watched);
     // Web fonts must be ready before the first capture, or text reflows.

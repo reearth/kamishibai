@@ -19,10 +19,10 @@ export interface SceneSpec {
    * scene's crossfade begins (or at the scene end when there is none). Pairs
    * with a crossfade to avoid ghosting: the outgoing content is gone before
    * the incoming scene arrives. In kamishibai/react everything the scene
-   * renders fades, but each outermost `<Stage>` in it leaves an opaque copy of
-   * its box (`background` + `style`, no children) underneath, so only the
-   * backgrounds blend; with no Stage the scene fades to whatever is under the
-   * Series (default 0).
+   * renders fades, but each `<Stage>` in it (not inside another Stage or a
+   * nested Series.Scene) leaves an opaque copy of its box (`background` +
+   * `style`, no children) underneath, so only the backgrounds blend; with no
+   * Stage the scene fades to whatever is under the Series (default 0).
    */
   exitFadeMs?: number;
 }

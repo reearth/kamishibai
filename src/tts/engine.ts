@@ -22,6 +22,9 @@ import type { TTSAdapterRef, NarrationClip, NarrationInput } from "./index.ts";
 
 const execFileAsync = promisify(execFile);
 
+/** ffprobe ran and could not read a clip's content (vs. ffprobe itself failing). */
+class UnreadableClipError extends Error {}
+
 /** Deterministic JSON (keys sorted) — so an opts override hashes stably. */
 function stableJson(v: unknown): string {
   if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
@@ -380,14 +383,20 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
     } catch (err) {
       // A guessed 0 would silently collapse the scene sized to this line, so
       // a missing ffprobe or an unreadable file fails the line instead.
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      const code = (err as NodeJS.ErrnoException | { code?: unknown }).code;
+      if (code === "ENOENT") {
         throw new Error(
           "ffprobe not found on PATH — it ships with ffmpeg and is needed to measure " +
             "narration durations (e.g. `brew install ffmpeg`)",
         );
       }
       const detail = (err as { stderr?: string }).stderr?.trim() || (err as Error).message;
-      throw new Error(`ffprobe could not read narration audio ${file}: ${detail}`);
+      // Only a numeric exit code means ffprobe ran and rejected the file; a
+      // spawn error (EMFILE, EACCES, …) or a kill says nothing about it.
+      if (typeof code === "number") {
+        throw new UnreadableClipError(`ffprobe could not read narration audio ${file}: ${detail}`);
+      }
+      throw new Error(`ffprobe failed to run on narration audio ${file}: ${detail}`);
     }
     // ffprobe ran but may report no duration ("N/A") for a clip with zero
     // samples — e.g. `say` given empty text. That is a genuine 0.
@@ -419,12 +428,17 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
       } catch (err) {
         // An unreadable cached clip (e.g. left by an older version, or
         // corrupted on disk) would fail every run. Drop it so the next run
-        // synthesizes the line afresh, and count the line as failed.
-        await unlink(existing).catch(() => {});
+        // synthesizes the line afresh, and count the line as failed. Any other
+        // failure (ffprobe missing or unable to start) says nothing about the
+        // clip, so the paid-for file stays.
+        const unreadable = err instanceof UnreadableClipError;
+        if (unreadable) await unlink(existing).catch(() => {});
         stats.total += 1;
         stats.failed += 1;
         const msg = err instanceof Error ? err.message : String(err);
-        stats.lastError = `${msg} (removed from the cache; it will be synthesized again on the next run)`;
+        stats.lastError = unreadable
+          ? `${msg} (removed from the cache; it will be synthesized again on the next run)`
+          : msg;
         report();
         throw new Error(stats.lastError);
       }
