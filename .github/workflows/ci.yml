@@ -26,9 +26,10 @@ jobs:
 
       # The TTS engine tests measure real audio with ffprobe (ships with ffmpeg).
       - name: Install ffmpeg
+        timeout-minutes: 5
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Unit tests
         run: pnpm test
@@ -54,9 +55,10 @@ jobs:
       # ffmpeg is an external dependency; Japanese fonts so the sample
       # reel renders with real glyphs instead of tofu.
       - name: Install ffmpeg + fonts
+        timeout-minutes: 5
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
 
       # Pin Chromium via the Playwright version in the lockfile.
       - name: Install Chromium
