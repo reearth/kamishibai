@@ -41,6 +41,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # The TTS engine tests measure real audio with ffprobe (ships with ffmpeg).
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Unit tests
         run: pnpm test
 
