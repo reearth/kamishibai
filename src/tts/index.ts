@@ -30,7 +30,8 @@ export interface TTSAdapterRef {
   /** cache-key component — must capture every output-affecting option, e.g.
    *  "openai:tts-1-hd:nova" (so changing the voice busts the cache) */
   id: string;
-  /** which Node-side implementation handles this: "say" | "openai" | "elevenlabs" | … */
+  /** which Node-side implementation handles this: a built-in ("say" | "openai" |
+   *  "elevenlabs" | "google" | "gemini" | "polly") or a custom adapter's provider */
   provider: string;
   /** provider-specific options, passed straight through to synthesize() */
   opts?: Record<string, unknown>;
@@ -55,11 +56,17 @@ export type NarrationInput =
 /**
  * Reading substitutions applied to the *spoken* text only, e.g.
  * `{ "町字": "まちあざ", "Pub/Sub": "パブサブ" }`. Captions keep the original
- * spelling. Longer keys win where two overlap.
+ * spelling. Matching runs left to right in one pass: at each position the
+ * longest key starting there wins, and a match consumes its characters. So a
+ * key that starts earlier beats a longer one that starts later —
+ * `{ "京都": "きょうと", "都庁舎": "とちょうしゃ" }` reads "東京都庁舎" as
+ * "東きょうと庁舎". Add a key spanning the whole word (e.g. "東京都庁舎") to
+ * pin its reading.
  */
 export type Lexicon = Record<string, string>;
 
-/** Apply a lexicon to `text` (longest match first, one left-to-right pass). */
+/** Apply a lexicon to `text` (one left-to-right pass; at each position the
+ *  longest key starting there wins — see Lexicon). */
 export function applyLexicon(text: string, lexicon: Lexicon | undefined): string {
   const keys = lexicon ? Object.keys(lexicon).filter((k) => k.length > 0) : [];
   if (keys.length === 0) return text;
@@ -107,7 +114,8 @@ export function sayAdapter(opts: { voice?: string; rate?: number } = {}): TTSAda
 export function openaiAdapter(opts: {
   model?: string;
   voice?: string;
-  /** playback rate 0.25–4.0; forwarded to the API for all OpenAI TTS models */
+  /** playback rate 0.25–4.0 for tts-1 / tts-1-hd (gpt-4o-mini-tts ignores it —
+   *  steer its pace with `instructions`); passed straight through */
   speed?: number;
   /** voice/style direction, e.g. pace or tone (gpt-4o-mini-tts) */
   instructions?: string;

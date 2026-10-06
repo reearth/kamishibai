@@ -357,7 +357,7 @@ Adapters are deliberately dumb (`text → bytes`) — no SSML layer, no voice UI
 import { openaiAdapter, googleAdapter, geminiAdapter, pollyAdapter, elevenLabsAdapter } from "kamishibai/tts";
 const voice = openaiAdapter({ model: "tts-1-hd", voice: "nova" });    // OPENAI_API_KEY
 const voice = googleAdapter({ name: "en-US-Neural2-F" });             // GOOGLE_API_KEY
-const voice = geminiAdapter({ voice: "Kore" });                       // GEMINI_API_KEY
+const voice = geminiAdapter({ voice: "Kore" });                       // GEMINI_API_KEY (falls back to GOOGLE_API_KEY)
 const voice = pollyAdapter({ voiceId: "Matthew", engine: "neural" }); // AWS_ACCESS_KEY_ID/SECRET (+AWS_REGION)
 const voice = elevenLabsAdapter({ voiceId: "…" });                    // ELEVENLABS_API_KEY
 ```
@@ -373,7 +373,7 @@ const vo = await prepareNarration(sayAdapter(), {
 });
 ```
 
-**Reading vs. caption.** What the voice should *say* and what the caption should *show* often differ (Japanese readings, acronyms). Pass a `lexicon` to substitute readings in the spoken text only, or give a line an explicit `caption`; the clip's `text` (used by `<Narration subtitle>`) is always the caption. Only the spoken text is hashed, so editing a caption never re-synthesizes.
+**Reading vs. caption.** What the voice should *say* and what the caption should *show* often differ (Japanese readings, acronyms). Pass a `lexicon` to substitute readings in the spoken text only, or give a line an explicit `caption`; the clip's `text` (used by `<Narration subtitle>`) is always the caption. Only the spoken text is hashed, so editing a caption never re-synthesizes. Lexicon matching is one left-to-right pass where the longest key *starting at each position* wins — so with `{ "京都": …, "都庁舎": … }`, "東京都庁舎" matches `京都` first; add a key for the whole word to pin its reading.
 
 ```ts
 const vo = await prepareNarration(voice, {
@@ -382,7 +382,7 @@ const vo = await prepareNarration(voice, {
 }, { lexicon: { "町字": "まちあざ", "Pub/Sub": "パブサブ" } });
 ```
 
-**Long narration.** The first synthesis of many lines can take minutes. The page-load wait only counts *idle* time — while lines are still synthesizing it keeps waiting, and `Synthesizing narration…` / `…narration 12/72 line(s)` show progress. To pay for (and check) every line up front, run `kamishibai tts reel.tsx` — it loads the page once to fill the cache and stops, so the render that follows reads every line from cache. If synthesis fails, the error says how many lines finished and the provider's last error; finished lines are cached, so re-running resumes.
+**Long narration.** The first synthesis of many lines can take minutes. The page-load wait only counts *idle* time — while lines are still synthesizing it keeps waiting, and `Synthesizing narration…` / `…narration 12/72 line(s)` show progress. To pay for (and check) every line up front, run `kamishibai tts reel.tsx` — it loads the page once to fill the cache and stops, so the render that follows reads every line from cache. If a line fails, the run stops as soon as nothing else is in flight, with the provider's error and how many lines finished; finished lines are cached, so re-running resumes. Durations are measured with ffprobe (it ships with ffmpeg), so it must be on PATH — a clip it can't read fails its line rather than coming back as 0 ms.
 
 A custom provider implements the Node `TTSAdapter` (`{ provider, synthesize }`) and registers it via `render({ ttsAdapters: [myAdapter] })`; the reel references it with an adapter whose `provider` matches. (Why the split: the reel is bundled for the browser, so its adapter is a serializable ref — `{ id, provider, opts }` — while the actual synthesis runs in Node, served to the page over `POST /__tts`.)
 

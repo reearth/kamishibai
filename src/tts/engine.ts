@@ -58,8 +58,9 @@ export interface TTSEngineOptions {
   onProgress?: (stats: TTSStats) => void;
 }
 
-/** Running totals of the synthesis work (cache misses only — a cache hit
- *  never calls the provider, so it isn't counted). */
+/** Running totals of the synthesis work. `total` / `done` / `failed` count
+ *  cache misses only (a cache hit never calls the provider); `cached` counts
+ *  the lines served from the cache instead. */
 export interface TTSStats {
   /** syntheses started so far */
   total: number;
@@ -67,7 +68,10 @@ export interface TTSStats {
   done: number;
   /** syntheses that threw */
   failed: number;
-  /** the most recent synthesis error, if any */
+  /** lines served from the cache without calling the provider */
+  cached: number;
+  /** the most recent error from any line — a synthesis, or measuring a
+   *  cached file — if any */
   lastError?: string;
 }
 
@@ -201,7 +205,7 @@ const geminiAdapter: TTSAdapter = {
   provider: "gemini",
   async synthesize(text, opts) {
     const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
-    if (!key) throw new Error("GEMINI_API_KEY is not set");
+    if (!key) throw new Error("GEMINI_API_KEY (or GOOGLE_API_KEY) is not set");
     const model = String(opts.model ?? "gemini-2.5-flash-preview-tts");
     // Gemini TTS has no separate style field — direction is part of the prompt.
     const prompt = opts.instructions ? `${opts.instructions}: ${text}` : text;
@@ -351,7 +355,7 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
 
   const inflight = new Map<string, Promise<NarrationClip>>();
   const durations = new Map<string, number>();
-  const stats: TTSStats = { total: 0, done: 0, failed: 0 };
+  const stats: TTSStats = { total: 0, done: 0, failed: 0, cached: 0 };
   const report = () => opts.onProgress?.({ ...stats });
 
   function existingFile(hash: string): string | undefined {
@@ -365,19 +369,30 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
   async function probeDurationMs(file: string): Promise<number> {
     const cached = durations.get(file);
     if (cached != null) return cached;
-    let ms = 0;
+    let stdout: string;
     try {
-      const { stdout } = await execFileAsync("ffprobe", [
+      ({ stdout } = await execFileAsync("ffprobe", [
         "-v", "error",
         "-show_entries", "format=duration",
         "-of", "csv=p=0",
         file,
-      ]);
-      const sec = parseFloat(stdout.trim());
-      if (Number.isFinite(sec)) ms = Math.round(sec * 1000);
-    } catch {
-      // ffprobe missing/failed — leave 0 and let the reel decide.
+      ]));
+    } catch (err) {
+      // A guessed 0 would silently collapse the scene sized to this line, so
+      // a missing ffprobe or an unreadable file fails the line instead.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(
+          "ffprobe not found on PATH — it ships with ffmpeg and is needed to measure " +
+            "narration durations (e.g. `brew install ffmpeg`)",
+        );
+      }
+      const detail = (err as { stderr?: string }).stderr?.trim() || (err as Error).message;
+      throw new Error(`ffprobe could not read narration audio ${file}: ${detail}`);
     }
+    // ffprobe ran but may report no duration ("N/A") for a clip with zero
+    // samples — e.g. `say` given empty text. That is a genuine 0.
+    const sec = parseFloat(stdout.trim());
+    const ms = Number.isFinite(sec) ? Math.round(sec * 1000) : 0;
     durations.set(file, ms);
     return ms;
   }
@@ -391,12 +406,21 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
     // needs to extend the key (so unchanged lines keep their cached file).
     const ov = overrideOpts && Object.keys(overrideOpts).length > 0 ? overrideOpts : undefined;
     const hash = createHash("sha256")
-      .update(`${ref.id} ${text}${ov ? ` ${stableJson(ov)}` : ""}`)
+      .update(`${ref.id}\0${text}${ov ? `\0${stableJson(ov)}` : ""}`)
       .digest("hex")
       .slice(0, 32);
 
     const existing = existingFile(hash);
-    if (existing) return { src: existing, durationMs: await probeDurationMs(existing), text };
+    if (existing) {
+      try {
+        const durationMs = await probeDurationMs(existing);
+        stats.cached += 1;
+        return { src: existing, durationMs, text };
+      } catch (err) {
+        stats.lastError = err instanceof Error ? err.message : String(err);
+        throw err;
+      }
+    }
 
     let p = inflight.get(hash);
     if (!p) {

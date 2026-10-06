@@ -29,7 +29,15 @@ export interface ReelWaitOptions {
   busy?: () => boolean;
   /** extra context appended to the timeout error (e.g. TTS progress) */
   describe?: () => string | undefined;
+  /** a reason the page can no longer load (e.g. a narration line failed and
+   *  nothing is still in flight); once it has held for a short grace — room
+   *  for a page that catches the error and mounts anyway — the wait fails with
+   *  it instead of running out the idle timeout */
+  failed?: () => string | undefined;
 }
+
+/** How long a `failed()` reason must persist before waitForReel gives up. */
+const FAIL_GRACE_MS = 1000;
 
 /**
  * Wait for the page to expose window.kamishibai. The timeout counts *idle*
@@ -40,6 +48,7 @@ export interface ReelWaitOptions {
 export async function waitForReel(page: Page, opts: ReelWaitOptions = {}): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 15_000;
   let idleSince = Date.now();
+  let failedSince: number | undefined;
   for (;;) {
     const sliceMs = Math.max(1, Math.min(1000, timeoutMs - (Date.now() - idleSince)));
     try {
@@ -49,6 +58,12 @@ export async function waitForReel(page: Page, opts: ReelWaitOptions = {}): Promi
       if (!(err instanceof errors.TimeoutError)) throw err;
     }
     if (opts.busy?.()) idleSince = Date.now();
+    const failure = opts.failed?.();
+    if (!failure) failedSince = undefined;
+    else if (failedSince === undefined) failedSince = Date.now();
+    else if (Date.now() - failedSince >= FAIL_GRACE_MS) {
+      throw new Error(`the page didn't expose window.${GLOBAL_KEY} — ${failure}`);
+    }
     if (Date.now() - idleSince >= timeoutMs) {
       const extra = opts.describe?.();
       throw new Error(

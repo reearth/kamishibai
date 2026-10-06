@@ -11,13 +11,21 @@ import type { AudioManifest } from "./audio.ts";
 
 const execFileAsync = promisify(execFile);
 
-/** Throw a friendly error if ffmpeg isn't on PATH. */
+/** Throw a friendly error if ffmpeg or ffprobe isn't on PATH. */
 export async function assertFfmpeg(): Promise<void> {
   try {
     await execFileAsync("ffmpeg", ["-version"]);
   } catch {
     throw new Error(
       "ffmpeg not found on PATH. Install it (e.g. `brew install ffmpeg`) — kamishibai does not bundle it.",
+    );
+  }
+  // ffprobe measures narration durations and probes audio sources.
+  try {
+    await execFileAsync("ffprobe", ["-version"]);
+  } catch {
+    throw new Error(
+      "ffprobe not found on PATH. It ships with ffmpeg — install a full ffmpeg (e.g. `brew install ffmpeg`).",
     );
   }
 }

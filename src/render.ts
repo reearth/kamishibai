@@ -292,6 +292,20 @@ function narrationEngine(
         `(or raise the limit with --probe-timeout)`
       );
     },
+    // A failed line rejects prepareNarration, so a page that awaits it before
+    // mount() never loads: once nothing is still in flight, stop with the
+    // provider's error rather than idling out (no timeout can fix this).
+    failed: () => {
+      const s = tts.stats();
+      if (!s.lastError || tts.busy()) return undefined;
+      return (
+        `narration failed: ${s.lastError}` +
+        (s.done
+          ? `. The ${s.done} line(s) that finished are cached in ${tts.cacheDir}, ` +
+            `so re-running resumes from there`
+          : "")
+      );
+    },
   };
   return {
     tts,
@@ -701,6 +715,8 @@ export interface SynthesizeOptions {
 export interface SynthesizeResult {
   /** lines synthesized this run (cache misses) */
   synthesized: number;
+  /** lines already in the cache (no provider call) */
+  cached: number;
   /** lines that failed */
   failed: number;
   cacheDir: string;
@@ -714,6 +730,7 @@ export interface SynthesizeResult {
  */
 export async function synthesize(opts: SynthesizeOptions): Promise<SynthesizeResult> {
   const log = opts.onLog ?? (() => {});
+  await assertFfmpeg(); // ffprobe measures every line
   const narration = narrationEngine(opts, log);
   const { tts } = narration;
   const served = await serveEntry(opts.entry, {
@@ -728,9 +745,10 @@ export async function synthesize(opts: SynthesizeOptions): Promise<SynthesizeRes
       narration.stop();
     }
     const s = tts.stats();
-    if (s.total === 0) log(`Narration is up to date — nothing new to synthesize.`);
-    else narration.summarize();
-    return { synthesized: s.done, failed: s.failed, cacheDir: tts.cacheDir };
+    if (s.total > 0) narration.summarize();
+    else if (s.cached > 0) log(`Narration is up to date — all ${s.cached} line(s) were already cached.`);
+    else log(`No narration found — the page requested no lines.`);
+    return { synthesized: s.done, cached: s.cached, failed: s.failed, cacheDir: tts.cacheDir };
   } finally {
     await served.close();
   }

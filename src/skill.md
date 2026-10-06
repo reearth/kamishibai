@@ -577,22 +577,28 @@ readings, acronyms), pass `prepareNarration(adapter, lines, { lexicon: { "町字
 "まちあざ", "Pub/Sub": "パブサブ" } })` — substitutions apply to the spoken text
 only — or give a line `{ text: "<reading>", caption: "<as written>" }`. The clip's
 `text` (what `<Narration subtitle>` shows) is always the caption, and only the
-spoken text is hashed, so caption edits never re-synthesize.
+spoken text is hashed, so caption edits never re-synthesize. Lexicon matching
+is one left-to-right pass: the longest key *starting at each position* wins, so
+an earlier key beats a longer later one (`京都` beats `都庁舎` in "東京都庁舎") —
+add a key for the whole word to pin its reading.
 
 **Long narration.** First-time synthesis of many lines can take minutes. The
 page-load wait counts only *idle* time, so it keeps waiting while lines are in
 flight (`Synthesizing narration…`, then `…narration N/M line(s)` every few
 seconds). Prefer **`kamishibai tts reel.tsx`** before the first render: it only
 fills the TTS cache (no capture, no encode) and exits non-zero if a line fails,
-so the render afterwards reads every line from cache. If synthesis fails, the
-error names how many lines finished and the provider's last error; finished
-lines are cached, so re-running resumes. `--probe-timeout <s>` (default 15)
-raises the idle limit for a page that is slow for other reasons.
+so the render afterwards reads every line from cache. If a line fails, the run
+stops as soon as nothing else is in flight, naming the provider's error and how
+many lines finished; finished lines are cached, so re-running resumes.
+Durations are measured with ffprobe (ships with ffmpeg; must be on PATH) — an
+unreadable clip fails its line instead of returning 0 ms. `--probe-timeout <s>`
+(default 15) raises the idle limit for a page that is slow for other reasons.
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
 for the final render (same reel): `openaiAdapter({ model, voice })`
 (`OPENAI_API_KEY`), `googleAdapter({ name })` (`GOOGLE_API_KEY`),
-`geminiAdapter({ voice, model, instructions })` (`GEMINI_API_KEY`),
+`geminiAdapter({ voice, model, instructions })` (`GEMINI_API_KEY`, falling
+back to `GOOGLE_API_KEY`),
 `pollyAdapter({ voiceId, engine })` (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`,
 `AWS_REGION`; signed with a built-in SigV4, no AWS SDK), or
 `elevenLabsAdapter({ voiceId, model })` (`ELEVENLABS_API_KEY`). The

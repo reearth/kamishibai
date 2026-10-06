@@ -98,6 +98,15 @@ describe("applyLexicon", () => {
     expect(applyLexicon("町字と町とPub/Sub", lex)).toBe("まちあざとまちとパブサブ");
   });
 
+  it("lets an earlier key beat a longer one that starts later", () => {
+    const lex = { 京都: "きょうと", 都庁舎: "とちょうしゃ" };
+    expect(applyLexicon("東京都庁舎", lex)).toBe("東きょうと庁舎");
+    // a key spanning the whole word pins its reading
+    expect(applyLexicon("東京都庁舎", { ...lex, 東京都庁舎: "とうきょうとちょうしゃ" })).toBe(
+      "とうきょうとちょうしゃ",
+    );
+  });
+
   it("treats keys literally (no regex)", () => {
     expect(applyLexicon("a.b axb", { "a.b": "X" })).toBe("X axb");
   });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { createTTSEngine, pcmToWav, type TTSAdapter, type TTSStats } from "../src/tts/engine.ts";
 
 /** A fake provider that records what it was asked to speak. */
@@ -46,12 +46,13 @@ describe("TTS engine", () => {
     });
 
     await engine.handle({ adapter: ref, items: { a: "one", b: "two" } });
-    expect(engine.stats()).toEqual({ total: 2, done: 2, failed: 0 });
+    expect(engine.stats()).toEqual({ total: 2, done: 2, failed: 0, cached: 0 });
     expect(engine.busy()).toBe(false);
 
     const before = events.length;
     await engine.handle({ adapter: ref, items: { a: "one" } });
     expect(events.length).toBe(before); // cached — no new work reported
+    expect(engine.stats()).toMatchObject({ total: 2, done: 2, cached: 1 });
   });
 
   it("records failures with the last error", async () => {
@@ -59,5 +60,53 @@ describe("TTS engine", () => {
     const engine = createTTSEngine({ adapters: [fakeAdapter([], true)], cacheDir });
     await expect(engine.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow("boom");
     expect(engine.stats()).toMatchObject({ total: 1, done: 0, failed: 1, lastError: "boom" });
+  });
+
+  it("keeps cache keys stable (file name = hash of id, text and override)", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const engine = createTTSEngine({ adapters: [fakeAdapter([])], cacheDir });
+    const r = await engine.handle({
+      adapter: ref,
+      items: { a: "hello", b: { text: "hello", opts: { rate: 150, voice: "x" } } },
+    });
+    // Changing these would orphan every user's baked (and paid-for) audio.
+    expect(basename(r.a!.src)).toBe("5a6cf92566a58561be9f68fcd3a161ed.wav");
+    expect(basename(r.b!.src)).toBe("aa4c3c218a8f7bb20a4cbf99d3f46646.wav");
+  });
+
+  it("fails a line whose audio ffprobe can't read, instead of returning 0 ms", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const garbage: TTSAdapter = {
+      provider: "fake",
+      async synthesize() {
+        return { audio: new TextEncoder().encode("not audio"), format: "mp3" };
+      },
+    };
+    const engine = createTTSEngine({ adapters: [garbage], cacheDir });
+    await expect(engine.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow(
+      /ffprobe could not read/,
+    );
+    expect(engine.stats()).toMatchObject({ total: 1, failed: 1 });
+
+    // The bad file is now cached; serving it from cache fails loudly too.
+    await expect(engine.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow(
+      /ffprobe could not read/,
+    );
+    expect(engine.stats()).toMatchObject({ total: 1, failed: 1, cached: 0 });
+    expect(engine.stats().lastError).toMatch(/ffprobe could not read/);
+  });
+
+  it("names ffprobe when it is missing from PATH", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const engine = createTTSEngine({ adapters: [fakeAdapter([])], cacheDir });
+    const path = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      await expect(engine.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow(
+        /ffprobe not found on PATH/,
+      );
+    } finally {
+      process.env.PATH = path;
+    }
   });
 });
