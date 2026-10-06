@@ -44,15 +44,16 @@ export interface ReelWaitOptions {
 /**
  * Listen to a page before it loads: forward its uncaught errors (and, with
  * `forwardConsole`, its "kamishibai…" console warnings/errors) to `onPageLog`,
- * and return wait options whose failure messages name the first error the page
- * threw. A page error never ends the wait by itself — the page may still mount
- * (a stray async throw, or narration still synthesizing) — but a reel that
- * throws before mount() then fails at the idle timeout with that error.
+ * and return wait options whose failure messages name every distinct error the
+ * page threw, in order (a harmless early throw must not hide the one that
+ * stopped the mount). A page error never ends the wait by itself — the page may
+ * still mount (a stray async throw, or narration still synthesizing) — but a
+ * reel that throws before mount() then fails at the idle timeout with them.
  */
 export function watchPage(page: Page, wait: ReelWaitOptions = {}, forwardConsole = false): ReelWaitOptions {
-  let thrown: string | undefined;
+  const thrown: string[] = [];
   page.on("pageerror", (err) => {
-    thrown ??= err.message;
+    if (!thrown.includes(err.message)) thrown.push(err.message);
     wait.onPageLog?.(`page error: ${err.message}`);
   });
   if (forwardConsole) {
@@ -64,7 +65,7 @@ export function watchPage(page: Page, wait: ReelWaitOptions = {}, forwardConsole
     });
   }
   const withThrown = (msg: string | undefined): string | undefined => {
-    const t = thrown ? `the page threw: ${thrown}` : undefined;
+    const t = thrown.length > 0 ? `the page threw: ${thrown.join(" | ")}` : undefined;
     return msg && t ? `${msg}; ${t}` : (msg ?? t);
   };
   return {

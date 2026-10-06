@@ -60,13 +60,14 @@ describe("watchPage", () => {
     expect(logs).toEqual(["page error: kamishibai: scene 1: bad"]);
   });
 
-  it("adds the page error to another failure reason", async () => {
+  it("adds every distinct page error, in order, to another failure reason", async () => {
     const { page, fire } = eventPage();
     const wait = watchPage(page, { timeoutMs: 30_000, failed: () => "narration failed: boom" });
     fire("pageerror", new Error("first"));
     fire("pageerror", new Error("second"));
+    fire("pageerror", new Error("first"));
     await expect(waitForReel(page, wait)).rejects.toThrow(
-      /narration failed: boom; the page threw: first$/,
+      /narration failed: boom; the page threw: first \| second$/,
     );
   });
 

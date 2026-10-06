@@ -108,7 +108,10 @@ const SceneBackdropContext = createContext<{ el: HTMLElement | null } | null>(nu
 
 // Each backdrop copy -> the box of the Stage it copies. Portals append as they
 // mount, so the copies' DOM order follows mount history (which depends on the
-// frames this worker seeked before); sortBackdrop restores tree order.
+// frames this worker seeked before); sortBackdrop restores tree order. Every
+// commit that mounts a copy sorts (the Stage's own layout effect), so the order
+// holds even when a Stage mounts outside a seek (e.g. after an effect's
+// setState).
 const backdropSources = new WeakMap<Element, Element>();
 
 /** Reorder a backdrop's copies to the document order of their Stages, so they
@@ -133,10 +136,15 @@ export const Stage: React.FC<{
   const backdrop = useContext(SceneBackdropContext);
   const boxRef = useRef<HTMLDivElement>(null);
   const copyRef = useRef<HTMLDivElement>(null);
-  // Link the copy to its Stage before the scene sorts its backdrop (a parent's
-  // layout effect runs after its children's).
+  // Link the copy to its Stage, then put the backdrop in tree order. The last
+  // Stage effect of a commit sees every copy linked (earlier commits linked
+  // the rest), so the order it leaves doesn't depend on which commit mounted
+  // what. The scene's own sort covers commits that re-render no Stage.
   useLayoutEffect(() => {
-    if (copyRef.current && boxRef.current) backdropSources.set(copyRef.current, boxRef.current);
+    if (copyRef.current && boxRef.current) {
+      backdropSources.set(copyRef.current, boxRef.current);
+      if (backdrop?.el) sortBackdrop(backdrop.el);
+    }
   });
   const boxStyle: React.CSSProperties = {
     position: "absolute",

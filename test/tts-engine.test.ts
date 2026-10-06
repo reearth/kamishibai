@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -143,6 +143,76 @@ describe("TTS engine", () => {
     expect(engine.stats().lastError).not.toMatch(/removed from the cache/);
     expect(existsSync(r.a!.src)).toBe(true);
     expect(spoken).toEqual(["hello"]);
+  });
+
+  it("keeps a cached clip when ffprobe fails for a reason other than its content", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const spoken: string[] = [];
+    const r = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
+      adapter: ref,
+      items: { a: "hello" },
+    });
+    // A broken ffprobe install: it runs, but exits non-zero before reading anything.
+    const bin = await mkdtemp(join(tmpdir(), "kamishibai-bin-"));
+    await writeFile(join(bin, "ffprobe"), "#!/bin/sh\necho 'dyld: Library not loaded' >&2\nexit 134\n");
+    await chmod(join(bin, "ffprobe"), 0o755);
+    const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      await expect(engine.handle({ adapter: ref, items: { a: "hello" } })).rejects.toThrow(
+        /ffprobe failed on narration audio .*dyld: Library not loaded/,
+      );
+    } finally {
+      process.env.PATH = path;
+    }
+    expect(engine.stats().lastError).not.toMatch(/removed from the cache/);
+    expect(existsSync(r.a!.src)).toBe(true);
+    expect(spoken).toEqual(["hello"]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)("keeps a cached clip ffprobe can't open", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const spoken: string[] = [];
+    const r = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
+      adapter: ref,
+      items: { a: "hello" },
+    });
+    await chmod(r.a!.src, 0o000);
+    const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
+    try {
+      await expect(engine.handle({ adapter: ref, items: { a: "hello" } })).rejects.toThrow(
+        /Permission denied/,
+      );
+      expect(engine.stats().lastError).not.toMatch(/removed from the cache/);
+      expect(existsSync(r.a!.src)).toBe(true);
+    } finally {
+      await chmod(r.a!.src, 0o644);
+    }
+  });
+
+  it("keeps freshly synthesized audio when ffprobe can't run, and measures it next run", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const spoken: string[] = [];
+    const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
+    const path = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      await expect(engine.handle({ adapter: ref, items: { a: "hello" } })).rejects.toThrow(
+        /ffprobe not found on PATH.*the synthesized audio is kept at .*5a6cf92566a58561be9f68fcd3a161ed\.wav/,
+      );
+    } finally {
+      process.env.PATH = path;
+    }
+    expect(engine.stats()).toMatchObject({ total: 1, done: 0, failed: 1 });
+    expect(await readdir(cacheDir)).toEqual(["5a6cf92566a58561be9f68fcd3a161ed.wav"]);
+
+    // With ffprobe back, the kept clip is measured from cache: no new synthesis.
+    const again = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
+    const r = await again.handle({ adapter: ref, items: { a: "hello" } });
+    expect(spoken).toEqual(["hello"]);
+    expect(r.a!.durationMs).toBe(100);
+    expect(again.stats()).toMatchObject({ total: 0, cached: 1 });
   });
 
   it("names ffprobe when it is missing from PATH", async () => {

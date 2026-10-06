@@ -22,8 +22,15 @@ import type { TTSAdapterRef, NarrationClip, NarrationInput } from "./index.ts";
 
 const execFileAsync = promisify(execFile);
 
-/** ffprobe ran and could not read a clip's content (vs. ffprobe itself failing). */
+/** ffprobe ran and reported the clip's content invalid ("Invalid data found
+ *  when processing input"), so the file itself is bad and may be deleted. Any
+ *  other ffprobe failure (missing, unable to start, permission denied, a crash
+ *  or broken install) says nothing about the clip and never removes it. */
 class UnreadableClipError extends Error {}
+
+/** ffprobe's stderr when it read a file and found no media it understands
+ *  (garbage, an empty file, a truncated header). */
+const INVALID_CONTENT = /Invalid data found when processing input/;
 
 /** Deterministic JSON (keys sorted) — so an opts override hashes stably. */
 function stableJson(v: unknown): string {
@@ -390,13 +397,16 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
             "narration durations (e.g. `brew install ffmpeg`)",
         );
       }
-      const detail = (err as { stderr?: string }).stderr?.trim() || (err as Error).message;
-      // Only a numeric exit code means ffprobe ran and rejected the file; a
-      // spawn error (EMFILE, EACCES, …) or a kill says nothing about it.
-      if (typeof code === "number") {
+      const stderr = (err as { stderr?: string }).stderr?.trim() ?? "";
+      const detail = stderr || (err as Error).message;
+      // Only ffprobe running to completion and calling the content invalid
+      // condemns the file. A spawn error (EMFILE, EACCES, …), a kill, or a
+      // non-zero exit for another reason (permission denied, a dyld/library
+      // error, a crash) says nothing about it.
+      if (typeof code === "number" && INVALID_CONTENT.test(stderr)) {
         throw new UnreadableClipError(`ffprobe could not read narration audio ${file}: ${detail}`);
       }
-      throw new Error(`ffprobe failed to run on narration audio ${file}: ${detail}`);
+      throw new Error(`ffprobe failed on narration audio ${file}: ${detail}`);
     }
     // ffprobe ran but may report no duration ("N/A") for a clip with zero
     // samples — e.g. `say` given empty text. That is a genuine 0.
@@ -426,11 +436,12 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         stats.cached += 1;
         return { src: existing, durationMs, text };
       } catch (err) {
-        // An unreadable cached clip (e.g. left by an older version, or
-        // corrupted on disk) would fail every run. Drop it so the next run
+        // A cached clip ffprobe calls invalid (e.g. left by an older version,
+        // or corrupted on disk) would fail every run. Drop it so the next run
         // synthesizes the line afresh, and count the line as failed. Any other
-        // failure (ffprobe missing or unable to start) says nothing about the
-        // clip, so the paid-for file stays.
+        // failure (ffprobe missing, unable to start, or failing for a reason
+        // other than the content) says nothing about the clip, so the
+        // paid-for file stays — and is measured again on the next run.
         const unreadable = err instanceof UnreadableClipError;
         if (unreadable) await unlink(existing).catch(() => {});
         stats.total += 1;
@@ -458,15 +469,31 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         // Write to a temp name then rename, so a half-written file can never be
         // read by a parallel worker (atomic publish). Measure the temp file
         // first (ffprobe detects the format by content, not extension): a clip
-        // ffprobe can't read is never published, so it can't poison later runs.
+        // ffprobe calls invalid is never published, so it can't poison later
+        // runs. If ffprobe fails for any other reason, the paid-for audio is
+        // published unmeasured and the line fails; the next run finds it in
+        // the cache and measures it like any cached clip (deleting it only if
+        // ffprobe then calls it invalid).
         const tmp = join(cacheDir, `.${hash}.${randomUUID()}.tmp`);
         await writeFile(tmp, audio);
         let durationMs: number;
         try {
           durationMs = await probeDurationMs(tmp);
         } catch (err) {
-          await unlink(tmp).catch(() => {});
-          throw err;
+          if (err instanceof UnreadableClipError) {
+            await unlink(tmp).catch(() => {});
+            throw err;
+          }
+          const published = await rename(tmp, file).then(
+            () => true,
+            () => false,
+          );
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(
+            published
+              ? `${msg} (the synthesized audio is kept at ${file}; it will be measured on the next run)`
+              : `${msg} (the synthesized audio is left at ${tmp})`,
+          );
         } finally {
           durations.delete(tmp);
         }

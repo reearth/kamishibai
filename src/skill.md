@@ -313,8 +313,8 @@ your own wrapper components.
   scene it joins, throws a `RangeError` (seriesLayout / seriesDuration / Series).
   Any error the reel throws while rendering fails the capture with its message.
   One thrown before `mount()` is logged as a page error at once, and the probe
-  fails with it when the idle page-load wait (`--probe-timeout`, default 15s)
-  runs out — a page error alone never stops the wait, as the page may still
+  fails naming it (with every other distinct page error, in order) when the
+  idle page-load wait (`--probe-timeout`, default 15s) runs out — a page error alone never stops the wait, as the page may still
   mount.
 - **Sub-frame windows.** Markers (`<Audio>`, soft `<Subtitle>`) register when
   mounted, and only sampled frames (`i × 1000 / fps`) mount anything. A `<Cue
@@ -628,10 +628,12 @@ so the render afterwards reads every line from cache. If a line fails, the run
 stops as soon as nothing else is in flight, naming the provider's error and how
 many lines finished; finished lines are cached, so re-running resumes.
 Durations are measured with ffprobe (ships with ffmpeg; must be on PATH) — an
-unreadable clip fails its line instead of returning 0 ms and is never kept in
-the cache (a cached clip ffprobe ran on and could not read is deleted), so
-re-running synthesizes it again. If ffprobe itself can't run, the line fails
-but a cached clip is kept. `--probe-timeout <s>`
+unreadable clip fails its line instead of returning 0 ms. A clip ffprobe
+reports as invalid data is never kept in the cache (a cached one is deleted),
+so re-running synthesizes it again. If ffprobe fails for any other reason
+(missing, can't start, permission denied, a crash), the line fails but the
+clip — even a freshly synthesized one — is kept, and the next run measures it
+once ffprobe works. `--probe-timeout <s>`
 (default 15) raises the idle limit for a page that is slow for other reasons.
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
