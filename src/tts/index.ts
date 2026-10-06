@@ -232,8 +232,10 @@ export async function prepareNarration<K extends string>(
     });
   } catch {
     // No server reachable — a standalone live preview (not a render). Estimate
-    // durations so the layout still works; capture always has the server, so
-    // this branch never affects a real render.
+    // durations so the layout still works. Capture serves script and .html
+    // entries with the /__tts handler, so this branch never affects their
+    // render. A URL entry is served by you: kamishibai's handler isn't there,
+    // and whatever your server answers decides the outcome.
     const out = {} as Record<K, NarrationClip>;
     for (const k in items) {
       const { text, caption } = items[k];

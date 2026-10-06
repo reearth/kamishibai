@@ -86,8 +86,9 @@ Any capturable page exposes exactly one global:
 window.kamishibai = {
   meta: { fps: 30, durationMs: 6000, width: 1920, height: 1080 },
   // Draw the still for `ms`; resolve once the DOM has settled.
-  // Return false to mean "identical to the previous frame".
-  seek(ms: number): Promise<boolean | void> | boolean | void;
+  // Return false to mean "identical to the previous frame", or a
+  // fingerprint string for the frame's content (see below).
+  seek(ms: number): Promise<boolean | string | void> | boolean | string | void;
 };
 ```
 
@@ -268,7 +269,7 @@ your own wrapper components.
 - **Sizing.** A crossfade *overlaps* the previous scene, so a reel is
   `Σ durations − Σ crossfades` long. Pass `seriesDuration(scenes)` to
   `meta.durationMs` (or `seriesLayout(scenes)` for the per-scene start times);
-  both live framework-free in `kamishibai/series`. A hand-summed total that
+  both are exported from `kamishibai/react` (plain functions, no React needed). A hand-summed total that
   forgets crossfades leaves **trailing blank frames** (too long) or **cuts the
   last scene** (too short).
 - **Local clocks.** Inside a scene the clock is scene-local: `useClock()` returns
@@ -336,12 +337,12 @@ kamishibai render <entry|url> [options]
 | `--scale` | `-s` | device scale factor; output px = meta size × scale (default 1) |
 | `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
-| `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths) |
+| `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths); the entry's own files win on a name clash |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--incremental` | `-i` | reuse cached frames; re-render only changed ones (needs `--frames-dir`) |
 | `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
 | `--burn-subtitles` | | burn captions into the frames instead of a soft track + sidecar `.srt` (needed for gif) |
-| `--crf` | | H.264 quality, lower = better (default 18) |
+| `--crf` | | H.264 quality `0`–`51`, lower = better (default 18) |
 | `--preset` | | libx264 speed preset (`ultrafast`…`veryslow`); `ultrafast` speeds up the mp4 encode (mp4 only) |
 | `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
 | `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
@@ -366,6 +367,9 @@ The `<entry|url>` can be:
 - a **URL** you already serve,
 - a local **`.html`** (its directory is served as-is), or
 - a local **script** `.ts/.tsx/.js/.jsx` — bundled with esbuild and served.
+
+A URL is loaded untouched, so `--public`, `--burn-subtitles` and narration (TTS)
+need an `.html` or script entry; the CLI warns when you pass them with a URL.
 
 Examples:
 ```
@@ -398,7 +402,7 @@ To **look at a few frames without making a video**, use `capture` with
 **`capture`** writes the PNGs, the fingerprint manifest, and a **mux sidecar**
 (the resolved + ducked audio clips and the soft subtitle cues) into the dir. It
 takes the capture-time flags: `-w`, `--fps`, `-s/--scale`, `-p/--public`, `-i`,
-`--only`, `--burn-subtitles`.
+`--only`, `--burn-subtitles`, `--probe-timeout`.
 
 **`encode`** rebuilds the video from that dir — **no browser, no probe, no TTS,
 just ffmpeg** — and replays the sidecar, so audio and captions come back without
@@ -406,13 +410,16 @@ re-capturing. The fastest path when the frames are already correct and you only
 want different encode/mux settings (a new `--crf`/`--preset`, a `--max-width`,
 `--encode-args`, or a `.gif`).
 
-- fps comes from the dir's manifest (override with `--fps`).
+- fps comes from the dir's manifest. `--fps` here re-times the kept frames (a
+  speed change), unlike `render --fps`, which re-samples the reel.
 - A `--only` capture does **not** update the sidecar (it seeks just the selected
   frames, so its markers are partial); the prior full capture's sidecar is kept.
 - Without a sidecar (e.g. a raw dir of PNGs, where you must pass `--fps`) the
   output is silent.
 - `encode` honors `--out`, `--fps`, `--crf`, `--preset`/`--preview`,
   `--max-width`, `--gif-loop`, `--encode-args`, `--mux-args`, `--verbose`.
+- `tts` honors only `-p/--public` and `--probe-timeout`. Any subcommand warns
+  about (and ignores) flags it doesn't use.
 
 ```
 kamishibai render reel.tsx -f frames -o reel.mp4        # capture once (writes the sidecar)

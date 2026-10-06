@@ -1,21 +1,22 @@
 // Serving the page to capture.
 // ------------------------------------------------------------------
-// Two ways in:
-//   - a URL  -> used as-is (you serve it however you like)
+// Three ways in:
+//   - a URL  -> used as-is (you serve it however you like; publicDir,
+//     burnSubtitles and the TTS endpoint can't reach a page we don't host)
 //   - a local entry (.ts/.tsx/.js/.jsx) -> bundled with esbuild into a
 //     self-contained page and served on localhost
 //   - a local .html -> its directory is served statically (scripts must
 //     already be browser-ready)
 //
-// Either way you get back { url, close } and the renderer points Chrome
+// Every way you get back { url, close } and the renderer points Chrome
 // at `url`.
 // ------------------------------------------------------------------
 import { build } from "esbuild";
 import { createServer, type Server, type IncomingMessage } from "node:http";
-import { mkdtemp, rm, writeFile, stat, cp } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, resolve, dirname, basename } from "node:path";
+import { extname, join, resolve, dirname, basename, relative, isAbsolute, sep } from "node:path";
 
 export interface Served {
   url: string;
@@ -29,19 +30,23 @@ export interface ServeOptions {
   /**
    * A directory of static assets to serve at the server root, so the page
    * can reference them by path (the equivalent of Remotion's staticFile /
-   * a Vite `public/`). Only applies to bundled script entries.
+   * a Vite `public/`). Applies to script and .html entries (not a URL). It
+   * is a fallback root: files the entry provides — the generated index.html
+   * and bundle.js of a script entry, or the .html entry's own directory —
+   * win over a same-named file in publicDir.
    */
   publicDir?: string;
   /**
    * Handles `POST /__tts` from the page's `prepareNarration` — synthesizes
-   * (and caches) narration audio in Node, before capture. Only wired for
-   * bundled script entries.
+   * (and caches) narration audio in Node, before capture. Wired for script
+   * and .html entries (a URL entry's page posts to its own origin instead).
    */
   tts?: TTSRequestHandler;
   /**
    * Burn subtitles into the frames (pixels) instead of the default soft track.
-   * Injected as a global the page reads before it mounts. Only applies to
-   * bundled script entries.
+   * Injected as a global (`window.__KAMISHIBAI_BURN_SUBTITLES__`) the page
+   * reads before it mounts: into the generated host page of a script entry,
+   * or into every served .html page of an .html entry. Not for a URL entry.
    */
   burnSubtitles?: boolean;
 }
@@ -69,12 +74,20 @@ function isUrl(entry: string): boolean {
   return /^https?:\/\//i.test(entry);
 }
 
+/** Sets the burn flag before any page script runs, so <Subtitle> sees it at mount. */
+const BURN_SCRIPT = `<script>window.__KAMISHIBAI_BURN_SUBTITLES__=true</script>`;
+
+/** Insert the burn flag into an .html entry's page, as early as possible. */
+function injectBurnFlag(html: string): string {
+  // After <head>, else after the doctype (prepending would force quirks mode).
+  const m = /<head(\s[^>]*)?>/i.exec(html) ?? /<!doctype[^>]*>/i.exec(html);
+  const at = m ? m.index + m[0].length : 0;
+  return html.slice(0, at) + BURN_SCRIPT + html.slice(at);
+}
+
 /** Minimal self-contained host page for a bundled script entry. */
 function hostHtml(burnSubtitles = false): string {
-  // Set the burn flag before the bundle runs, so <Subtitle> sees it at mount.
-  const config = burnSubtitles
-    ? `\n    <script>window.__KAMISHIBAI_BURN_SUBTITLES__=true</script>`
-    : "";
+  const config = burnSubtitles ? `\n    ${BURN_SCRIPT}` : "";
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -104,11 +117,40 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-/** Start a tiny static file server rooted at `root`, return it + its port. */
+/** True when `p` is `root` itself or lies beneath it (no `..` escape). */
+function isInside(root: string, p: string): boolean {
+  const rel = relative(root, p);
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+/**
+ * Find the file a URL path names: the first root (in order) that has it wins;
+ * a directory maps to its index.html. Returns undefined when no root has a
+ * regular file there, or "outside" when the path escapes the roots.
+ */
+async function resolveFile(roots: string[], urlPath: string): Promise<string | "outside" | undefined> {
+  for (const root of roots) {
+    let p = join(root, urlPath);
+    if (!isInside(root, p)) return "outside";
+    try {
+      if ((await stat(p)).isDirectory()) p = join(p, "index.html");
+      if ((await stat(p)).isFile()) return p;
+    } catch {
+      /* not in this root — try the next one */
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Start a tiny static file server over `roots` (earlier roots shadow later
+ * ones), return it + its port. `transformHtml` rewrites every .html response.
+ */
 async function staticServer(
-  root: string,
-  opts: { tts?: TTSRequestHandler } = {},
+  roots: string[],
+  opts: { tts?: TTSRequestHandler; transformHtml?: (html: string) => string } = {},
 ): Promise<{ server: Server; port: number }> {
+  const absRoots = roots.map((r) => resolve(r));
   const server = createServer(async (req, res) => {
     try {
       const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0] ?? "/");
@@ -131,25 +173,38 @@ async function staticServer(
         return;
       }
 
-      let filePath = join(root, urlPath);
-      // Directory -> index.html
-      try {
-        if ((await stat(filePath)).isDirectory()) filePath = join(filePath, "index.html");
-      } catch {
-        /* fall through to 404 below */
-      }
-      // Prevent path traversal outside the served root.
-      if (!resolve(filePath).startsWith(resolve(root))) {
+      const filePath = await resolveFile(absRoots, urlPath);
+      // Prevent path traversal outside the served roots.
+      if (filePath === "outside") {
         res.writeHead(403).end("forbidden");
         return;
       }
+      if (!filePath) {
+        res.writeHead(404).end("not found");
+        return;
+      }
       const ext = extname(filePath).toLowerCase();
-      res.writeHead(200, { "content-type": MIME[ext] ?? "application/octet-stream" });
-      createReadStream(filePath)
-        .on("error", () => res.writeHead(404).end("not found"))
-        .pipe(res);
+      const type = MIME[ext] ?? "application/octet-stream";
+      if (ext === ".html" && opts.transformHtml) {
+        const html = opts.transformHtml(await readFile(filePath, "utf8"));
+        res.writeHead(200, { "content-type": type }).end(html);
+        return;
+      }
+      // Send headers only once the file is actually open, so a read failure
+      // can still answer with a status instead of a truncated 200.
+      const stream = createReadStream(filePath);
+      stream
+        .on("open", () => {
+          res.writeHead(200, { "content-type": type });
+          stream.pipe(res);
+        })
+        .on("error", () => {
+          if (res.headersSent) res.destroy();
+          else res.writeHead(404).end("not found");
+        });
     } catch {
-      res.writeHead(500).end("server error");
+      if (res.headersSent) res.destroy();
+      else res.writeHead(500).end("server error");
     }
   });
 
@@ -175,12 +230,24 @@ export async function serveEntry(entry: string, opts: ServeOptions = {}): Promis
 
   const abs = resolve(entry);
   const ext = extname(abs).toLowerCase();
+  const isFile = await stat(abs).then((st) => st.isFile(), () => false);
+  if (!isFile) throw new Error(`Entry not found: "${entry}"`);
+  // publicDir is an extra, lower-priority root (see ServeOptions.publicDir).
+  const publicRoots: string[] = [];
+  if (opts.publicDir) {
+    const isDir = await stat(opts.publicDir).then((st) => st.isDirectory(), () => false);
+    if (!isDir) throw new Error(`Public dir not found: "${opts.publicDir}"`);
+    publicRoots.push(opts.publicDir);
+  }
 
   // 2. Plain .html — serve its directory as-is.
   if (ext === ".html") {
-    const { server, port } = await staticServer(dirname(abs));
+    const { server, port } = await staticServer([dirname(abs), ...publicRoots], {
+      tts: opts.tts,
+      transformHtml: opts.burnSubtitles ? injectBurnFlag : undefined,
+    });
     return {
-      url: `http://127.0.0.1:${port}/${basename(abs)}`,
+      url: `http://127.0.0.1:${port}/${encodeURIComponent(basename(abs))}`,
       close: () => closeServer(server),
     };
   }
@@ -216,17 +283,15 @@ export async function serveEntry(entry: string, opts: ServeOptions = {}): Promis
       logLevel: "silent",
     });
     await writeFile(join(dir, "index.html"), hostHtml(opts.burnSubtitles), "utf8");
-    // Copy static assets so the page can reach them at the server root.
-    if (opts.publicDir) {
-      await cp(resolve(opts.publicDir), dir, { recursive: true });
-    }
   } catch (err) {
     await rm(dir, { recursive: true, force: true });
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to bundle entry "${entry}":\n${message}`);
   }
 
-  const { server, port } = await staticServer(dir, { tts: opts.tts });
+  // The generated page + bundle come first, so a public/index.html can't
+  // replace the host page; publicDir serves everything else at the root.
+  const { server, port } = await staticServer([dir, ...publicRoots], { tts: opts.tts });
   return {
     url: `http://127.0.0.1:${port}/`,
     close: async () => {

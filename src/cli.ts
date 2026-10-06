@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // kamishibai CLI
 // ------------------------------------------------------------------
-//   kamishibai render <entry|url> [options]
+//   kamishibai render  <entry|url> [options]   capture + encode
+//   kamishibai capture <entry|url> -f <dir>    frames only
+//   kamishibai encode  -f <dir> [options]      frames -> video
+//   kamishibai tts     <entry|url>             narration pre-pass only
+//   kamishibai skill                           print the usage guide
 //
-//   --out, -o <file>      output mp4 (default: out.mp4)
-//   --workers, -w <n>     parallel Chrome instances (default: ~cpus-2)
-//   --crf <n>             H.264 quality, lower = better (default: 18)
-//   --keep-frames         keep intermediate PNG frames
-//   --verbose             stream ffmpeg output
-//   --help, -h            show this help
+// HELP below is the option reference; FLAGS_FOR says which subcommand
+// honors which flag (the rest are ignored with a warning).
 // ------------------------------------------------------------------
 import { parseArgs } from "node:util";
 import { render, encode, capture, synthesize } from "./render.ts";
@@ -25,14 +25,16 @@ Usage:
 
 Arguments:
   <entry|url>           a URL, an .html file, or a script (.ts/.tsx/.js/.jsx)
-                        that exposes window.kamishibai = { meta, seek(ms) }
+                        that exposes window.kamishibai = { meta, seek(ms) }.
+                        A URL is loaded as-is: -p, --burn-subtitles and
+                        narration (TTS) need a script or .html entry.
 
-Options:
-  -o, --out <file>      output file; .mp4 (default) or .gif by extension
+Capture options (render, capture):
   -w, --workers <n>     parallel Chrome instances (default: ~cpus-2, max 8)
       --fps <n>         override the page's fps (re-samples the same reel)
   -s, --scale <n>       device scale factor; output px = meta size × scale (default: 1)
-  -p, --public <dir>    static assets dir served at the root (staticFile paths)
+  -p, --public <dir>    static assets dir served at the root (staticFile paths);
+                        the entry's own files win on a name clash (also: tts)
   -f, --frames-dir <d>  write PNG frames here (created if needed; kept after)
   -i, --incremental     reuse cached frames; re-render only changed ones
                         (needs --frames-dir; compares per-frame fingerprints)
@@ -40,9 +42,20 @@ Options:
                         (needs --frames-dir with a prior full render)
       --burn-subtitles  burn captions into the frames (pixels) instead of the
                         default soft mp4 track + sidecar .srt (needed for gif)
+      --probe-timeout <s>
+                        seconds to wait for the page to expose window.kamishibai
+                        with nothing in progress (default: 15); narration still
+                        synthesizing doesn't count against it (also: tts)
+
+Encode options (render, encode):
+  -o, --out <file>      output file; .mp4 (default) or .gif by extension
+  -f, --frames-dir <d>  (encode) the frames dir to read; fps, audio and
+                        subtitles come from its manifest + mux sidecar
+      --fps <n>         (encode) play the kept frames at this rate instead of
+                        the manifest's — a speed change, not a re-sample
       --max-width <n>   downscale the output (mp4 or gif) to at most n px wide
       --gif-loop <n>    gif loops: 0 = infinite (default), -1 = once, n = times
-      --crf <n>         H.264 quality, lower = better (default: 18)
+      --crf <n>         H.264 quality 0-51, lower = better (default: 18)
       --preset <name>   libx264 speed/compression preset (ultrafast … veryslow);
                         ultrafast speeds up the mp4 encode for quick confirms
       --preview         shortcut for --preset ultrafast (fast confirm encode)
@@ -50,13 +63,13 @@ Options:
                         --encode-args "-tune animation" (mp4 only)
       --mux-args <s>    extra ffmpeg args for the audio/subtitle mux pass, e.g.
                         --mux-args "-movflags +faststart" (mp4 only)
-      --probe-timeout <s>
-                        seconds to wait for the page to expose window.kamishibai
-                        with nothing in progress (default: 15); narration still
-                        synthesizing doesn't count against it
-      --keep-frames     keep the intermediate PNG frames
       --verbose         stream ffmpeg output
+
+Other:
+      --keep-frames     (render) keep the intermediate PNG frames
   -h, --help            show this help
+
+A flag the chosen subcommand doesn't use is ignored, with a warning.
 
 Examples:
   kamishibai render reel.tsx -o reel.mp4 -w 4
@@ -75,6 +88,22 @@ Examples:
   kamishibai skill > kamishibai.md
 `;
 
+const CAPTURE_FLAGS = [
+  "workers", "fps", "scale", "public", "frames-dir", "incremental", "only",
+  "burn-subtitles", "probe-timeout",
+];
+const ENCODE_FLAGS = [
+  "out", "frames-dir", "fps", "max-width", "gif-loop", "crf", "preset", "preview",
+  "encode-args", "mux-args", "verbose",
+];
+/** The flags each subcommand actually reads (keep in sync with main()). */
+const FLAGS_FOR: Record<string, Set<string>> = {
+  render: new Set([...CAPTURE_FLAGS, ...ENCODE_FLAGS, "keep-frames"]),
+  capture: new Set(CAPTURE_FLAGS),
+  encode: new Set(ENCODE_FLAGS),
+  tts: new Set(["public", "probe-timeout"]),
+};
+
 // libx264's speed presets, slowest-compressing last. Validated so a typo fails
 // fast with a helpful message instead of ffmpeg erroring out mid-encode.
 const X264_PRESETS = [
@@ -85,8 +114,9 @@ const X264_PRESETS = [
 /**
  * Pull a raw passthrough option (and its value) out of an argv list before it
  * reaches parseArgs, which otherwise rejects a value starting with "-" (nearly
- * every ffmpeg flag) unless written as `--opt=…`. Supports both `--name value`
- * and `--name=value`; returns the value and the argv with both tokens removed.
+ * every ffmpeg flag, and a negative number) unless written as `--opt=…`.
+ * Supports both `--name value` and `--name=value`; returns the value and the
+ * argv with both tokens removed. A trailing `--name` with no value is an error.
  */
 function takeRawOption(argv: string[], name: string): { value?: string; rest: string[] } {
   const rest: string[] = [];
@@ -94,7 +124,11 @@ function takeRawOption(argv: string[], name: string): { value?: string; rest: st
   let value: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (a === `--${name}`) value = argv[++i]; // next token is the value, even if it starts with "-"
+    if (a === `--${name}`) {
+      // the next token is the value, even if it starts with "-"
+      if (i + 1 >= argv.length) throw new Error(`--${name} needs a value`);
+      value = argv[++i];
+    }
     else if (a.startsWith(eq)) value = a.slice(eq.length);
     else rest.push(a);
   }
@@ -102,13 +136,14 @@ function takeRawOption(argv: string[], name: string): { value?: string; rest: st
 }
 
 async function main(): Promise<void> {
-  // Extract the raw ffmpeg-passthrough options first (their dash-prefixed values
-  // confuse parseArgs), then hand the rest to parseArgs as usual.
+  // Extract the options whose values may start with "-" first (ffmpeg flags,
+  // `--gif-loop -1`) since they confuse parseArgs, then parse the rest as usual.
   const enc = takeRawOption(process.argv.slice(2), "encode-args");
   const mux = takeRawOption(enc.rest, "mux-args");
+  const loop = takeRawOption(mux.rest, "gif-loop");
 
   const { values, positionals } = parseArgs({
-    args: mux.rest,
+    args: loop.rest,
     allowPositionals: true,
     options: {
       out: { type: "string", short: "o" },
@@ -120,7 +155,6 @@ async function main(): Promise<void> {
       incremental: { type: "boolean", short: "i" },
       only: { type: "string" },
       "max-width": { type: "string" },
-      "gif-loop": { type: "string" },
       crf: { type: "string" },
       preset: { type: "string" },
       preview: { type: "boolean" },
@@ -157,14 +191,14 @@ async function main(): Promise<void> {
   const fps = values.fps ? Number(values.fps) : undefined;
   const scale = values.scale ? Number(values.scale) : undefined;
   const maxWidth = values["max-width"] ? Number(values["max-width"]) : undefined;
-  const gifLoop = values["gif-loop"] != null ? Number(values["gif-loop"]) : undefined;
+  const gifLoop = loop.value != null ? Number(loop.value) : undefined;
   const crf = values.crf ? Number(values.crf) : undefined;
   const probeTimeout = values["probe-timeout"] ? Number(values["probe-timeout"]) : undefined;
   if (probeTimeout !== undefined && (!Number.isFinite(probeTimeout) || probeTimeout <= 0)) {
     throw new Error(`--probe-timeout must be a positive number of seconds, got "${values["probe-timeout"]}"`);
   }
   const probeTimeoutMs = probeTimeout !== undefined ? probeTimeout * 1000 : undefined;
-  if (workers !== undefined && (!Number.isFinite(workers) || workers < 1)) {
+  if (workers !== undefined && (!Number.isInteger(workers) || workers < 1)) {
     throw new Error(`--workers must be a positive integer, got "${values.workers}"`);
   }
   if (scale !== undefined && (!Number.isFinite(scale) || scale <= 0)) {
@@ -175,6 +209,36 @@ async function main(): Promise<void> {
   }
   if (maxWidth !== undefined && (!Number.isFinite(maxWidth) || maxWidth <= 0)) {
     throw new Error(`--max-width must be a positive number, got "${values["max-width"]}"`);
+  }
+  // Checked here, not by ffmpeg, so a typo fails before a long capture.
+  if (crf !== undefined && (!Number.isFinite(crf) || crf < 0 || crf > 51)) {
+    throw new Error(`--crf must be a number from 0 to 51, got "${values.crf}"`);
+  }
+  if (gifLoop !== undefined && (!Number.isInteger(gifLoop) || gifLoop < -1)) {
+    throw new Error(`--gif-loop must be an integer ≥ -1 (0 = infinite, -1 = once), got "${loop.value}"`);
+  }
+
+  // Say so when a flag is given that this subcommand never reads.
+  const given = Object.keys(values).filter((k) => values[k as keyof typeof values] !== undefined);
+  if (enc.value !== undefined) given.push("encode-args");
+  if (mux.value !== undefined) given.push("mux-args");
+  if (loop.value !== undefined) given.push("gif-loop");
+  const ignored = given.filter((k) => !FLAGS_FOR[command]!.has(k));
+  if (ignored.length > 0) {
+    process.stderr.write(
+      `kamishibai ${command}: ignoring ${ignored.map((k) => `--${k}`).join(", ")} (not used by ${command}; see --help)\n`,
+    );
+  }
+  // A URL entry is a page you serve, so kamishibai can't add assets or flags to it.
+  if (entry && /^https?:\/\//i.test(entry)) {
+    const unreachable = (["public", "burn-subtitles"] as const).filter(
+      (k) => values[k] !== undefined && FLAGS_FOR[command]!.has(k),
+    );
+    if (unreachable.length > 0) {
+      process.stderr.write(
+        `kamishibai: ${unreachable.map((k) => `--${k}`).join(", ")} ${unreachable.length > 1 ? "have" : "has"} no effect on a URL entry (serve the assets / set the flag yourself)\n`,
+      );
+    }
   }
 
   // --preview is sugar for --preset ultrafast; an explicit --preset wins.

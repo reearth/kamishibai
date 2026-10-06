@@ -4,13 +4,15 @@
 //
 //   window.kamishibai = {
 //     meta: { fps, durationMs, width, height },
-//     seek(ms): Promise<void>,
+//     seek(ms): Promise<boolean | string | void>,
 //   };
 //
 // `seek(ms)` builds the *still state* for a given moment and resolves
 // once the DOM has settled (so a screenshot is taken against a painted,
-// stable frame). What happens inside seek — a React re-render, a manual
-// ctx.clearRect, a Konva layer.draw() — is entirely up to the page.
+// stable frame). Its optional return value (false / a fingerprint string)
+// lets the renderer skip or reuse frames — see KamishibaiPage.seek. What
+// happens inside seek — a React re-render, a manual ctx.clearRect, a Konva
+// layer.draw() — is entirely up to the page.
 //
 // The renderer never plays back in real time. It seeks to a moment,
 // screenshots, advances, and repeats. Because each frame is a pure
@@ -52,8 +54,8 @@ export interface KamishibaiPage {
   seek(ms: number): Promise<boolean | string | void> | boolean | string | void;
   /**
    * Optional audio markers for muxing, collected from the page after capture
-   * when the caller passes no explicit manifest. Either populated by
-   * kamishibai/react's <Audio>, or by hand: push { src, atMs, gain? } entries
+   * and merged with any clips the caller passes (`render({ audio })`). Either
+   * populated by kamishibai/react's <Audio>, or by hand: push { src, atMs, gain? } entries
    * (src is a path ffmpeg can read, atMs is the start time in milliseconds).
    */
   audio?: Array<{

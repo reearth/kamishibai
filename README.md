@@ -100,8 +100,9 @@ A capturable page exposes exactly one global:
 window.kamishibai = {
   meta: { fps: 30, durationMs: 6000, width: 1920, height: 1080 },
   // Build the still state for `ms` and resolve once the DOM has settled.
-  // Return false to mean "identical to the previous frame" (see below).
-  seek(ms: number): Promise<boolean | void> | boolean | void;
+  // Return false to mean "identical to the previous frame", or a fingerprint
+  // string for the frame's content (see below).
+  seek(ms: number): Promise<boolean | string | void> | boolean | string | void;
 };
 ```
 
@@ -398,13 +399,13 @@ kamishibai render <entry|url> [options]
 | `--fps` | | override the page's fps — re-samples the same reel at this rate |
 | `--scale` | `-s` | device scale factor; output px = meta size × scale (default: 1) |
 | `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
-| `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths) |
+| `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths); the entry's own files win on a name clash |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--incremental` | `-i` | reuse cached frames; re-render only changed ones (needs `--frames-dir`) |
 | `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
 | `--burn-subtitles` | | burn captions into the frames instead of a soft track + sidecar `.srt` |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
-| `--crf` | | H.264 quality, lower = better (default: 18) |
+| `--crf` | | H.264 quality `0`–`51`, lower = better (default: 18) |
 | `--preset` | | libx264 speed preset (`ultrafast`…`veryslow`); speeds up the mp4 encode (mp4 only) |
 | `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
 | `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
@@ -413,7 +414,9 @@ kamishibai render <entry|url> [options]
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
 
-The entry can be a **URL** you already serve (`http://localhost:3000`), a local **`.html`** file (its directory is served as-is), or a local **script** (`.ts` / `.tsx` / `.js` / `.jsx`) — bundled with esbuild and served for you.
+The entry can be a **URL** you already serve (`http://localhost:3000`), a local **`.html`** file (its directory is served as-is), or a local **script** (`.ts` / `.tsx` / `.js` / `.jsx`) — bundled with esbuild and served for you. A URL is loaded untouched, so `--public`, `--burn-subtitles` and narration (TTS) only work with an `.html` or script entry; the CLI warns when you pass them with a URL.
+
+Not every subcommand reads every flag: `capture` takes the capture-time ones (`-w`, `--fps`, `-s`, `-p`, `-f`, `-i`, `--only`, `--burn-subtitles`, `--probe-timeout`), `encode` the encode-time ones (`-o`, `-f`, `--fps`, `--max-width`, `--gif-loop`, `--crf`, `--preset`/`--preview`, `--encode-args`, `--mux-args`, `--verbose`), `tts` only `-p` and `--probe-timeout`, and `render` all of them. A flag the subcommand doesn't use is ignored with a warning.
 
 ```sh
 kamishibai render reel.tsx -o reel.mp4 -w 4
@@ -439,7 +442,7 @@ kamishibai encode  -f frames -o reel.mp4                # frames → video, no b
 kamishibai capture reel.tsx -f frames --only 120-130    # re-shoot a few frames to look at, no mp4
 ```
 
-`render reel.tsx -f frames -o out.mp4` is exactly those two in sequence. `encode` rebuilds the video from the dir — **no browser, no capture, just ffmpeg** — and replays the mux sidecar a full capture left (the resolved + ducked audio clips and soft subtitle cues), so audio and captions come back without re-capturing. It's the fastest path when the PNGs are already correct and you only want different encode/mux settings (`--crf`, `--preset`/`--preview`, `--max-width`, `--encode-args`, or a `.gif`). fps comes from the dir's manifest (override with `--fps`); a `--only` capture leaves the sidecar untouched (its markers are partial), and a dir of raw PNGs with no sidecar encodes silent.
+`render reel.tsx -f frames -o out.mp4` is exactly those two in sequence. `encode` rebuilds the video from the dir — **no browser, no capture, just ffmpeg** — and replays the mux sidecar a full capture left (the resolved + ducked audio clips and soft subtitle cues), so audio and captions come back without re-capturing. It's the fastest path when the PNGs are already correct and you only want different encode/mux settings (`--crf`, `--preset`/`--preview`, `--max-width`, `--encode-args`, or a `.gif`). fps comes from the dir's manifest; `--fps` here re-times the kept frames (a speed change, not a re-sample like on `render`); a `--only` capture leaves the sidecar untouched (its markers are partial), and a dir of raw PNGs with no sidecar encodes silent.
 
 ```sh
 kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio + subs intact
