@@ -80,9 +80,11 @@ export function cueAt(cues: Cue[], ms: number): Cue | undefined {
   return undefined;
 }
 
-/** Fetch + parse a subtitle file (the src must be reachable by the browser). */
+/** Fetch + parse a subtitle file (the src must be reachable by the browser).
+ *  Rejects when the fetch fails or answers with a non-2xx status. */
 export async function loadSubtitles(src: string): Promise<Cue[]> {
   const res = await fetch(src);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
   return parseSubtitles(await res.text());
 }
 

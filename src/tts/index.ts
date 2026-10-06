@@ -290,7 +290,11 @@ export interface NarrationScene extends SceneSpec {
  * Lay a sequence of clips out as one scene per clip, each sized to its measured
  * duration (+ padMs), with an optional uniform crossfade / exit-fade. Map the
  * result to `<Series scenes>` items (add `content`) and size the reel with
- * `seriesDuration`.
+ * `seriesDuration`. The crossfade is applied as given, not clamped: a scene
+ * starts `crossfadeMs` before the previous one ends, so keep `padMs >=
+ * crossfadeMs` — otherwise its narration overlaps the end of the previous
+ * line, and a crossfade longer than a (short) scene makes seriesDuration /
+ * seriesLayout / <Series> throw a RangeError.
  */
 export function narrationLayout(
   clips: NarrationClip[],

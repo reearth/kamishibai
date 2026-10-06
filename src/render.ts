@@ -257,7 +257,8 @@ const TTS_PROGRESS_EVERY_MS = 5_000;
  * The narration pre-pass's TTS engine plus its logging: announces the first
  * synthesis, ticks "…narration done/total" while lines are in flight, and
  * builds the wait options so a slow first synthesis extends (rather than
- * trips) the page-load timeout.
+ * trips) the page-load timeout. The wait options also carry the page's errors
+ * and warnings to the log.
  */
 function narrationEngine(
   opts: { ttsAdapters?: TTSAdapter[]; ttsCacheDir?: string; probeTimeoutMs?: number },
@@ -279,7 +280,15 @@ function narrationEngine(
       ticker.unref?.();
     },
   });
+  // Page errors and "kamishibai…" console warnings, once each (every parallel
+  // worker loads the page and would repeat them).
+  const pageLogSeen = new Set<string>();
   const wait: ReelWaitOptions = {
+    onPageLog: (msg) => {
+      if (pageLogSeen.has(msg)) return;
+      pageLogSeen.add(msg);
+      log(`  (page) ${msg}`);
+    },
     timeoutMs: opts.probeTimeoutMs,
     busy: () => tts.busy(),
     describe: () => {

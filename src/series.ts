@@ -11,15 +11,18 @@
 export interface SceneSpec {
   /** how long this scene is on screen, in ms (before crossfade overlap) */
   durationMs: number;
-  /** crossfade-in length in ms; overlaps the previous scene (default 0) */
+  /** crossfade-in length in ms; overlaps the previous scene, which stays
+   *  opaque while this one fades in over it (default 0) */
   crossfadeMs?: number;
   /**
    * fade this scene's content out over `exitFadeMs` ms, ending where the next
    * scene's crossfade begins (or at the scene end when there is none). Pairs
    * with a crossfade to avoid ghosting: the outgoing content is gone before
-   * the incoming scene arrives. In kamishibai/react a `<Stage background>`
-   * directly in the scene keeps its background, so only the backgrounds
-   * blend; content outside a Stage fades with everything else (default 0).
+   * the incoming scene arrives. In kamishibai/react everything the scene
+   * renders fades, but each outermost `<Stage>` in it leaves an opaque copy of
+   * its box (`background` + `style`, no children) underneath, so only the
+   * backgrounds blend; with no Stage the scene fades to whatever is under the
+   * Series (default 0).
    */
   exitFadeMs?: number;
 }
@@ -32,7 +35,8 @@ export interface SceneLayout {
   durationMs: number;
   /** crossfade-in length applied at the scene's start (0 for the first) */
   xfIn: number;
-  /** crossfade-out length applied at the scene's end (= next scene's xfIn) */
+  /** overlap with the next scene at this scene's end (= next scene's xfIn);
+   *  in kamishibai/react this scene stays opaque while the next fades in */
   xfOut: number;
   /** content exit-fade length applied at the scene's end */
   exitFadeMs: number;
@@ -100,6 +104,29 @@ export function exitFadeOpacity(place: SceneLayout, local: number): number {
   if (local < start) return 1;
   if (local >= end) return 0;
   return (end - local) / place.exitFadeMs;
+}
+
+/**
+ * Frames are sampled only at `i × 1000 / fps` for `i < frames`, so a window
+ * `[startMs, startMs + lenMs)` that no sample lands in would never mount (and
+ * markers inside it would never register). Returns the frame on which such a
+ * window should be mounted hidden instead: the first sample after it, or the
+ * last frame when the window lies past the last sample but still starts within
+ * the reel (`< frames × 1000 / fps`). Undefined when a sample lands inside the
+ * window, the window is empty, or it starts after the reel.
+ */
+export function hiddenMountFrame(
+  startMs: number,
+  lenMs: number,
+  fps: number,
+  frames: number,
+): number | undefined {
+  if (!(lenMs > 0)) return undefined; // an empty window is meant to show nothing
+  const perMs = fps / 1000;
+  // first sample at or after the window start (tolerating float noise)
+  const first = Math.ceil(startMs * perMs - 1e-6);
+  if (first < frames) return first / perMs < startMs + lenMs - 1e-6 ? undefined : first;
+  return frames > 0 && startMs < frames / perMs - 1e-6 ? frames - 1 : undefined;
 }
 
 /**

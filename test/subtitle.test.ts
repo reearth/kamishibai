@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parseSubtitles, cueAt, mergeCues, cuesToSrt, isPlayableCue } from "../src/subtitle.ts";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { parseSubtitles, cueAt, mergeCues, cuesToSrt, isPlayableCue, loadSubtitles } from "../src/subtitle.ts";
 
 const SRT = `1
 00:00:01,000 --> 00:00:04,000
@@ -141,5 +141,22 @@ describe("unplayable cues (end <= start)", () => {
     expect(isPlayableCue({ start: 1, end: 1, text: "a" })).toBe(false);
     expect(isPlayableCue({ start: 2, end: 1, text: "a" })).toBe(false);
     expect(isPlayableCue({ start: NaN, end: 1, text: "a" })).toBe(false);
+  });
+});
+
+describe("loadSubtitles", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("parses a fetched file", async () => {
+    vi.stubGlobal("fetch", async () => new Response("00:00:01.000 --> 00:00:02.000\nhi\n"));
+    expect(await loadSubtitles("/a.vtt")).toEqual([{ start: 1000, end: 2000, text: "hi" }]);
+  });
+
+  it("rejects a non-2xx response instead of parsing its body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response("not found", { status: 404, statusText: "Not Found" }),
+    );
+    await expect(loadSubtitles("/nope.vtt")).rejects.toThrow("HTTP 404 Not Found");
   });
 });

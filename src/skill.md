@@ -241,8 +241,9 @@ Sugar API:
   `<Audio>`: declared, then muxed into an mp4 mov_text track + a sidecar .srt;
   no pixels, no effect on frame fingerprints). Render with `--burn-subtitles` to
   draw them as pixels instead (full CSS via `bottom`/`style`; required for gif).
-  A cue whose end is not after its start is dropped with a console warning in
-  both modes. Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
+  A cue whose end is not after its start is dropped with a warning in both
+  modes (page `kamishibai:` warnings show in the render log), and a `src` that
+  fails to load fails the capture. Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
   cuesToSrt) for the raw API.
 - `<Narration clip delayMs atMs gain fadeInMs fadeOutMs subtitle>` — play a
   clip from `prepareNarration` (synthesized up front, see Narration below);
@@ -292,22 +293,29 @@ your own wrapper components.
   durationMs={p.d}>…</Series.Scene>` renders correctly whether it's a direct
   child or nested in your own components. Keep scenes statically ordered —
   registration order is source order.
-- **Transitions / anti-ghosting.** A crossfade composites *both* scenes at
-  partial opacity, so two different layouts **ghost** (e.g. a centered title
-  bleeding through the incoming slide). Set `exitFadeMs` on the outgoing scene to
-  fade its *content* out; the fade ends where the next scene's crossfade begins,
-  so the old content is gone before the new one shows. A `<Stage background>`
-  directly in the scene keeps its background, so only the backgrounds blend;
-  content outside a Stage fades with the whole scene (what's under the Series
-  then shows until the next scene fades in). The crossfade is a true mix of
-  the two scenes — nothing beneath shows through mid-fade. The two add up: a 700ms crossfade + 600ms exit-fade starts dimming the
-  content 1300ms before the outgoing scene ends.
+- **Transitions / anti-ghosting.** A crossfade fades the incoming scene in
+  over the outgoing one, which stays fully opaque until it ends (a linear mix
+  between opaque scenes; nothing beneath the Series shows through; an incoming
+  scene with no background shows the outgoing one through it until that ends).
+  So two different layouts **ghost** (e.g. a centered title bleeding through
+  the incoming slide). Set `exitFadeMs` on the outgoing scene to fade its
+  *content* out; the fade ends where the next scene's crossfade begins, so the
+  old content is gone before the new one shows. Everything in the scene fades
+  (Stages, their children, content outside a Stage), but each outermost
+  `<Stage>` leaves an opaque, childless copy of its box (`background` + `style`,
+  laid out against the full frame) underneath, so only the backgrounds blend.
+  With no Stage, the scene fades to what's under the Series until the next
+  scene fades in. The two add up: a 700ms crossfade + 600ms exit-fade starts
+  dimming the content 1300ms before the outgoing scene ends.
 - **Checked timings.** A negative length, or a `crossfadeMs` longer than either
   scene it joins, throws a `RangeError` (seriesLayout / seriesDuration / Series).
+  Any error the reel throws while rendering fails the capture with its message;
+  one thrown before `mount()` fails the probe with it.
 - **Sub-frame windows.** Markers (`<Audio>`, soft `<Subtitle>`) register when
   mounted, and only sampled frames (`i × 1000 / fps`) mount anything. A `<Cue
   hold>` or scene shorter than one frame that no frame lands in is mounted
-  hidden for one frame, so its markers still count while nothing paints.
+  hidden for one frame (the next one, or the last frame for a window after
+  it), so its markers still count while nothing paints.
   Other transitions (wipe/swipe) are a few lines of `ramp()` + `transform` on the
   scene content.
 
@@ -568,7 +576,9 @@ Narration-driven layout helpers (in `kamishibai/tts`, also re-exported from
 `kamishibai/react`), all pure data:
 - `narrationLayout(clips, { padMs, crossfadeMs, exitFadeMs })` → one
   `{ durationMs, crossfadeMs?, exitFadeMs?, clip }` per clip; map it to
-  `<Series scenes>` items by adding `content`.
+  `<Series scenes>` items by adding `content`. The crossfade isn't clamped:
+  keep `padMs ≥ crossfadeMs`, or it overlaps the previous line's audio and,
+  past a short scene's length, seriesDuration / Series throw a RangeError.
 - `narrationTotal(clips)` → the raw voice-over length (sum of durations), handy
   for a sanity check against `seriesDuration(scenes)` (which adds pad/crossfade).
 - `narrationSequence(clips, { gapMs, startMs })` → for **several clips in one

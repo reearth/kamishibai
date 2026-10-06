@@ -3,6 +3,7 @@ import {
   seriesLayout,
   seriesDuration,
   exitFadeOpacity,
+  hiddenMountFrame,
   type SceneSpec,
   type SceneLayout,
 } from "../src/series.ts";
@@ -129,5 +130,29 @@ describe("degenerate timings", () => {
   it("accepts a crossfade equal to both scene lengths", () => {
     const placed = seriesLayout([{ durationMs: 500 }, { durationMs: 500, crossfadeMs: 500 }]);
     expect(placed[1]!.start).toBe(0);
+  });
+});
+
+describe("hiddenMountFrame", () => {
+  // fps 10 → samples every 100ms; 10 frames → 0..900ms, reel ends at 1000ms
+  it("is undefined when a sample lands inside the window", () => {
+    expect(hiddenMountFrame(500, 20, 10, 10)).toBeUndefined();
+    expect(hiddenMountFrame(450, 100, 10, 10)).toBeUndefined();
+  });
+
+  it("picks the first sample after a window between two samples", () => {
+    expect(hiddenMountFrame(510, 20, 10, 10)).toBe(6);
+  });
+
+  it("picks the last frame for a window after the last sample", () => {
+    expect(hiddenMountFrame(985, 10, 10, 10)).toBe(9);
+    // a window running past the reel end that no sample reaches
+    expect(hiddenMountFrame(950, 500, 10, 10)).toBe(9);
+  });
+
+  it("is undefined for an empty window or one starting after the reel", () => {
+    expect(hiddenMountFrame(510, 0, 10, 10)).toBeUndefined();
+    expect(hiddenMountFrame(1000, 50, 10, 10)).toBeUndefined();
+    expect(hiddenMountFrame(10, 20, 10, 0)).toBeUndefined();
   });
 });

@@ -157,11 +157,11 @@ You don't need React — any page that sets `window.kamishibai` works. But `kami
 
 ### Scenes
 
-`<Series>` plays scenes back-to-back, each with its own local clock (so `useClock()` and `<Audio delayMs>` are measured from the scene's start). A `crossfadeMs` overlaps a scene with the previous one; `exitFadeMs` fades a scene's *content* out, finishing right where the next scene's crossfade begins (so crossfading two different layouts doesn't ghost). A `<Stage background>` directly in the scene keeps its background through the exit-fade, so only the backgrounds blend; content not inside a Stage fades with the rest of the scene, and whatever is under the `<Series>` shows through until the next scene fades in. The crossfade itself is a true mix of the two scenes — nothing beneath the Series shows through mid-fade.
+`<Series>` plays scenes back-to-back, each with its own local clock (so `useClock()` and `<Audio delayMs>` are measured from the scene's start). A `crossfadeMs` overlaps a scene with the previous one: the incoming scene fades in over the outgoing one, which stays fully opaque until it ends. Between two opaque scenes that's a linear mix, and nothing beneath the `<Series>` shows through mid-fade (an incoming scene with no background lets the outgoing one show through it until the outgoing one ends). `exitFadeMs` fades a scene's *content* out, finishing right where the next scene's crossfade begins (so crossfading two different layouts doesn't ghost). Everything the scene renders fades — Stages, their children, and any content outside a Stage — but each outermost `<Stage>` in the scene leaves an opaque, childless copy of its box (`background` plus `style`, laid out against the full frame) underneath while the content fades, so only the backgrounds blend. A scene with no Stage fades to whatever is under the `<Series>` until the next scene fades in.
 
-Timings are checked: a negative length, or a `crossfadeMs` longer than either scene it joins, throws a `RangeError` from `seriesLayout` / `seriesDuration` / `<Series>`.
+Timings are checked: a negative length, or a `crossfadeMs` longer than either scene it joins, throws a `RangeError` from `seriesLayout` / `seriesDuration` / `<Series>`. Thrown while rendering, it fails the capture with that message; thrown before `mount()` (e.g. `seriesDuration` in `meta`), it fails the probe with it.
 
-Markers (`<Audio>`, soft `<Subtitle>`) register when their component mounts, and the renderer only mounts what a sampled frame (`i × 1000 / fps` ms) shows. A `<Cue hold>` or `<Series.Scene>` window shorter than one frame that no frame lands in is mounted hidden for one frame instead, so its markers still land at their exact times while nothing paints.
+Markers (`<Audio>`, soft `<Subtitle>`) register when their component mounts, and the renderer only mounts what a sampled frame (`i × 1000 / fps` ms) shows. A `<Cue hold>` or `<Series.Scene>` window shorter than one frame that no frame lands in is mounted hidden for one frame instead (the next frame, or the last frame for a window after it), so its markers still land at their exact times while nothing paints.
 
 Scenes **self-register**, so a scene wrapped in your own component works at any depth — there's no "must be a direct child" rule:
 
@@ -300,7 +300,7 @@ import { Subtitle, Cue } from "kamishibai/react";
 
 **Burn-in** (`--burn-subtitles` / `render({ burnSubtitles })`) draws the captions as pixels instead, using the `<Subtitle>` CSS (`bottom`, `style`; and `<Narration subtitleBottom subtitleStyle>`) for full visual control — those props do nothing for the soft track. It's a global switch — soft `mov_text` is plain text styled by the player, so reach for burn-in when you need pixel-perfect captions, or for **GIF output**, which has no subtitle track (gif always burns or drops, and a sidecar `.srt` is still written).
 
-A cue whose end is not after its start can never show, so it's dropped with a console warning in both modes (rather than failing the soft-track mux after the capture).
+A cue whose end is not after its start can never show, so it's dropped with a warning in both modes (rather than failing the soft-track mux after the capture); the page's `kamishibai:` warnings are printed in the render log. A `src` that fails to load (e.g. a 404) fails the capture in both modes.
 
 The parser/serializer is also framework-free for the raw API or Node:
 
@@ -340,7 +340,7 @@ mount(<Series scenes={scenes} />, {
 });
 ```
 
-Helpers (`kamishibai/tts`, also re-exported from `kamishibai/react`): `narrationLayout(clips, { padMs, crossfadeMs, exitFadeMs })` → one scene spec per clip · `narrationTotal(clips)` → total voice-over length · `narrationSequence(clips, { gapMs, startMs })` → cumulative start offsets for several lines in one scene (reveal element X when line Y starts via `<Cue at={atMs}>`), with `gapMs` as a number, array, or `(i, clip) => ms` for uneven pacing · `narrationScene(clips, { leadMs, gapMs, tailMs })` → `{ steps, durationMs }`, the "several lines in one scene" shape in one call.
+Helpers (`kamishibai/tts`, also re-exported from `kamishibai/react`): `narrationLayout(clips, { padMs, crossfadeMs, exitFadeMs })` → one scene spec per clip (the crossfade isn't clamped: keep `padMs ≥ crossfadeMs`, or a crossfade overlaps the end of the previous line's audio and, past a scene's length, `seriesDuration` / `<Series>` throw a `RangeError`) · `narrationTotal(clips)` → total voice-over length · `narrationSequence(clips, { gapMs, startMs })` → cumulative start offsets for several lines in one scene (reveal element X when line Y starts via `<Cue at={atMs}>`), with `gapMs` as a number, array, or `(i, clip) => ms` for uneven pacing · `narrationScene(clips, { leadMs, gapMs, tailMs })` → `{ steps, durationMs }`, the "several lines in one scene" shape in one call.
 
 `<NarrationSteps steps subtitle />` places a `<Narration>` (audio + caption) at each step's `atMs`, so a multi-line scene is three lines:
 

@@ -21,8 +21,8 @@ import React, {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { flushSync } from "react-dom";
-import type { KamishibaiMeta } from "../protocol.ts";
+import { createPortal, flushSync } from "react-dom";
+import { frameCount, type KamishibaiMeta } from "../protocol.ts";
 import { createClipRegistry, type AudioClip, type DuckOptions } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
 import { loadSubtitles, cueAt, isPlayableCue, warnUnplayable, type Cue as SubtitleCue } from "../subtitle.ts";
@@ -49,7 +49,13 @@ import { eases, ramp, type Ease } from "../easing.ts";
 import { cameraAt, cameraTransform, type CameraShot, type CameraState } from "../camera.ts";
 export { cameraAt, cameraTransform } from "../camera.ts";
 export type { CameraShot, CameraState } from "../camera.ts";
-import { seriesLayout, exitFadeOpacity, type SceneSpec, type SceneLayout } from "../series.ts";
+import {
+  seriesLayout,
+  exitFadeOpacity,
+  hiddenMountFrame,
+  type SceneSpec,
+  type SceneLayout,
+} from "../series.ts";
 import { fnv1a64 } from "../fingerprint.ts";
 
 // Re-exported so authors can size meta.durationMs to a Series without
@@ -90,44 +96,33 @@ export const ClockProvider = ClockContext.Provider;
 export const useClock = (): Clock => useContext(ClockContext);
 
 // ---- Stage --------------------------------------------------------
-// A <Series.Scene> with an exit-fade hands its content opacity down. The
-// outermost <Stage>(s) inside it claim that fade: the `background` prop stays
-// opaque on a layer of its own and only the Stage's children (and `style`)
-// fade, so a crossfade blends the scenes' backgrounds without ghosting their
-// content. Stages nested in those see no fade (the outer one applies it).
-interface SceneFade {
-  opacity: number;
-  claim: () => () => void;
-}
-const SceneFadeContext = createContext<SceneFade | null>(null);
+// A <Series.Scene> with an exit-fade fades its whole content layer out —
+// every Stage, sibling and child in it. So that the scene's background still
+// blends with the next scene, each outermost <Stage> there also portals an
+// opaque, childless copy of its box (`background` + `style`, laid out against
+// the scene's frame) onto the scene's backdrop: a layer under the content that
+// shows only while the content is fading. Stages nested in those add no copy.
+const SceneBackdropContext = createContext<{ el: HTMLElement | null } | null>(null);
 
 export const Stage: React.FC<{
   children: React.ReactNode;
   background?: string;
   style?: React.CSSProperties;
 }> = ({ children, background, style }) => {
-  const fade = useContext(SceneFadeContext);
-  const claim = fade?.claim;
-  useLayoutEffect(() => claim?.(), [claim]);
-  const body = (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        overflow: "hidden",
-        background: fade ? undefined : background,
-        ...style,
-        ...(fade ? { opacity: Number(style?.opacity ?? 1) * fade.opacity } : null),
-      }}
-    >
-      <SceneFadeContext.Provider value={null}>{children}</SceneFadeContext.Provider>
-    </div>
-  );
-  if (!fade) return body;
+  const backdrop = useContext(SceneBackdropContext);
+  const boxStyle: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    overflow: "hidden",
+    background,
+    ...style,
+  };
+  const body = <div style={boxStyle}>{children}</div>;
+  if (!backdrop) return body;
   return (
     <>
-      <div style={{ position: "absolute", inset: 0, background }} />
-      {body}
+      {backdrop.el ? createPortal(<div style={boxStyle} />, backdrop.el) : null}
+      <SceneBackdropContext.Provider value={null}>{body}</SceneBackdropContext.Provider>
     </>
   );
 };
@@ -169,17 +164,16 @@ export const Camera: React.FC<
 // [at, at + len) shorter than one frame interval can fall between two samples
 // and never mount — and markers inside it (<Audio>, soft <Subtitle>) would
 // never register. `missedWindow` is true on the first sampled frame after
-// such a window: the window's owner then mounts its children *hidden* for that
-// one frame, so the markers still land at their exact (sub-frame) times while
-// no pixels appear, matching what the sampled video can show.
-function missedWindow(clock: Clock, at: number, len: number): boolean {
-  if (!(len > 0)) return false; // an empty window is meant to show nothing
-  const perMs = clock.fps / 1000;
-  const startG = clock.epochMs + at;
-  // first sample at or after the window start (tolerating float noise)
-  const first = Math.ceil(startG * perMs - 1e-6);
-  if (first / perMs < startG + len - 1e-6) return false; // a sample lands inside
-  return Math.round((clock.epochMs + clock.ms) * perMs) === first;
+// such a window (or on the reel's last frame, for a window after it — see
+// hiddenMountFrame): the window's owner then mounts its children *hidden* for
+// that one frame, so the markers still land at their exact (sub-frame) times
+// while no pixels appear, matching what the sampled video can show.
+const ReelFramesContext = createContext<number>(Infinity);
+
+function missedWindow(clock: Clock, frames: number, at: number, len: number): boolean {
+  const frame = hiddenMountFrame(clock.epochMs + at, len, clock.fps, frames);
+  if (frame === undefined) return false;
+  return Math.round(((clock.epochMs + clock.ms) * clock.fps) / 1000) === frame;
 }
 
 const hiddenStyle: React.CSSProperties = { display: "none" };
@@ -195,6 +189,7 @@ export const Cue: React.FC<{
   children: React.ReactNode;
 }> = ({ at, hold, children }) => {
   const clock = useClock();
+  const frames = useContext(ReelFramesContext);
   const inner = (
     <ClockProvider
       value={{
@@ -207,7 +202,7 @@ export const Cue: React.FC<{
       {children}
     </ClockProvider>
   );
-  if (hold != null && missedWindow(clock, at, hold)) return <div style={hiddenStyle}>{inner}</div>;
+  if (hold != null && missedWindow(clock, frames, at, hold)) return <div style={hiddenStyle}>{inner}</div>;
   if (clock.ms < at) return null;
   if (hold != null && clock.ms >= at + hold) return null;
   return inner;
@@ -416,6 +411,7 @@ const SeriesContext = createContext<SeriesContextValue | null>(null);
 const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs, children }) => {
   const series = useContext(SeriesContext);
   const clock = useClock();
+  const frames = useContext(ReelFramesContext);
   const id = useId();
 
   const register = series?.register;
@@ -429,72 +425,57 @@ const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs
     return () => unregister(id);
   }, [register, unregister, id, durationMs, crossfadeMs, exitFadeMs]);
 
-  // <Stage>s directly in this scene claim the exit-fade (see SceneFade).
-  const [stageClaims, setStageClaims] = useState(0);
-  const claimStage = useCallback(() => {
-    setStageClaims((n) => n + 1);
-    return () => setStageClaims((n) => n - 1);
-  }, []);
+  // The exit-fade backdrop (see Stage). Held in state so the Stages re-render
+  // with their portal target; a ref callback's update commits before paint.
+  const [backdropEl, setBackdropEl] = useState<HTMLElement | null>(null);
+  const backdrop = useMemo(() => ({ el: backdropEl }), [backdropEl]);
 
   // No placement yet means the registry hasn't settled (first commit) or this
   // scene is outside a Series — render nothing until we know where it lands.
   const place = series?.layout.get(id);
   if (!place) return null;
 
-  const { start, xfIn, xfOut } = place;
+  const { start, xfIn } = place;
   const end = start + durationMs;
-  const missed = missedWindow(clock, start, durationMs);
+  const missed = missedWindow(clock, frames, start, durationMs);
   if (!missed && (clock.ms < start || clock.ms >= end)) return null;
   const local = clock.ms - start;
 
-  // Crossfade: the incoming scene fades in (α = t) over the outgoing one
-  // (α = 1 − t), and the incoming layer adds rather than covers
-  // (plus-lighter, inside the Series' isolated group). The two weights sum to
-  // 1, so the result is a true t-mix of the two scenes — nothing under the
-  // Series shows through mid-fade, while transparent scenes still fade out.
-  let opacity = 1;
-  const fadingIn = xfIn > 0 && local < xfIn;
-  if (fadingIn) opacity = Math.min(opacity, local / xfIn);
-  if (xfOut > 0 && local >= durationMs - xfOut) {
-    opacity = Math.min(opacity, (durationMs - local) / xfOut);
-  }
+  // Crossfade: the incoming scene fades in (α = t) over the outgoing one,
+  // which stays fully opaque until it ends. Over an opaque outgoing scene that
+  // is a linear t-mix, nothing beneath the Series shows through, and any number
+  // of overlapping scenes never sums past full weight. (A transparent incoming
+  // scene leaves the outgoing one visible through it until its end.)
+  const opacity = xfIn > 0 && local < xfIn ? local / xfIn : 1;
 
-  // Content exit-fade (anti-ghosting): fade this scene's content out so it's
-  // gone by the time the next scene starts crossfading in. A <Stage> directly
-  // in the scene keeps its `background` and fades only its children, so only
-  // the backgrounds blend; without one, the whole scene layer fades.
+  // Content exit-fade (anti-ghosting): fade this scene's whole content layer
+  // out so it's gone by the time the next scene starts crossfading in. The
+  // outermost <Stage>s leave their boxes on the backdrop beneath, so only the
+  // backgrounds blend; with no Stage, the scene fades to what's under it.
+  const exitFade = place.exitFadeMs > 0;
   const contentOpacity = exitFadeOpacity(place, local);
-  const fade: SceneFade | null =
-    place.exitFadeMs > 0 ? { opacity: contentOpacity, claim: claimStage } : null;
 
   const inner = (
-    <SceneFadeContext.Provider value={fade}>
-      <ClockProvider value={{ ...clock, ms: local, durationMs, epochMs: clock.epochMs + start }}>
-        {children}
-      </ClockProvider>
-    </SceneFadeContext.Provider>
+    <ClockProvider value={{ ...clock, ms: local, durationMs, epochMs: clock.epochMs + start }}>
+      {children}
+    </ClockProvider>
   );
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        opacity,
-        ...(fadingIn ? { mixBlendMode: "plus-lighter" as React.CSSProperties["mixBlendMode"] } : null),
-        ...(missed ? hiddenStyle : null),
-      }}
-    >
+    <div style={{ position: "absolute", inset: 0, opacity, ...(missed ? hiddenStyle : null) }}>
       {/* Always present when there's an exit-fade, so the subtree never
           remounts when the fade starts. */}
-      {place.exitFadeMs > 0 ? (
-        <div
-          style={{ position: "absolute", inset: 0, opacity: stageClaims > 0 ? 1 : contentOpacity }}
-        >
-          {inner}
-        </div>
+      {exitFade ? (
+        <SceneBackdropContext.Provider value={backdrop}>
+          <div
+            ref={setBackdropEl}
+            style={{ position: "absolute", inset: 0, ...(contentOpacity < 1 ? null : hiddenStyle) }}
+          />
+          <div style={{ position: "absolute", inset: 0, opacity: contentOpacity }}>{inner}</div>
+        </SceneBackdropContext.Provider>
       ) : (
-        inner
+        // A scene nested in an exit-fading one leaves no copies of its own.
+        <SceneBackdropContext.Provider value={null}>{inner}</SceneBackdropContext.Provider>
       )}
     </div>
   );
@@ -553,23 +534,19 @@ const SeriesBase: React.FC<SeriesProps> = ({ children, scenes }) => {
     [register, unregister, layout],
   );
 
-  // The isolated group gives the crossfade's plus-lighter blend (see
-  // SeriesScene) only the Series' own scenes to add to, never what's beneath.
   return (
     <SeriesContext.Provider value={ctx}>
-      <div style={{ position: "absolute", inset: 0, isolation: "isolate" }}>
-        {children}
-        {scenes?.map((s, i) => (
-          <SeriesScene
-            key={`__series_scene_${i}`}
-            durationMs={s.durationMs}
-            crossfadeMs={s.crossfadeMs}
-            exitFadeMs={s.exitFadeMs}
-          >
-            {s.content}
-          </SeriesScene>
-        ))}
-      </div>
+      {children}
+      {scenes?.map((s, i) => (
+        <SeriesScene
+          key={`__series_scene_${i}`}
+          durationMs={s.durationMs}
+          crossfadeMs={s.crossfadeMs}
+          exitFadeMs={s.exitFadeMs}
+        >
+          {s.content}
+        </SeriesScene>
+      ))}
     </SeriesContext.Provider>
   );
 };
@@ -867,8 +844,9 @@ export const Subtitle: React.FC<{
       return registerSettler(settler);
     }
 
-    // SOFT (default): register cues in reel-global ms for the muxer. No cleanup —
-    // markers are read once after capture (dedup makes re-registration safe).
+    // SOFT (default): register cues in reel-global ms for the muxer. Markers
+    // are never unregistered — they're read once after capture (dedup makes
+    // re-registration safe).
     const place = (cs: SubtitleCue[]) =>
       registerSubtitleCues(
         cs.map((c) => ({
@@ -878,8 +856,18 @@ export const Subtitle: React.FC<{
         })),
       );
     if (cues) place(cues);
-    else if (src) void loadSubtitlesCached(src).then(place);
-    else if (childText) {
+    else if (src) {
+      // Register once loaded; the settler holds every seek until then, so the
+      // cues are in before capture reads the markers, and a file that won't
+      // load rejects the seek (as in burn mode) instead of leaving no captions.
+      const pending = loadSubtitlesCached(src);
+      void pending.then(place, () => {});
+      return registerSettler(async () => {
+        await pending.catch((e): never => {
+          throw loadError("Subtitle", src, e);
+        });
+      });
+    } else if (childText) {
       // Static caption: spans the enclosing scope (epoch .. epoch + duration),
       // exactly the window burn mode draws it in — delayMs is for src / cues.
       registerSubtitleCues([
@@ -1040,6 +1028,11 @@ const Driver: React.FC<{
 }> = ({ scene, meta, livePreview, host }) => {
   const [ms, setMs] = useState(0);
   const [driven, setDriven] = useState(false);
+  // The first error the reel threw while rendering (see RenderErrorBoundary).
+  const renderError = useRef<unknown>(undefined);
+  const onRenderError = useCallback((e: unknown) => {
+    renderError.current ??= e;
+  }, []);
 
   useEffect(() => {
     // The seek hook resolves after a settled paint (double rAF). The live
@@ -1060,6 +1053,14 @@ const Driver: React.FC<{
             setDriven(true);
             setMs(target);
           });
+          // A reel that threw while rendering (e.g. a Series timing
+          // RangeError) shows nothing from then on: fail the capture with the
+          // original error instead of shooting blank frames.
+          if (renderError.current !== undefined) {
+            const e = renderError.current;
+            reject(new Error(`kamishibai: seek(${target}) failed: the reel threw while rendering: ${errorMessage(e)}`));
+            return;
+          }
           // DOM is committed; run any settlers (e.g. video frame decode/draw)
           // for this ms and wait for *all* of them, then settle the paint
           // (rAF) before resolving. A failed settler (a video that won't
@@ -1069,7 +1070,7 @@ const Driver: React.FC<{
             void Promise.allSettled([...settlers].map(async (s) => s(target))).then((results) => {
               const errors = results
                 .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-                .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)));
+                .map((r) => errorMessage(r.reason));
               if (errors.length > 0) {
                 reject(new Error(`kamishibai: seek(${target}) failed: ${errors.join("; ")}`));
                 return;
@@ -1101,11 +1102,36 @@ const Driver: React.FC<{
   }, [driven, livePreview, meta.durationMs]);
 
   return (
-    <ClockProvider value={{ ms, durationMs: meta.durationMs, fps: meta.fps, epochMs: 0 }}>
-      {scene}
-    </ClockProvider>
+    <ReelFramesContext.Provider value={frameCount(meta)}>
+      <ClockProvider value={{ ms, durationMs: meta.durationMs, fps: meta.fps, epochMs: 0 }}>
+        <RenderErrorBoundary onError={onRenderError}>{scene}</RenderErrorBoundary>
+      </ClockProvider>
+    </ReelFramesContext.Provider>
   );
 };
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+// Catches an error thrown while rendering the reel (or in its effects), so the
+// Driver stays mounted and its seek can report it instead of React unmounting
+// the whole tree into blank frames.
+class RenderErrorBoundary extends React.Component<
+  { onError: (e: unknown) => void; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown): void {
+    this.props.onError(error);
+  }
+  render(): React.ReactNode {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 export function mount(
   scene: React.ReactNode,

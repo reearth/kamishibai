@@ -34,6 +34,38 @@ export interface ReelWaitOptions {
    *  for a page that catches the error and mounts anyway — the wait fails with
    *  it instead of running out the idle timeout */
   failed?: () => string | undefined;
+  /** receives what the page reports: each uncaught page error ("page error:
+   *  …"), and, while capturing, console warnings/errors starting with
+   *  "kamishibai" (e.g. a dropped subtitle cue). Called once per page, so
+   *  parallel workers repeat a message; dedupe if needed. */
+  onPageLog?: (msg: string) => void;
+}
+
+/**
+ * Listen to a page before it loads: forward its uncaught errors (and, with
+ * `forwardConsole`, its "kamishibai…" console warnings/errors) to `onPageLog`, and
+ * return wait options that also fail — after the usual grace — once the page
+ * has thrown, so a reel that throws before mount() reports its error instead
+ * of idling out the timeout.
+ */
+export function watchPage(page: Page, wait: ReelWaitOptions = {}, forwardConsole = false): ReelWaitOptions {
+  let thrown: string | undefined;
+  page.on("pageerror", (err) => {
+    thrown ??= err.message;
+    wait.onPageLog?.(`page error: ${err.message}`);
+  });
+  if (forwardConsole) {
+    page.on("console", (msg) => {
+      const type = msg.type();
+      if ((type === "warning" || type === "error") && msg.text().startsWith("kamishibai")) {
+        wait.onPageLog?.(msg.text());
+      }
+    });
+  }
+  return {
+    ...wait,
+    failed: () => wait.failed?.() ?? (thrown ? `the page threw: ${thrown}` : undefined),
+  };
 }
 
 /** How long a `failed()` reason must persist before waitForReel gives up. */
@@ -79,8 +111,9 @@ export async function probeMeta(url: string, wait: ReelWaitOptions = {}): Promis
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
+    const watched = watchPage(page, wait);
     await page.goto(url, { waitUntil: "load" });
-    await waitForReel(page, wait);
+    await waitForReel(page, watched);
     const meta = await page.evaluate(
       (key) => (window as any)[key].meta as KamishibaiMeta,
       GLOBAL_KEY,
@@ -146,8 +179,9 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
       viewport: { width: meta.width, height: meta.height },
       deviceScaleFactor: opts.scale ?? 1,
     });
+    const watched = watchPage(page, opts.wait, true);
     await page.goto(url, { waitUntil: "networkidle" });
-    await waitForReel(page, opts.wait);
+    await waitForReel(page, watched);
     // Web fonts must be ready before the first capture, or text reflows.
     await page.evaluate(() => document.fonts.ready);
 
