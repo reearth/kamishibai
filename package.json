@@ -1,7 +1,7 @@
 {
   "name": "kamishibai",
   "version": "0.4.0",
-  "description": "Turn any web page into a video — every frame a pure function of its time, so capture is deterministic and parallel.",
+  "description": "Turn a web page into a video — every frame a pure function of its time, so capture is reproducible and parallel.",
   "type": "module",
   "license": "MIT",
   "author": "Re:Earth and contributors",

@@ -73,7 +73,28 @@ Both share the principles below; B adds the "Brand-film extras" section.
 - Voice is primary; **music sits low (~-23 dB)**. Fade it in/out, loop it
   seamlessly, and **duck it under the narration**.
 - Match the music's energy to the topic. Use **license-clean** tracks (CC0, or
-  CC-BY with a credit line) — and keep the credit.
+  CC-BY with a credit line) — and keep the credit (see below).
+
+### Credits & licenses (don't ship without them)
+- Every third-party asset — music, SFX, footage, photos, fonts, **and the TTS
+  voice** — comes with terms. Read them when you pick the asset, not at ship
+  time, and keep a running **credits list** (asset, author, source URL,
+  license) alongside the reel.
+- **Credit where the license says, in the form it says.** Some want an on-screen
+  end-card line, some a line in the video description, and some a **spoken**
+  credit: incompetech (Kevin MacLeod, CC BY), for example, requires the credit
+  to be *voiced* in audio-only works ("<Title> Kevin MacLeod (incompetech.com),
+  Licensed under Creative Commons: By Attribution 4.0"). Copy the exact wording
+  the licensor gives.
+- **TTS voices have terms too.** Some voice engines or characters require a
+  credit naming the voice; some providers require disclosing that the voice is
+  AI-generated; free tiers may forbid commercial use. macOS `say` voices are for
+  personal, non-commercial use — never ship them.
+- If the video has no place for a required credit (a muted autoplay loop, an
+  audio-only cut), that's a sign to pick a different asset or add the credit
+  beat — not to drop it.
+- Tell the requester which credits the video needs and where they go (end card,
+  description, voice-over) before the final render.
 
 ### Branding & the "frame"
 - Title → (agenda) → section doors → content → recap → outro. A faint **logo
@@ -141,6 +162,9 @@ Both share the principles below; B adds the "Brand-film extras" section.
 - Motion that competes with the message → distracting.
 - Crossfading two different layouts without clearing content first → ghosting.
 - Music too loud or not ducked → it fights the voice. Unlicensed music → don't.
+- Shipping CC-BY music, footage or a credited TTS voice with no credit (or the
+  wrong form — e.g. on-screen only when the license wants it spoken) → a
+  license violation, not a style choice.
 - Synthesizing TTS before the script is approved → you pay to voice lines you'll
   re-cut. Get script sign-off first.
 - Re-editing narration wording late and often → slow and costly. Lock the script first.
@@ -156,6 +180,9 @@ Both share the principles below; B adds the "Brand-film extras" section.
 - [ ] No flicker and no text ghosting on transitions (inspect the frames).
 - [ ] Text fits and is legible at full screen; one idea per beat.
 - [ ] Voice tone is consistent and intentional; numbers/acronyms read correctly.
-- [ ] Music is low and ducked, fades in/out, and is licensed (and credited).
+- [ ] Music is low and ducked, fades in/out, and is licensed.
+- [ ] Every third-party asset and the TTS voice is credited where and how its
+      license requires (end card, description, or spoken); the requester has the
+      credits list.
 - [ ] Branded frame: title, watermark, outro / end card.
 - [ ] The timeline length matches the content — no blank tail at the end.

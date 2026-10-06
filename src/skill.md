@@ -2,7 +2,7 @@
 
 How to author and render videos with **kamishibai**: a mechanism that seeks a
 web page frame by frame and bakes the stills into an mp4. You write a page that
-draws "the state at time `ms`"; kamishibai captures it deterministically and in
+draws "the state at time `ms`"; kamishibai captures it reproducibly and in
 parallel. This document is the complete usage guide — follow it as-is.
 
 ## Mental model
@@ -11,7 +11,7 @@ parallel. This document is the complete usage guide — follow it as-is.
   frame," and resolve once the DOM has settled.
 - kamishibai never plays in real time. It seeks to each moment, screenshots,
   advances. So a heavy frame just takes longer — it never drops — and the
-  output is deterministic and parallelisable.
+  output is reproducible (in a pinned environment) and parallelisable.
 - You are expected to iterate in a loop: **render → look at frames → fix the
   code → render again.** There is no GUI editor; you are the editor.
 
@@ -532,6 +532,13 @@ There is no `--audio` CLI flag — audio belongs to the reel. The library
 page's markers (not a replacement), which is useful for adding audio to a URL
 entry you don't control.
 
+**Credits:** third-party music, SFX, footage and TTS voices usually come with
+attribution terms — and the required *form* varies (an on-screen line, the
+video description, or a **spoken** credit: incompetech requires the credit to
+be voiced in audio-only works). Check each asset's license when you add it,
+keep a credits list, and tell the requester what must be credited and where
+before the final render. The `video-craft` skill has the details.
+
 ## Video (frame-accurate)
 
 Don't use a raw `<video>` — `currentTime` seeking is approximate and
@@ -637,7 +644,9 @@ once ffprobe works. `--probe-timeout <s>`
 (default 15) raises the idle limit for a page that is slow for other reasons.
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
-for the final render (same reel): `openaiAdapter({ model, voice })`
+for the final render (same reel). macOS system voices are licensed for
+personal, non-commercial use, so never publish `say` output; every provider's
+audio is subject to its own terms. Adapters: `openaiAdapter({ model, voice })`
 (`OPENAI_API_KEY`), `googleAdapter({ name })` (`GOOGLE_API_KEY`),
 `geminiAdapter({ voice, model, instructions })` (`GEMINI_API_KEY`, falling
 back to `GOOGLE_API_KEY`),
