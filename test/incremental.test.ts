@@ -24,13 +24,19 @@ describe("parseFrameRanges", () => {
     expect([...parseFrameRanges("7-5", 100)]).toEqual([5, 6, 7]);
   });
 
-  it("clamps to [0, total)", () => {
+  it("clamps a range's end to the last frame", () => {
     expect([...parseFrameRanges("98-200", 100)]).toEqual([98, 99]);
+    expect([...parseFrameRanges("200-98", 100)]).toEqual([98, 99]);
   });
 
-  it("returns empty for an empty spec", () => {
-    expect(parseFrameRanges("", 100).size).toBe(0);
-    expect(parseFrameRanges("  ,  ", 100).size).toBe(0);
+  it("throws on a token that starts past the last frame", () => {
+    expect(() => parseFrameRanges("999", 10)).toThrow(/past the last frame/);
+    expect(() => parseFrameRanges("0-3,10-12", 10)).toThrow(/"10-12" is past the last frame/);
+  });
+
+  it("throws on a spec that selects nothing", () => {
+    expect(() => parseFrameRanges("", 100)).toThrow(/selects no frames/);
+    expect(() => parseFrameRanges("  ,  ", 100)).toThrow(/selects no frames/);
   });
 
   it("throws on a malformed token", () => {

@@ -136,7 +136,9 @@ so both need a persisted `--frames-dir`:
   PNG untouched (needs a prior full render to fill the gaps). It never visits the
   other frames at all, so when you know exactly what changed — especially a
   **tail-only edit** — it's far faster than `-i`, which still has to walk the
-  whole reel to fingerprint it.
+  whole reel to fingerprint it. It refuses a dir captured at a different
+  fps / size / scale, and a range starting past the last frame is an error.
+  Audio and captions come from the prior full render's mux sidecar (below).
 
 ```sh
 kamishibai render reel.tsx -f frames -o reel.mp4        # seed the cache
@@ -415,7 +417,10 @@ want different encode/mux settings (a new `--crf`/`--preset`, a `--max-width`,
 - fps comes from the dir's manifest. `--fps` here re-times the kept frames (a
   speed change), unlike `render --fps`, which re-samples the reel.
 - A `--only` capture does **not** update the sidecar (it seeks just the selected
-  frames, so its markers are partial); the prior full capture's sidecar is kept.
+  frames, so its markers are partial); the prior full capture's sidecar is kept,
+  and `render --only` muxes that sidecar too.
+- The PNGs must run gap-free from `f000000.png`; `encode` refuses a sequence
+  with a missing frame (ffmpeg would silently stop there).
 - Without a usable sidecar (e.g. a raw dir of PNGs, where you must pass
   `--fps`) the output is silent; the log says whether the sidecar was missing,
   unreadable, or from another version.
@@ -627,8 +632,11 @@ When a frame looks wrong, **dump the frames and look.** Render with
 glitch (a stray colour, a misplaced element, a blank tail) to an exact frame.
 Frames are named `f000123.png` by index, so `index ÷ fps` is the timestamp, and
 a blank run at the end almost always means `meta.durationMs` is longer than the
-content (see **Scenes** — size it with `seriesDuration`). Iterate with
-`--workers 1` for stable frame-to-frame comparison.
+content (see **Scenes** — size it with `seriesDuration`). The worker count
+never changes a deterministic reel's pixels, so if a glitch appears or moves
+when you change `--workers` (often on a chunk's first frame), the reel depends
+on state left over from the previous seek — fix that rather than pinning
+`--workers 1`.
 
 When a render finishes, show it to whoever asked: on macOS, `open out.mp4` plays
 it straight away (QuickTime) — a small courtesy that lets them watch immediately.

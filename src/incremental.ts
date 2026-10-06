@@ -67,9 +67,11 @@ export function manifestFrames(m: FrameManifest | undefined, key: ManifestKey): 
 }
 
 /**
- * Parse a frame-range spec like "0-30,90,120-150" into a set of frame indices,
- * clamped to [0, total). Whitespace is tolerated; an empty spec yields an empty
- * set. Throws on a malformed token so a typo never silently renders nothing.
+ * Parse a frame-range spec like "0-30,90,120-150" into a set of frame indices
+ * in [0, total). Whitespace is tolerated, and a range's end past the reel is
+ * clamped (so "90-99999" means "90 to the end"). Throws on a malformed token,
+ * on a token that starts past the last frame, and on a spec that selects
+ * nothing — so a typo never silently renders nothing.
  */
 export function parseFrameRanges(spec: string, total: number): Set<number> {
   const out = new Set<number>();
@@ -82,10 +84,14 @@ export function parseFrameRanges(spec: string, total: number): Set<number> {
     }
     const a = Number(m[1]);
     const b = m[2] != null ? Number(m[2]) : a;
-    const lo = Math.max(0, Math.min(a, b));
+    const lo = Math.min(a, b);
     const hi = Math.min(total - 1, Math.max(a, b));
+    if (lo > hi) {
+      throw new Error(`--only: "${tok}" is past the last frame (the reel has ${total}: 0-${total - 1})`);
+    }
     for (let i = lo; i <= hi; i++) out.add(i);
   }
+  if (out.size === 0) throw new Error(`--only: "${spec}" selects no frames`);
   return out;
 }
 

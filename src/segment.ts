@@ -19,8 +19,13 @@ export interface Chunk {
  * Split `total` frames into at most `parts` contiguous chunks.
  * Frames are distributed as evenly as possible; trailing parts may be
  * empty and are dropped (e.g. 3 frames over 4 workers -> 3 chunks).
+ * `parts` must be an integer: a fractional count would size the chunks by
+ * `total / parts` and cover more frames than the reel has.
  */
 export function splitFrames(total: number, parts: number): Chunk[] {
+  if (!Number.isInteger(parts)) {
+    throw new RangeError(`splitFrames: parts must be an integer, got ${parts}`);
+  }
   if (total <= 0) return [];
   const n = Math.max(1, Math.min(parts, total));
   const base = Math.floor(total / n);

@@ -64,8 +64,9 @@ export interface RenderOptions {
   keepFrames?: boolean;
   /**
    * Where to write the intermediate PNG frames. When set, the directory
-   * is created if needed, stale frame files are cleared, and the frames
-   * are kept after rendering. When omitted, a temp dir is used and (unless
+   * is created if needed, stale frame files are cleared (with incremental /
+   * only, just those past the reel's end), and the frames are kept after
+   * rendering. When omitted, a temp dir is used and (unless
    * keepFrames is set) removed afterwards.
    */
   framesDir?: string;
@@ -78,7 +79,9 @@ export interface RenderOptions {
   /**
    * Render only these frame indices (e.g. "0-30,90,120-150"); every other PNG
    * is left untouched. A manual alternative to `incremental`. Requires
-   * `framesDir` with a prior full render to fill the gaps.
+   * `framesDir` with a prior full render, at the same geometry, to fill the
+   * gaps; the audio + subtitles muxed are that render's (from its sidecar),
+   * since a partial seek only sees part of the markers.
    */
   only?: string;
   /**
@@ -161,15 +164,38 @@ async function prepareAudio(
   return applyDucking(kept, { reelMs, sourceMs });
 }
 
-/** Remove any existing f000000.png-style files so a previous, longer run
- *  can't leak trailing frames into this one. */
-async function clearFrames(dir: string): Promise<void> {
+/** Remove existing f000000.png-style files with an index >= `from` (all of
+ *  them by default), so a previous, longer run can't leak trailing frames into
+ *  this one. Returns how many were removed. */
+async function clearFrames(dir: string, from = 0): Promise<number> {
   const entries = await readdir(dir).catch(() => [] as string[]);
-  await Promise.all(
-    entries
-      .filter((f) => /^f\d{6}\.png$/.test(f))
-      .map((f) => unlink(join(dir, f))),
-  );
+  const stale = entries.filter((f) => {
+    const m = /^f(\d{6})\.png$/.exec(f);
+    return !!m && Number(m[1]) >= from;
+  });
+  await Promise.all(stale.map((f) => unlink(join(dir, f))));
+  return stale.length;
+}
+
+/** Count a frames dir's f000000.png … sequence, throwing if it has a gap:
+ *  ffmpeg's image2 reader stops at the first missing index, so a gap would
+ *  silently cut the video short of the count. */
+async function countFrameSequence(dir: string): Promise<number> {
+  const entries = await readdir(dir).catch(() => [] as string[]);
+  const indices = entries
+    .map((f) => /^f(\d{6})\.png$/.exec(f))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => Number(m[1]))
+    .sort((a, b) => a - b);
+  const gap = indices.findIndex((n, k) => n !== k);
+  if (gap !== -1) {
+    const name = (i: number) => `f${String(i).padStart(6, "0")}.png`;
+    throw new Error(
+      `${name(gap)} is missing from ${dir} (found ${indices.length} frame(s) up to ` +
+        `${name(indices.at(-1)!)}) — capture the missing frames (e.g. --only ${gap}) before encoding`,
+    );
+  }
+  return indices.length;
 }
 
 export interface CaptureOptions {
@@ -189,7 +215,8 @@ export interface CaptureOptions {
   audio?: AudioManifest;
   /** reuse cached frames by fingerprint; only re-capture changed frames */
   incremental?: boolean;
-  /** render only these frame indices (e.g. "0-30,90"); leave the rest on disk */
+  /** render only these frame indices (e.g. "0-30,90"); leave the rest on disk.
+   *  The result's audio/subtitles are then the prior full capture's sidecar. */
   only?: string;
   /** burn <Subtitle> captions into the frames instead of a soft track */
   burnSubtitles?: boolean;
@@ -216,9 +243,10 @@ export interface CaptureResult {
   /** number of frames captured (the reel length) */
   frames: number;
   workers: number;
-  /** final audio clips (resolved + ducked), ready to mux */
+  /** final audio clips (resolved + ducked), ready to mux (with `only`: the
+   *  prior full capture's, from its sidecar, when there is one) */
   audio: AudioManifest;
-  /** soft subtitle cues collected from the page */
+  /** soft subtitle cues collected from the page (with `only`: as for audio) */
   subtitles: Cue[];
 }
 
@@ -288,6 +316,9 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
   const log = opts.onLog ?? (() => {});
   const persist = opts.persist ?? true;
   const framesDir = resolve(opts.framesDir);
+  if (opts.workers !== undefined && !(Number.isInteger(opts.workers) && opts.workers >= 1)) {
+    throw new Error(`workers must be a positive integer, got ${opts.workers}`);
+  }
   await assertFfmpeg();
 
   // The narration pre-pass: one engine for the whole capture (probe + every
@@ -318,6 +349,11 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     // An explicit --fps re-samples the same reel (ms-driven) at a new rate.
     const meta = opts.fps ? { ...probed, fps: opts.fps } : probed;
     const total = frameCount(meta);
+    if (total < 1) {
+      throw new Error(
+        `the reel has no frames: durationMs ${meta.durationMs} at ${meta.fps}fps is shorter than one frame`,
+      );
+    }
     const workers = Math.min(opts.workers ?? defaultWorkers(), total);
     const chunks = splitFrames(total, workers);
 
@@ -325,9 +361,11 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     const outW = meta.width * scale;
     const outH = meta.height * scale;
 
-    // Incremental: load the previous run's fingerprints, but only if they
-    // describe the same geometry (fps / size / scale) — otherwise the old
-    // prints don't match these pixels and we rebuild from scratch.
+    // Reuse: load the previous run's fingerprints, but only if they describe
+    // the same geometry (fps / size / scale) — otherwise the old prints don't
+    // match these pixels. Incremental then rebuilds from scratch; --only can't
+    // (it keeps the unselected PNGs as they are), so it refuses instead of
+    // mixing two geometries in one sequence.
     const manifestKey: ManifestKey = {
       fps: meta.fps,
       width: meta.width,
@@ -335,18 +373,43 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       scale,
       burnSubtitles: !!opts.burnSubtitles,
     };
-    let prevFingerprints: Map<number, string> | undefined;
-    if (opts.incremental) {
-      const prev = await readManifest(framesDir);
-      if (prev && !manifestMatches(prev, manifestKey)) {
-        log(`Cache geometry changed — rebuilding all frames.`);
+    const prev = reuse ? await readManifest(framesDir) : undefined;
+    if (prev && !manifestMatches(prev, manifestKey)) {
+      if (opts.only) {
+        throw new Error(
+          `--only: ${framesDir} was captured with a different fps / size / scale / burn-subtitles ` +
+            `(${prev.fps}fps ${prev.width}×${prev.height} @${prev.scale}x) than this run ` +
+            `(${meta.fps}fps ${meta.width}×${meta.height} @${scale}x) — re-capture it without --only first`,
+        );
       }
-      prevFingerprints = manifestFrames(prev, manifestKey);
+      log(`Cache geometry changed — rebuilding all frames.`);
     }
+    if (opts.only && !prev) {
+      log(`(--only: no cache manifest in ${framesDir}, so the other frames' geometry can't be checked)`);
+    }
+    // Prints past the reel's end describe frames this run deletes (below).
+    const prevPrints = new Map([...manifestFrames(prev, manifestKey)].filter(([i]) => i < total));
+    const prevFingerprints = opts.incremental ? prevPrints : undefined;
 
     // --only: restrict capture to the named frames; the rest stay on disk.
     const selected = opts.only ? parseFrameRanges(opts.only, total) : undefined;
     const shouldRender = selected ? (i: number) => selected.has(i) : undefined;
+
+    // Reuse keeps the PNGs, so drop any past this reel's end (a previous,
+    // longer run's tail) — encode would otherwise play them.
+    if (reuse) {
+      const removed = await clearFrames(framesDir, total);
+      if (removed > 0) log(`(removed ${removed} stale frame(s) past the reel's end)`);
+    }
+
+    // Before any PNG is overwritten, rewrite the manifest to hold only prints
+    // for frames this run won't touch (--only: the unselected ones; otherwise
+    // none, since any frame may be re-captured). A run that dies mid-capture
+    // then can't leave a print pointing at a PNG it already replaced.
+    const untouched = selected
+      ? new Map([...prevPrints].filter(([i]) => !selected.has(i)))
+      : new Map<number, string>();
+    if (persist) await writeManifest(framesDir, buildManifest(manifestKey, untouched));
 
     // New fingerprints accumulate here (across all workers) for the manifest.
     const fingerprints = new Map<number, string>();
@@ -387,15 +450,37 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     } finally {
       clearInterval(heartbeat);
     }
-    const collectedSubtitles = collected.subtitles;
-
-    // Persist the manifest so the next run can build incrementally. Merge over
-    // the previous prints so frames skipped by --only (which produced no new
-    // print this run) keep their old entry.
+    // Persist the manifest so the next run can build incrementally — always,
+    // even with no prints (a page that returns none), since `encode` reads the
+    // fps from it. Frames skipped by --only (no new print this run) keep their
+    // old entry.
     if (persist) {
-      const prevForMerge = opts.only ? manifestFrames(await readManifest(framesDir), manifestKey) : undefined;
-      const merged = prevForMerge ? new Map([...prevForMerge, ...fingerprints]) : fingerprints;
-      if (merged.size > 0) await writeManifest(framesDir, buildManifest(manifestKey, merged));
+      await writeManifest(framesDir, buildManifest(manifestKey, new Map([...untouched, ...fingerprints])));
+    }
+
+    // Persist the mux inputs next to the frames so `encode` can rebuild the
+    // full video later (audio + subtitles) without re-capturing — but only on a
+    // full or incremental capture, which seeks every frame and so collects every
+    // marker. A --only run seeks just the selected frames, so its markers are
+    // partial; it keeps the prior full render's sidecar and returns that
+    // sidecar's audio + subtitles instead (exactly what `encode` would mux).
+    if (opts.only) {
+      const sidecar = await readMuxSidecar(framesDir);
+      if (sidecar) {
+        log(`(--only: audio/subtitles come from the prior full capture's mux sidecar)`);
+        return {
+          framesDir,
+          meta,
+          frames: total,
+          workers: chunks.length,
+          audio: sidecar.audio,
+          subtitles: sidecar.subtitles,
+        };
+      }
+      log(
+        `(--only: no mux sidecar from a prior full capture in ${framesDir} — ` +
+          `audio/subtitles are only those seen on the selected frames)`,
+      );
     }
 
     // Programmatic clips are *merged* with the markers the page declared (not a
@@ -407,13 +492,8 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     // the mux clamps to.
     const audioClips = await prepareAudio(declared, opts.publicDir, (total / meta.fps) * 1000, log);
 
-    // Persist the mux inputs next to the frames so `encode` can rebuild the
-    // full video later (audio + subtitles) without re-capturing — but only on a
-    // full or incremental capture, which seeks every frame and so collects every
-    // marker. A --only run seeks just the selected frames, so its markers are
-    // partial; keep the prior full render's sidecar instead.
     if (persist && !opts.only) {
-      await writeMuxSidecar(framesDir, audioClips, collectedSubtitles);
+      await writeMuxSidecar(framesDir, audioClips, collected.subtitles);
     }
 
     return {
@@ -422,7 +502,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       frames: total,
       workers: chunks.length,
       audio: audioClips,
-      subtitles: collectedSubtitles,
+      subtitles: collected.subtitles,
     };
   } finally {
     await served.close();
@@ -475,6 +555,18 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       ttsCacheDir: opts.ttsCacheDir,
       probeTimeoutMs: opts.probeTimeoutMs,
     });
+
+    // Reuse fills only some frames and trusts the dir for the rest — make sure
+    // the whole sequence is there before encoding it.
+    if (reuse) {
+      const onDisk = await countFrameSequence(framesDir);
+      if (onDisk < cap.frames) {
+        throw new Error(
+          `${framesDir} holds ${onDisk} of the reel's ${cap.frames} frames — ` +
+            `capture the rest (e.g. --only ${onDisk}-${cap.frames - 1}) before encoding`,
+        );
+      }
+    }
 
     await assemble({
       framesDir,
@@ -548,8 +640,7 @@ export async function encode(opts: EncodeFramesDirOptions): Promise<EncodeResult
   await mkdir(dirname(out), { recursive: true });
 
   // Count the PNGs already on disk; that's the reel length here.
-  const entries = await readdir(framesDir).catch(() => [] as string[]);
-  const totalFrames = entries.filter((f) => /^f\d{6}\.png$/.test(f)).length;
+  const totalFrames = await countFrameSequence(framesDir);
   if (totalFrames === 0) {
     throw new Error(`no frames (f000000.png …) found in ${framesDir} — render there first`);
   }

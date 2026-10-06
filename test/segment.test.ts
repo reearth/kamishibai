@@ -18,6 +18,11 @@ describe("splitFrames", () => {
     expect(splitFrames(3, 8)).toHaveLength(3);
   });
 
+  it("rejects a fractional part count instead of overshooting the reel", () => {
+    expect(() => splitFrames(180, 1.5)).toThrow(/integer/);
+    expect(() => splitFrames(180, Number.NaN)).toThrow(/integer/);
+  });
+
   it("returns no chunks for an empty reel", () => {
     expect(splitFrames(0, 4)).toEqual([]);
   });

@@ -144,10 +144,11 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
       const thisPath = join(framesDir, frameName(i));
 
       // --only: this frame isn't selected — leave whatever's on disk. We don't
-      // even seek. Break the copy chain (prevFp) so the next selected frame
-      // can't copy across an unrendered gap.
+      // even seek. Break the copy chain (prevPath + prevFp) so the next selected
+      // frame can't copy across an unrendered gap: its `false` means "same as
+      // my previous seek", which wasn't this frame, so it must be screenshot.
       if (shouldRender && !shouldRender(i)) {
-        if (existsSync(thisPath)) prevPath = thisPath;
+        prevPath = undefined;
         prevFp = undefined;
         onFrame?.(i);
         continue;
