@@ -1,6 +1,6 @@
 {
   "name": "kamishibai",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Turn a web page into a video — every frame a pure function of its time, so capture is reproducible and parallel.",
   "type": "module",
   "license": "MIT",
