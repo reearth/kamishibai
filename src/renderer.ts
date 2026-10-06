@@ -3,7 +3,7 @@
 // seek(ms) -> let the DOM settle -> screenshot -> advance. No real-time
 // playback, so a slow frame just takes longer; it never drops.
 // ------------------------------------------------------------------
-import { chromium, type Browser } from "playwright";
+import { chromium, errors, type Browser, type Page } from "playwright";
 import { copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -20,15 +20,52 @@ export interface ChunkMarkers {
 
 const frameName = (i: number): string => `f${String(i).padStart(6, "0")}.png`;
 
+/** How long to wait for a page to expose window.kamishibai. */
+export interface ReelWaitOptions {
+  /** give up after this long with nothing in progress (ms; default 15s) */
+  timeoutMs?: number;
+  /** while this returns true the wait is making progress (e.g. narration is
+   *  still being synthesized), so the timeout keeps resetting */
+  busy?: () => boolean;
+  /** extra context appended to the timeout error (e.g. TTS progress) */
+  describe?: () => string | undefined;
+}
+
+/**
+ * Wait for the page to expose window.kamishibai. The timeout counts *idle*
+ * time only: a reel that top-level-awaits prepareNarration legitimately takes
+ * as long as its first synthesis, so while `busy()` reports work in flight the
+ * clock restarts instead of failing a slow-but-progressing load.
+ */
+export async function waitForReel(page: Page, opts: ReelWaitOptions = {}): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 15_000;
+  let idleSince = Date.now();
+  for (;;) {
+    const sliceMs = Math.max(1, Math.min(1000, timeoutMs - (Date.now() - idleSince)));
+    try {
+      await page.waitForFunction((key) => !!(window as any)[key], GLOBAL_KEY, { timeout: sliceMs });
+      return;
+    } catch (err) {
+      if (!(err instanceof errors.TimeoutError)) throw err;
+    }
+    if (opts.busy?.()) idleSince = Date.now();
+    if (Date.now() - idleSince >= timeoutMs) {
+      const extra = opts.describe?.();
+      throw new Error(
+        `the page didn't expose window.${GLOBAL_KEY} within ${timeoutMs / 1000}s` +
+          (extra ? ` — ${extra}` : ` (does it call mount() / set window.${GLOBAL_KEY}?)`),
+      );
+    }
+  }
+}
+
 /** Open the page just long enough to read its declared `meta`. */
-export async function probeMeta(url: string): Promise<KamishibaiMeta> {
+export async function probeMeta(url: string, wait: ReelWaitOptions = {}): Promise<KamishibaiMeta> {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "load" });
-    await page.waitForFunction((key) => !!(window as any)[key], GLOBAL_KEY, {
-      timeout: 15_000,
-    });
+    await waitForReel(page, wait);
     const meta = await page.evaluate(
       (key) => (window as any)[key].meta as KamishibaiMeta,
       GLOBAL_KEY,
@@ -74,6 +111,8 @@ export interface CaptureChunkOptions {
   shouldRender?: (index: number) => boolean;
   /** reuse an existing browser instead of launching one */
   browser?: Browser;
+  /** how long to wait for the page to expose window.kamishibai */
+  wait?: ReelWaitOptions;
 }
 
 /**
@@ -93,9 +132,7 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
       deviceScaleFactor: opts.scale ?? 1,
     });
     await page.goto(url, { waitUntil: "networkidle" });
-    await page.waitForFunction((key) => !!(window as any)[key], GLOBAL_KEY, {
-      timeout: 15_000,
-    });
+    await waitForReel(page, opts.wait);
     // Web fonts must be ready before the first capture, or text reflows.
     await page.evaluate(() => document.fonts.ready);
 

@@ -27,7 +27,7 @@ import type { AudioClip, DuckOptions } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
 import { loadSubtitles, cueAt, type Cue as SubtitleCue } from "../subtitle.ts";
 export type { Cue as SubtitleCue } from "../subtitle.ts";
-import type { NarrationClip } from "../tts/index.ts";
+import type { NarrationClip, NarrationStep } from "../tts/index.ts";
 export type { NarrationClip } from "../tts/index.ts";
 // Re-exported so narration layout pairs naturally with <Series scenes> here;
 // they live framework-free in kamishibai/tts.
@@ -35,15 +35,21 @@ export {
   narrationTotal,
   narrationLayout,
   narrationSequence,
+  narrationScene,
 } from "../tts/index.ts";
 export type {
   NarrationLayoutOptions,
   NarrationScene,
   NarrationStep,
   NarrationSequenceOptions,
+  NarrationSceneOptions,
+  NarrationSceneLayout,
 } from "../tts/index.ts";
 import { eases, ramp, type Ease } from "../easing.ts";
-import { seriesLayout, type SceneSpec, type SceneLayout } from "../series.ts";
+import { cameraAt, cameraTransform, type CameraShot, type CameraState } from "../camera.ts";
+export { cameraAt, cameraTransform } from "../camera.ts";
+export type { CameraShot, CameraState } from "../camera.ts";
+import { seriesLayout, exitFadeOpacity, type SceneSpec, type SceneLayout } from "../series.ts";
 import { fnv1a64 } from "../fingerprint.ts";
 
 // Re-exported so authors can size meta.durationMs to a Series without
@@ -101,6 +107,38 @@ export const Stage: React.FC<{
     {children}
   </div>
 );
+
+// ---- Camera -------------------------------------------------------
+// Lay children out in "world" coordinates and film them: the world point
+// (x, y) sits at the frame center, scaled by `zoom`. Pass a fixed state, or
+// `shots` keyframes on the current clock (see cameraAt) for push-ins, pans and
+// pull-backs. Pure transforms — deterministic per frame like everything else.
+export const Camera: React.FC<
+  Partial<CameraState> & {
+    /** keyframes on this scope's clock; overrides x / y / zoom / rotate */
+    shots?: CameraShot[];
+    style?: React.CSSProperties;
+    children: React.ReactNode;
+  }
+> = ({ shots, x = 0, y = 0, zoom = 1, rotate = 0, style, children }) => {
+  const { ms } = useClock();
+  const cam = shots ? cameraAt(ms, shots) : { x, y, zoom, rotate };
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", ...style }}>
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transformOrigin: "0 0",
+          transform: cameraTransform(cam),
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
 
 // ---- Cue ----------------------------------------------------------
 // Reveal children starting at `at` ms (optionally only for `hold` ms),
@@ -351,13 +389,10 @@ const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs
     opacity = Math.min(opacity, (durationMs - local) / xfOut);
   }
 
-  // Content exit-fade (anti-ghosting): fade this scene's content out over its
-  // last exitFadeMs, so it's gone before the next scene crossfades in and only
-  // the backgrounds blend. Authored as an inner layer over the crossfade.
-  let contentOpacity = 1;
-  if (exitFadeMs && exitFadeMs > 0 && local >= durationMs - exitFadeMs) {
-    contentOpacity = Math.max(0, (durationMs - local) / exitFadeMs);
-  }
+  // Content exit-fade (anti-ghosting): fade this scene's content out so it's
+  // gone by the time the next scene starts crossfading in, and only the
+  // backgrounds blend. Authored as an inner layer over the crossfade.
+  const contentOpacity = exitFadeOpacity(place, local);
 
   const inner = (
     <ClockProvider value={{ ...clock, ms: local, durationMs, epochMs: clock.epochMs + start }}>
@@ -801,6 +836,38 @@ export const Narration: React.FC<{
     </>
   );
 };
+
+/**
+ * Play a sequence of clips laid out by narrationScene / narrationSequence:
+ * one <Narration> per step at its `atMs`, optionally captioned. Pair it with
+ * `<Cue at={step.atMs}>` to reveal content as each line starts.
+ */
+export const NarrationSteps: React.FC<{
+  /** steps from narrationScene(...).steps or narrationSequence(...) */
+  steps: NarrationStep[];
+  /** volume in dB for every clip */
+  gain?: number;
+  /** also caption each clip for its own window */
+  subtitle?: boolean;
+  /** caption distance from the bottom edge, in px (default 80) */
+  subtitleBottom?: number;
+  /** caption style overrides */
+  subtitleStyle?: React.CSSProperties;
+}> = ({ steps, gain, subtitle, subtitleBottom, subtitleStyle }) => (
+  <>
+    {steps.map((s, i) => (
+      <Narration
+        key={i}
+        clip={s.clip}
+        delayMs={s.atMs}
+        gain={gain}
+        subtitle={subtitle}
+        subtitleBottom={subtitleBottom}
+        subtitleStyle={subtitleStyle}
+      />
+    ))}
+  </>
+);
 
 // ---- mount --------------------------------------------------------
 // Render a scene and expose window.kamishibai = { meta, seek, audio } so the

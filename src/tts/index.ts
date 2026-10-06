@@ -42,12 +42,43 @@ export interface TTSAdapterRef {
  * slow just one line's `rate`, or switch `voice` for a single quote. The
  * override folds into the cache key, so changing it re-synthesizes only that
  * line.
+ *
+ * `text` is what gets *spoken*; `caption` (default: the original text) is what
+ * the clip carries for subtitles. Use it when the voice needs a reading the
+ * caption shouldn't show — `{ text: "まちあざ", caption: "町字" }`. Changing
+ * only the caption never re-synthesizes.
  */
-export type NarrationInput = string | { text: string; opts?: Record<string, unknown> };
+export type NarrationInput =
+  | string
+  | { text: string; caption?: string; opts?: Record<string, unknown> };
 
-/** Pull the text out of a NarrationInput (string or { text }). */
-function inputText(input: NarrationInput): string {
-  return typeof input === "string" ? input : input.text;
+/**
+ * Reading substitutions applied to the *spoken* text only, e.g.
+ * `{ "町字": "まちあざ", "Pub/Sub": "パブサブ" }`. Captions keep the original
+ * spelling. Longer keys win where two overlap.
+ */
+export type Lexicon = Record<string, string>;
+
+/** Apply a lexicon to `text` (longest match first, one left-to-right pass). */
+export function applyLexicon(text: string, lexicon: Lexicon | undefined): string {
+  const keys = lexicon ? Object.keys(lexicon).filter((k) => k.length > 0) : [];
+  if (keys.length === 0) return text;
+  keys.sort((a, b) => b.length - a.length);
+  const escaped = keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return text.replace(new RegExp(escaped.join("|"), "g"), (m) => lexicon![m]!);
+}
+
+/** Split a NarrationInput into what to speak and what to caption. */
+function resolveInput(
+  input: NarrationInput,
+  lexicon: Lexicon | undefined,
+): { text: string; caption: string; opts?: Record<string, unknown> } {
+  if (typeof input === "string") return { text: applyLexicon(input, lexicon), caption: input };
+  return {
+    text: applyLexicon(input.text, lexicon),
+    caption: input.caption ?? input.text,
+    opts: input.opts,
+  };
 }
 
 /** What `prepareNarration` returns per key — enough to place + caption the clip. */
@@ -57,7 +88,8 @@ export interface NarrationClip {
   src: string;
   /** measured duration in ms — so a scene can fit the narration */
   durationMs: number;
-  /** the source text (reused as the subtitle caption) */
+  /** the caption text — the line as written (its `caption`, if given), not
+   *  the lexicon-substituted reading that was spoken */
   text: string;
 }
 
@@ -182,24 +214,30 @@ function estimateMs(text: string): number {
 export async function prepareNarration<K extends string>(
   adapter: TTSAdapterRef,
   texts: Record<K, NarrationInput>,
-  opts: { endpoint?: string } = {},
+  opts: {
+    endpoint?: string;
+    /** reading substitutions for the spoken text only (captions unchanged) */
+    lexicon?: Lexicon;
+  } = {},
 ): Promise<Record<K, NarrationClip>> {
   const endpoint = opts.endpoint ?? "/__tts";
+  const items = {} as Record<K, { text: string; caption: string; opts?: Record<string, unknown> }>;
+  for (const k in texts) items[k] = resolveInput(texts[k], opts.lexicon);
   let res: Response;
   try {
     res = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ adapter, items: texts }),
+      body: JSON.stringify({ adapter, items }),
     });
   } catch {
     // No server reachable — a standalone live preview (not a render). Estimate
     // durations so the layout still works; capture always has the server, so
     // this branch never affects a real render.
     const out = {} as Record<K, NarrationClip>;
-    for (const k in texts) {
-      const text = inputText(texts[k]);
-      out[k] = { src: "", durationMs: estimateMs(text), text };
+    for (const k in items) {
+      const { text, caption } = items[k];
+      out[k] = { src: "", durationMs: estimateMs(text), text: caption };
     }
     return out;
   }
@@ -298,4 +336,39 @@ export function narrationSequence(
     cursor += Math.round(clip.durationMs) + gapAfter(i, clip);
     return step;
   });
+}
+
+export interface NarrationSceneOptions {
+  /** silence before the first clip, in ms (default 0) */
+  leadMs?: number;
+  /** pause between clips — a number, per-position array, or function, as in
+   *  narrationSequence (default 0) */
+  gapMs?: NarrationSequenceOptions["gapMs"];
+  /** hold after the last clip ends, in ms (default 0) */
+  tailMs?: number;
+}
+
+/** Several clips sequenced inside one scene, plus the scene length they need. */
+export interface NarrationSceneLayout {
+  /** each clip with its start offset from the scene start */
+  steps: NarrationStep[];
+  /** lead + clips + gaps + tail — use it as the scene's durationMs */
+  durationMs: number;
+}
+
+/**
+ * The "one scene, several lines" shape in one call: sequence `clips` after
+ * `leadMs`, separated by `gapMs`, and size the scene to end `tailMs` after the
+ * last line. Feed `steps` to `<NarrationSteps>` (audio + captions) and
+ * `<Cue at={step.atMs}>`, and `durationMs` to the scene.
+ */
+export function narrationScene(
+  clips: NarrationClip[],
+  opts: NarrationSceneOptions = {},
+): NarrationSceneLayout {
+  const { leadMs = 0, gapMs, tailMs = 0 } = opts;
+  const steps = narrationSequence(clips, { startMs: leadMs, gapMs });
+  const last = steps[steps.length - 1];
+  const end = last ? last.atMs + Math.round(last.clip.durationMs) : leadMs;
+  return { steps, durationMs: end + tailMs };
 }

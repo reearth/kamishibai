@@ -238,6 +238,13 @@ Sugar API:
 - `<Narration clip delayMs gain fadeInMs fadeOutMs subtitle>` — play a clip
   from `prepareNarration` (synthesized up front, see Narration below); with
   `subtitle`, also adds the line's text as a caption for the clip's window
+- `<NarrationSteps steps subtitle>` — one `<Narration>` per step at its `atMs`
+  (steps from `narrationScene` / `narrationSequence`)
+- `<Camera x y zoom rotate>` / `<Camera shots={[{ at, x, y, zoom, ease? }]}>` —
+  children are laid out in world px; the world point `(x, y)` sits at the frame
+  center, scaled by `zoom`. Shots are keyframes on the current clock: position
+  eases (default `eases.inOut`), zoom interpolates in log space (even push-ins).
+  `cameraAt(ms, shots)` is the same math without React.
 
 ```tsx
 import { mount, Series, Audio, seriesDuration } from "kamishibai/react";
@@ -276,9 +283,26 @@ your own wrapper components.
 - **Transitions / anti-ghosting.** A crossfade composites *both* scenes at
   partial opacity, so two different layouts **ghost** (e.g. a centered title
   bleeding through the incoming slide). Set `exitFadeMs` on the outgoing scene to
-  fade its *content* out just before it ends, so only the backgrounds blend.
+  fade its *content* out; the fade ends where the next scene's crossfade begins,
+  so the old content is gone before the new one shows and only the backgrounds
+  blend. The two add up: a 700ms crossfade + 600ms exit-fade starts dimming the
+  content 1300ms before the outgoing scene ends.
   Other transitions (wipe/swipe) are a few lines of `ramp()` + `transform` on the
   scene content.
+
+## Positions along a path (`kamishibai/path`)
+
+For something travelling along a line (a dot on a route, light along a wire):
+`pointAt(d, t)` → `{ x, y, angle }` at progress `t` (0..1) along SVG path `d`;
+`pointAtLength(d, len)` and `pathLength(d)` work in path units. It measures with
+the browser's `getPointAtLength` on a hidden `<path>` cached per `d` — exact and
+deterministic across workers. Browser-only (call it from the reel).
+
+```tsx
+import { pointAt } from "kamishibai/path";
+const p = pointAt(ROUTE, ramp(ms, 0, 3000, 0, 1, eases.inOut));
+<div style={{ position: "absolute", left: p.x - 6, top: p.y - 6 }} />
+```
 
 ## Easing (framework-free)
 
@@ -322,6 +346,7 @@ kamishibai render <entry|url> [options]
 | `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
 | `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
 | `--mux-args` | | raw ffmpeg args for the audio/subtitle mux pass, e.g. `"-movflags +faststart"` (mp4 only) |
+| `--probe-timeout` | | idle seconds to wait for `window.kamishibai` (default 15; narration in flight doesn't count) |
 | `--keep-frames` | | keep intermediate PNGs (temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
 
@@ -348,6 +373,7 @@ kamishibai render reel.tsx -o reel.mp4 -w 4
 kamishibai render reel.tsx -s 2 -o reel@2x.mp4          # 2× resolution
 kamishibai render reel.tsx -p public -o reel.mp4        # serve ./public at root
 kamishibai render http://localhost:3000 -o page.mp4
+kamishibai tts reel.tsx                                 # synthesize narration only
 ```
 
 ### Splitting a render: `capture` + `encode`
@@ -363,6 +389,11 @@ kamishibai encode  -f <frames-dir> [options]               # frames → video, n
 
 `render reel.tsx -f frames -o out.mp4` is exactly `capture reel.tsx -f frames`
 then `encode -f frames -o out.mp4` — same frames, same output.
+
+To **look at a few frames without making a video**, use `capture` with
+`--only` on a frames dir from a prior full render: `kamishibai capture reel.tsx
+-f frames --only 120-130` re-shoots just those PNGs and writes no mp4 (`render
+--only` still encodes).
 
 **`capture`** writes the PNGs, the fingerprint manifest, and a **mux sidecar**
 (the resolved + ducked audio clips and the soft subtitle cues) into the dir. It
@@ -506,17 +537,38 @@ Narration-driven layout helpers (in `kamishibai/tts`, also re-exported from
   scene**, each clip's cumulative `atMs`. Reveal element X exactly when clip Y
   starts by pairing `<Narration clip delayMs={atMs} />` with `<Cue at={atMs}>`.
   `gapMs` can be a number (uniform), an array, or `(i, clip) => ms` — so you can
-  hold a longer beat at a topic change (`gapMs[i]` is the pause after clip `i`):
+  hold a longer beat at a topic change (`gapMs[i]` is the pause after clip `i`).
+- `narrationScene(clips, { leadMs, gapMs, tailMs })` → `{ steps, durationMs }`:
+  the same sequence after a lead-in, plus the scene length (last clip end +
+  tail). The usual way to build a multi-line scene:
 
 ```tsx
-const steps = narrationSequence([vo.a, vo.b, vo.c]); // within one scene
-<>{steps.map((s, i) => (
-  <React.Fragment key={i}>
-    <Narration clip={s.clip} delayMs={s.atMs} />
-    <Cue at={s.atMs}><Bullet>{labels[i]}</Bullet></Cue>
-  </React.Fragment>
-))}</>
+const s = narrationScene([vo.a, vo.b, vo.c], { leadMs: 300, gapMs: 400, tailMs: 800 });
+const scene = {
+  durationMs: s.durationMs,
+  content: <>
+    <NarrationSteps steps={s.steps} subtitle />
+    {s.steps.map((step, i) => <Cue key={i} at={step.atMs}><Bullet>{labels[i]}</Bullet></Cue>)}
+  </>,
+};
 ```
+
+**Reading vs. caption.** To speak one thing and caption another (Japanese
+readings, acronyms), pass `prepareNarration(adapter, lines, { lexicon: { "町字":
+"まちあざ", "Pub/Sub": "パブサブ" } })` — substitutions apply to the spoken text
+only — or give a line `{ text: "<reading>", caption: "<as written>" }`. The clip's
+`text` (what `<Narration subtitle>` shows) is always the caption, and only the
+spoken text is hashed, so caption edits never re-synthesize.
+
+**Long narration.** First-time synthesis of many lines can take minutes. The
+page-load wait counts only *idle* time, so it keeps waiting while lines are in
+flight (`Synthesizing narration…`, then `…narration N/M line(s)` every few
+seconds). Prefer **`kamishibai tts reel.tsx`** before the first render: it only
+fills the TTS cache (no capture, no encode) and exits non-zero if a line fails,
+so the render afterwards reads every line from cache. If synthesis fails, the
+error names how many lines finished and the provider's last error; finished
+lines are cached, so re-running resumes. `--probe-timeout <s>` (default 15)
+raises the idle limit for a page that is slow for other reasons.
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
 for the final render (same reel): `openaiAdapter({ model, voice })`
@@ -572,7 +624,8 @@ Follow any explicit instruction about the output instead, if given.
 
 The output is **concise and bounded — roughly a dozen lines for a whole render**,
 no matter how many frames: one line per phase (`Probing` / `Capturing` /
-`Encoding` / `Muxing` / `Done → <path>`) plus one `✓ chunk …` per Chrome worker
+`Encoding` / `Muxing` / `Done → <path>`, plus `Synthesizing narration…` when
+lines aren't cached yet) plus one `✓ chunk …` per Chrome worker
 (at most ~8). There is **no per-frame logging**, and **ffmpeg is silent unless
 `--verbose`** — its output is captured and only printed (the last lines) if it
 *fails*. `encode` prints even less.

@@ -4,7 +4,7 @@
 // launch one Chrome per chunk and let them race; completion order is
 // irrelevant because each writes its own frame files by index.
 // ------------------------------------------------------------------
-import { captureChunk } from "./renderer.ts";
+import { captureChunk, type ReelWaitOptions } from "./renderer.ts";
 import type { Chunk } from "./segment.ts";
 import type { KamishibaiMeta } from "./protocol.ts";
 import type { AudioClip } from "./audio.ts";
@@ -33,6 +33,8 @@ export interface RenderPoolOptions {
   prevFingerprints?: Map<number, string>;
   /** --only predicate: render just these frame indices, leave the rest */
   shouldRender?: (index: number) => boolean;
+  /** how long each worker waits for the page to expose window.kamishibai */
+  wait?: ReelWaitOptions;
 }
 
 /**
@@ -57,6 +59,7 @@ export async function renderPool(opts: RenderPoolOptions): Promise<PoolMarkers> 
         onFingerprint,
         prevFingerprints,
         shouldRender,
+        wait: opts.wait,
         onFrame: () => {
           done += 1;
           onProgress?.(done, total);

@@ -11,7 +11,7 @@
 //   --help, -h            show this help
 // ------------------------------------------------------------------
 import { parseArgs } from "node:util";
-import { render, encode, capture } from "./render.ts";
+import { render, encode, capture, synthesize } from "./render.ts";
 import SKILL from "./skill.md";
 
 const HELP = `kamishibai — seek a web page frame by frame and bake it into an mp4.
@@ -20,6 +20,7 @@ Usage:
   kamishibai render <entry|url> [options]        capture + encode (the usual one)
   kamishibai capture <entry|url> -f <dir> [opts] capture frames only, no encode
   kamishibai encode -f <frames-dir> [options]    re-encode kept frames, no capture
+  kamishibai tts <entry|url> [options]           bake narration into the TTS cache only
   kamishibai skill                    print the full usage guide (markdown)
 
 Arguments:
@@ -49,6 +50,10 @@ Options:
                         --encode-args "-tune animation" (mp4 only)
       --mux-args <s>    extra ffmpeg args for the audio/subtitle mux pass, e.g.
                         --mux-args "-movflags +faststart" (mp4 only)
+      --probe-timeout <s>
+                        seconds to wait for the page to expose window.kamishibai
+                        with nothing in progress (default: 15); narration still
+                        synthesizing doesn't count against it
       --keep-frames     keep the intermediate PNG frames
       --verbose         stream ffmpeg output
   -h, --help            show this help
@@ -62,9 +67,11 @@ Examples:
   kamishibai render reel.tsx -f frames -i -o reel.mp4         # incremental rebuild
   kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
   kamishibai render reel.tsx -f frames --only 0-30 -o reel.mp4
+  kamishibai capture reel.tsx -f frames --only 0-30           # check frames, no mp4
   kamishibai capture reel.tsx -f frames                       # capture frames only
   kamishibai encode -f frames -o reel.mp4                     # then encode them
   kamishibai encode -f frames --preview -o preview.mp4        # fast, no capture
+  kamishibai tts reel.tsx                                     # synthesize narration first
   kamishibai skill > kamishibai.md
 `;
 
@@ -119,6 +126,7 @@ async function main(): Promise<void> {
       preview: { type: "boolean" },
       "keep-frames": { type: "boolean" },
       "burn-subtitles": { type: "boolean" },
+      "probe-timeout": { type: "string" },
       verbose: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -138,9 +146,9 @@ async function main(): Promise<void> {
     process.exit(values.help ? 0 : 1);
   }
 
-  if (command !== "render" && command !== "encode" && command !== "capture") {
+  if (command !== "render" && command !== "encode" && command !== "capture" && command !== "tts") {
     process.stderr.write(
-      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / encode -f <frames-dir>)\n`,
+      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / encode -f <frames-dir>)\n`,
     );
     process.exit(1);
   }
@@ -151,6 +159,11 @@ async function main(): Promise<void> {
   const maxWidth = values["max-width"] ? Number(values["max-width"]) : undefined;
   const gifLoop = values["gif-loop"] != null ? Number(values["gif-loop"]) : undefined;
   const crf = values.crf ? Number(values.crf) : undefined;
+  const probeTimeout = values["probe-timeout"] ? Number(values["probe-timeout"]) : undefined;
+  if (probeTimeout !== undefined && (!Number.isFinite(probeTimeout) || probeTimeout <= 0)) {
+    throw new Error(`--probe-timeout must be a positive number of seconds, got "${values["probe-timeout"]}"`);
+  }
+  const probeTimeoutMs = probeTimeout !== undefined ? probeTimeout * 1000 : undefined;
   if (workers !== undefined && (!Number.isFinite(workers) || workers < 1)) {
     throw new Error(`--workers must be a positive integer, got "${values.workers}"`);
   }
@@ -177,6 +190,24 @@ async function main(): Promise<void> {
   const encodeArgs = splitArgs(enc.value);
   const muxArgs = splitArgs(mux.value);
 
+  // `kamishibai tts` runs only the narration pre-pass: load the page once so
+  // its prepareNarration fills the cache, then stop — no capture, no encode.
+  if (command === "tts") {
+    if (!entry) {
+      process.stderr.write(`Missing <entry|url>.\n\n${HELP}`);
+      process.exit(1);
+    }
+    const res = await synthesize({
+      entry,
+      publicDir: values.public,
+      probeTimeoutMs,
+      onLog: (msg) => process.stderr.write(`${msg}\n`),
+    });
+    process.stderr.write(`Narration cache → ${res.cacheDir}\n`);
+    if (res.failed > 0) process.exit(1);
+    return;
+  }
+
   // `kamishibai capture` captures frames into a dir WITHOUT encoding — pair it
   // with `kamishibai encode` to split a render into its two halves.
   if (command === "capture") {
@@ -199,6 +230,7 @@ async function main(): Promise<void> {
       incremental: values.incremental,
       only: values.only,
       burnSubtitles: values["burn-subtitles"],
+      probeTimeoutMs,
       onLog: (msg) => process.stderr.write(`${msg}\n`),
     });
     process.stderr.write(`Captured ${cap.frames} frame(s) → ${cap.framesDir}\n`);
@@ -252,6 +284,7 @@ async function main(): Promise<void> {
     encodeArgs,
     muxArgs,
     keepFrames: values["keep-frames"],
+    probeTimeoutMs,
     verbose: values.verbose,
     onLog: (msg) => process.stderr.write(`${msg}\n`),
   });

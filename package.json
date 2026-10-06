@@ -49,6 +49,10 @@
     "./tts": {
       "types": "./dist/tts.d.ts",
       "import": "./dist/tts.js"
+    },
+    "./path": {
+      "types": "./dist/path.d.ts",
+      "import": "./dist/path.js"
     }
   },
   "files": [

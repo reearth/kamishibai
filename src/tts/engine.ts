@@ -54,15 +54,35 @@ export interface TTSEngineOptions {
   adapters?: TTSAdapter[];
   /** where baked audio is cached (default: <cwd>/.kamishibai-tts) */
   cacheDir?: string;
+  /** called whenever a synthesis (a cache miss) starts or settles */
+  onProgress?: (stats: TTSStats) => void;
+}
+
+/** Running totals of the synthesis work (cache misses only — a cache hit
+ *  never calls the provider, so it isn't counted). */
+export interface TTSStats {
+  /** syntheses started so far */
+  total: number;
+  /** syntheses finished and written to the cache */
+  done: number;
+  /** syntheses that threw */
+  failed: number;
+  /** the most recent synthesis error, if any */
+  lastError?: string;
 }
 
 export interface TTSEngine {
   /** handle a /__tts request body, returning the key -> clip map */
   handle(body: {
     adapter: TTSAdapterRef;
-    items: Record<string, string>;
+    items: Record<string, NarrationInput>;
   }): Promise<Record<string, NarrationClip>>;
   cacheDir: string;
+  /** synthesis totals so far */
+  stats(): TTSStats;
+  /** whether a synthesis is still in flight (so a caller waiting on the page
+   *  knows it's slow TTS, not a stuck reel) */
+  busy(): boolean;
 }
 
 const FORMATS: TTSFormat[] = ["mp3", "aiff", "wav"];
@@ -331,6 +351,8 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
 
   const inflight = new Map<string, Promise<NarrationClip>>();
   const durations = new Map<string, number>();
+  const stats: TTSStats = { total: 0, done: 0, failed: 0 };
+  const report = () => opts.onProgress?.({ ...stats });
 
   function existingFile(hash: string): string | undefined {
     for (const ext of FORMATS) {
@@ -378,6 +400,8 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
 
     let p = inflight.get(hash);
     if (!p) {
+      stats.total += 1;
+      report();
       p = (async () => {
         const adapter = registry.get(ref.provider);
         if (!adapter) throw new Error(`no TTS adapter registered for provider "${ref.provider}"`);
@@ -392,6 +416,17 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         await rename(tmp, file);
         return { src: file, durationMs: await probeDurationMs(file), text };
       })();
+      p.then(
+        () => {
+          stats.done += 1;
+          report();
+        },
+        (err: unknown) => {
+          stats.failed += 1;
+          stats.lastError = err instanceof Error ? err.message : String(err);
+          report();
+        },
+      );
       // Clear the slot once settled so a later (post-cache) call re-checks disk.
       p.finally(() => inflight.delete(hash)).catch(() => {});
       inflight.set(hash, p);
@@ -413,11 +448,14 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         // them per line (see NarrationInput).
         const text = typeof input === "string" ? input : input.text;
         const overrideOpts = typeof input === "string" ? undefined : input.opts;
-        out[key] = await synthOne(body.adapter, text, overrideOpts);
+        const clip = await synthOne(body.adapter, text, overrideOpts);
+        // The caption rides along unhashed: changing it never re-synthesizes.
+        const caption = typeof input === "string" ? undefined : input.caption;
+        out[key] = caption != null ? { ...clip, text: caption } : clip;
       }),
     );
     return out;
   }
 
-  return { handle, cacheDir };
+  return { handle, cacheDir, stats: () => ({ ...stats }), busy: () => inflight.size > 0 };
 }

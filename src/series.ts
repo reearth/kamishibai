@@ -14,9 +14,10 @@ export interface SceneSpec {
   /** crossfade-in length in ms; overlaps the previous scene (default 0) */
   crossfadeMs?: number;
   /**
-   * fade this scene's content out over its last `exitFadeMs` ms. Pairs with
-   * a crossfade to avoid ghosting: the outgoing content is gone before the
-   * incoming scene arrives, so only the backgrounds blend (default 0).
+   * fade this scene's content out over `exitFadeMs` ms, ending where the next
+   * scene's crossfade begins (or at the scene end when there is none). Pairs
+   * with a crossfade to avoid ghosting: the outgoing content is gone before
+   * the incoming scene arrives, so only the backgrounds blend (default 0).
    */
   exitFadeMs?: number;
 }
@@ -56,6 +57,23 @@ export function seriesLayout(scenes: SceneSpec[]): SceneLayout[] {
     xfOut: scenes[i + 1] ? (scenes[i + 1]!.crossfadeMs ?? 0) : 0,
     exitFadeMs: s.exitFadeMs ?? 0,
   }));
+}
+
+/**
+ * Opacity of a scene's content at `local` ms under its exit-fade (1 when the
+ * scene has none). The fade *ends where the next scene's crossfade begins*
+ * (`durationMs − xfOut`), not at the scene end — so the outgoing content is
+ * fully gone before the incoming scene starts to show and only the
+ * backgrounds blend. Ending it at the scene end instead would leave the old
+ * content visible under the incoming one for the whole overlap.
+ */
+export function exitFadeOpacity(place: SceneLayout, local: number): number {
+  if (place.exitFadeMs <= 0) return 1;
+  const end = Math.max(0, place.durationMs - place.xfOut);
+  const start = end - place.exitFadeMs;
+  if (local < start) return 1;
+  if (local >= end) return 0;
+  return (end - local) / place.exitFadeMs;
 }
 
 /**

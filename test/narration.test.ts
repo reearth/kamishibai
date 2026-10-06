@@ -3,6 +3,8 @@ import {
   narrationTotal,
   narrationLayout,
   narrationSequence,
+  narrationScene,
+  applyLexicon,
   type NarrationClip,
 } from "../src/tts/index.ts";
 import { seriesDuration } from "../src/series.ts";
@@ -70,5 +72,37 @@ describe("narrationSequence", () => {
       gapMs: (i) => (i === 0 ? 800 : 100),
     });
     expect(steps.map((s) => s.atMs)).toEqual([0, 1800, 2900]);
+  });
+});
+
+describe("narrationScene", () => {
+  it("sequences after the lead and sizes the scene to the last clip + tail", () => {
+    const { steps, durationMs } = narrationScene([clip(1000, "a"), clip(2000, "b")], {
+      leadMs: 300,
+      gapMs: 200,
+      tailMs: 500,
+    });
+    expect(steps.map((s) => s.atMs)).toEqual([300, 1500]);
+    // 300 + 1000 + 200 + 2000 + 500 (no gap after the last clip)
+    expect(durationMs).toBe(4000);
+  });
+
+  it("is just lead + tail with no clips", () => {
+    expect(narrationScene([], { leadMs: 300, tailMs: 500 })).toEqual({ steps: [], durationMs: 800 });
+  });
+});
+
+describe("applyLexicon", () => {
+  it("substitutes readings, longest key first", () => {
+    const lex = { 町字: "まちあざ", 町: "まち", "Pub/Sub": "パブサブ" };
+    expect(applyLexicon("町字と町とPub/Sub", lex)).toBe("まちあざとまちとパブサブ");
+  });
+
+  it("treats keys literally (no regex)", () => {
+    expect(applyLexicon("a.b axb", { "a.b": "X" })).toBe("X axb");
+  });
+
+  it("leaves text alone without a lexicon", () => {
+    expect(applyLexicon("町字", undefined)).toBe("町字");
   });
 });

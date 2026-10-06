@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import os from "node:os";
 import { serveEntry } from "./serve.ts";
-import { probeMeta } from "./renderer.ts";
+import { probeMeta, type ReelWaitOptions } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
@@ -14,7 +14,7 @@ import { assertFfmpeg, hasAudioStream } from "./ffmpeg.ts";
 import { applyDucking, type AudioManifest, type AudioClip } from "./audio.ts";
 import type { Cue } from "./subtitle.ts";
 import { assemble, writeMuxSidecar, readMuxSidecar } from "./assemble.ts";
-import { createTTSEngine, type TTSAdapter } from "./tts/engine.ts";
+import { createTTSEngine, type TTSAdapter, type TTSEngine } from "./tts/engine.ts";
 import {
   buildManifest,
   manifestFrames,
@@ -93,10 +93,15 @@ export interface RenderOptions {
   /** progress / status callback */
   onLog?: (msg: string) => void;
   /** custom TTS adapters for <Narration>/prepareNarration (a matching
-   *  `provider` overrides a built-in: say / openai / elevenlabs) */
+   *  `provider` overrides a built-in: say / openai / elevenlabs / google /
+   *  gemini / polly) */
   ttsAdapters?: TTSAdapter[];
   /** where baked narration audio is cached (default: <cwd>/.kamishibai-tts) */
   ttsCacheDir?: string;
+  /** how long to wait for the page to expose window.kamishibai with nothing
+   *  in progress (ms; default 15s). Narration synthesis in flight doesn't
+   *  count against it. */
+  probeTimeoutMs?: number;
 }
 
 export interface RenderResult {
@@ -183,6 +188,10 @@ export interface CaptureOptions {
   ttsAdapters?: TTSAdapter[];
   /** where baked narration audio is cached (default: <cwd>/.kamishibai-tts) */
   ttsCacheDir?: string;
+  /** how long to wait for the page to expose window.kamishibai with nothing
+   *  in progress (ms; default 15s). Narration synthesis in flight doesn't
+   *  count against it. */
+  probeTimeoutMs?: number;
 }
 
 export interface CaptureResult {
@@ -195,6 +204,62 @@ export interface CaptureResult {
   audio: AudioManifest;
   /** soft subtitle cues collected from the page */
   subtitles: Cue[];
+}
+
+/** How often to report narration progress while lines are synthesizing. */
+const TTS_PROGRESS_EVERY_MS = 5_000;
+
+/**
+ * The narration pre-pass's TTS engine plus its logging: announces the first
+ * synthesis, ticks "…narration done/total" while lines are in flight, and
+ * builds the wait options so a slow first synthesis extends (rather than
+ * trips) the page-load timeout.
+ */
+function narrationEngine(
+  opts: { ttsAdapters?: TTSAdapter[]; ttsCacheDir?: string; probeTimeoutMs?: number },
+  log: (msg: string) => void,
+): { tts: TTSEngine; wait: ReelWaitOptions; summarize: () => void; stop: () => void } {
+  let ticker: ReturnType<typeof setInterval> | undefined;
+  const tts: TTSEngine = createTTSEngine({
+    adapters: opts.ttsAdapters,
+    cacheDir: opts.ttsCacheDir,
+    onProgress: () => {
+      if (ticker) return;
+      log(`Synthesizing narration (uncached lines only)…`);
+      ticker = setInterval(() => {
+        const s = tts.stats();
+        if (s.done + s.failed < s.total) {
+          log(`  …narration ${s.done}/${s.total} line(s)${s.failed ? ` (${s.failed} failed)` : ""}`);
+        }
+      }, TTS_PROGRESS_EVERY_MS);
+      ticker.unref?.();
+    },
+  });
+  const wait: ReelWaitOptions = {
+    timeoutMs: opts.probeTimeoutMs,
+    busy: () => tts.busy(),
+    describe: () => {
+      const s = tts.stats();
+      if (s.total === 0) return undefined;
+      return (
+        `narration synthesis finished ${s.done}/${s.total} new line(s)` +
+        (s.lastError ? `; last error: ${s.lastError}` : "") +
+        `. Finished lines are cached in ${tts.cacheDir}, so re-running resumes from there ` +
+        `(or raise the limit with --probe-timeout)`
+      );
+    },
+  };
+  return {
+    tts,
+    wait,
+    summarize: () => {
+      const s = tts.stats();
+      if (s.total > 0) {
+        log(`  ✓ narration: ${s.done} line(s) synthesized${s.failed ? `, ${s.failed} failed` : ""}`);
+      }
+    },
+    stop: () => clearInterval(ticker),
+  };
 }
 
 /**
@@ -212,7 +277,8 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
   // The narration pre-pass: one engine for the whole capture (probe + every
   // worker share this server), so its cache + in-flight dedup make TTS run
   // once and freeze — deterministic across parallel capture.
-  const tts = createTTSEngine({ adapters: opts.ttsAdapters, cacheDir: opts.ttsCacheDir });
+  const narration = narrationEngine(opts, log);
+  const { tts } = narration;
   const served = await serveEntry(opts.entry, {
     publicDir: opts.publicDir,
     tts: (body) => tts.handle(body as Parameters<typeof tts.handle>[0]),
@@ -226,7 +292,13 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
 
   try {
     log(`Probing ${served.url} …`);
-    const probed = await probeMeta(served.url);
+    let probed;
+    try {
+      probed = await probeMeta(served.url, narration.wait);
+    } finally {
+      narration.stop();
+    }
+    narration.summarize();
     // An explicit --fps re-samples the same reel (ms-driven) at a new rate.
     const meta = opts.fps ? { ...probed, fps: opts.fps } : probed;
     const total = frameCount(meta);
@@ -289,6 +361,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
         scale,
         prevFingerprints,
         shouldRender,
+        wait: narration.wait,
         onProgress: (done) => {
           doneFrames = done;
         },
@@ -384,6 +457,7 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       onLog: log,
       ttsAdapters: opts.ttsAdapters,
       ttsCacheDir: opts.ttsCacheDir,
+      probeTimeoutMs: opts.probeTimeoutMs,
     });
 
     await assemble({
@@ -501,4 +575,57 @@ export async function encode(opts: EncodeFramesDirOptions): Promise<EncodeResult
   const elapsedMs = Date.now() - started;
   log(`Done → ${out} (${(elapsedMs / 1000).toFixed(1)}s)`);
   return { out, frames: totalFrames, fps, elapsedMs };
+}
+
+export interface SynthesizeOptions {
+  /** a URL, an .html file, or a script entry (.ts/.tsx/.js/.jsx) */
+  entry: string;
+  /** static assets to serve at the server root (for staticFile-style paths) */
+  publicDir?: string;
+  /** custom TTS adapters for <Narration>/prepareNarration */
+  ttsAdapters?: TTSAdapter[];
+  /** where baked narration audio is cached (default: <cwd>/.kamishibai-tts) */
+  ttsCacheDir?: string;
+  /** idle timeout while waiting for the page (ms; default 15s) */
+  probeTimeoutMs?: number;
+  /** progress / status callback */
+  onLog?: (msg: string) => void;
+}
+
+export interface SynthesizeResult {
+  /** lines synthesized this run (cache misses) */
+  synthesized: number;
+  /** lines that failed */
+  failed: number;
+  cacheDir: string;
+}
+
+/**
+ * Bake an entry's narration into the TTS cache WITHOUT capturing frames: load
+ * the page once (which runs its prepareNarration pre-pass) and stop. Run it
+ * before a render to pay for — and check — every line up front; the render
+ * then reads them all from the cache.
+ */
+export async function synthesize(opts: SynthesizeOptions): Promise<SynthesizeResult> {
+  const log = opts.onLog ?? (() => {});
+  const narration = narrationEngine(opts, log);
+  const { tts } = narration;
+  const served = await serveEntry(opts.entry, {
+    publicDir: opts.publicDir,
+    tts: (body) => tts.handle(body as Parameters<typeof tts.handle>[0]),
+  });
+  try {
+    log(`Loading ${served.url} …`);
+    try {
+      await probeMeta(served.url, narration.wait);
+    } finally {
+      narration.stop();
+    }
+    const s = tts.stats();
+    if (s.total === 0) log(`Narration is up to date — nothing new to synthesize.`);
+    else narration.summarize();
+    return { synthesized: s.done, failed: s.failed, cacheDir: tts.cacheDir };
+  } finally {
+    await served.close();
+  }
 }

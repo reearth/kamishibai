@@ -150,12 +150,13 @@ You don't need React — any page that sets `window.kamishibai` works. But `kami
 - `<Stage>` — root surface · `<Cue at hold>` — reveal children during a window, with a **local clock** that restarts at 0 · `<Enter>` — fade + rise in
 - `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>` — lay scenes back-to-back, each with its own local clock ([Scenes](#scenes) below)
 - `<Audio>` · `<Bgm>` — declare sound ([Audio](#audio)) · `<Video>` — frame-accurate video ([Video](#video-frame-accurate))
-- `<Subtitle>` — soft captions, mux-time ([Subtitles](#subtitles)) · `<Narration>` — play a pre-synthesized line ([Narration](#narration-tts))
+- `<Subtitle>` — soft captions, mux-time ([Subtitles](#subtitles)) · `<Narration>` / `<NarrationSteps>` — play pre-synthesized lines ([Narration](#narration-tts))
+- `<Camera x y zoom>` / `<Camera shots>` — film a "world" layer: put a world point at the frame center and push in, pan or pull back ([Camera & paths](#camera--paths))
 - `mount(node, meta)` — render and expose `window.kamishibai` (also free-runs on the wall clock in a normal browser for live preview)
 
 ### Scenes
 
-`<Series>` plays scenes back-to-back, each with its own local clock (so `useClock()` and `<Audio delayMs>` are measured from the scene's start). A `crossfadeMs` overlaps a scene with the previous one; `exitFadeMs` fades a scene's *content* out just before it ends (so crossfading two different layouts doesn't ghost).
+`<Series>` plays scenes back-to-back, each with its own local clock (so `useClock()` and `<Audio delayMs>` are measured from the scene's start). A `crossfadeMs` overlaps a scene with the previous one; `exitFadeMs` fades a scene's *content* out, finishing right where the next scene's crossfade begins (so crossfading two different layouts doesn't ghost — only the backgrounds blend).
 
 Scenes **self-register**, so a scene wrapped in your own component works at any depth — there's no "must be a direct child" rule:
 
@@ -176,6 +177,32 @@ mount(<Series scenes={scenes} />, {
 ```
 
 The JSX form is equivalent — `<Series><Series.Scene durationMs={4000}>…</Series.Scene></Series>` — and `seriesLayout(scenes)` gives the per-scene start times if you need them.
+
+### Camera & paths
+
+`<Camera>` lays its children out in world coordinates and puts the world point `(x, y)` at the frame center, scaled by `zoom` (optional `rotate`). Give it a fixed state, or `shots` — keyframes on the current clock. Between shots the position eases (default `eases.inOut`) and the zoom interpolates in log space, so 1×→4× reads as evenly as 4×→16×. `cameraAt(ms, shots)` is the same math without React.
+
+```tsx
+import { Camera } from "kamishibai/react";
+
+<Camera shots={[
+  { at: 0,    x: 960,  y: 540, zoom: 1 },   // the whole map
+  { at: 2000, x: 1400, y: 300, zoom: 4 },   // push in on one city
+  { at: 5000, x: 1400, y: 300, zoom: 4 },   // hold
+  { at: 6500, x: 960,  y: 540, zoom: 1 },   // pull back
+]}>
+  <WorldMap />   {/* drawn in world px, e.g. a 1920×1080 svg at 0,0 */}
+</Camera>
+```
+
+`kamishibai/path` gives positions along an SVG path — for a dot travelling a route or a particle following a line. It measures with the browser's own `getPointAtLength` on a hidden, cached `<path>` per `d`, so it's exact and deterministic across workers (browser-only):
+
+```tsx
+import { pointAt, pointAtLength, pathLength } from "kamishibai/path";
+
+const ROUTE = "M 100 600 C 400 100, 900 100, 1180 600";
+const { x, y, angle } = pointAt(ROUTE, ramp(ms, 0, 3000, 0, 1, eases.inOut)); // t: 0..1
+```
 
 ---
 
@@ -306,7 +333,20 @@ mount(<Series scenes={scenes} />, {
 });
 ```
 
-Helpers (`kamishibai/tts`, also re-exported from `kamishibai/react`): `narrationLayout(clips, { padMs, crossfadeMs, exitFadeMs })` → one scene spec per clip · `narrationTotal(clips)` → total voice-over length · `narrationSequence(clips, { gapMs, startMs })` → cumulative start offsets for several lines in one scene (reveal element X when line Y starts via `<Cue at={atMs}>`), with `gapMs` as a number, array, or `(i, clip) => ms` for uneven pacing.
+Helpers (`kamishibai/tts`, also re-exported from `kamishibai/react`): `narrationLayout(clips, { padMs, crossfadeMs, exitFadeMs })` → one scene spec per clip · `narrationTotal(clips)` → total voice-over length · `narrationSequence(clips, { gapMs, startMs })` → cumulative start offsets for several lines in one scene (reveal element X when line Y starts via `<Cue at={atMs}>`), with `gapMs` as a number, array, or `(i, clip) => ms` for uneven pacing · `narrationScene(clips, { leadMs, gapMs, tailMs })` → `{ steps, durationMs }`, the "several lines in one scene" shape in one call.
+
+`<NarrationSteps steps subtitle />` places a `<Narration>` (audio + caption) at each step's `atMs`, so a multi-line scene is three lines:
+
+```tsx
+const s = narrationScene([vo.what, vo.why, vo.how], { leadMs: 300, gapMs: 400, tailMs: 800 });
+const scene = {
+  durationMs: s.durationMs,
+  content: <>
+    <NarrationSteps steps={s.steps} subtitle />
+    {s.steps.map((step, i) => <Cue key={i} at={step.atMs}><Bullet>{labels[i]}</Bullet></Cue>)}
+  </>,
+};
+```
 
 Adapters are deliberately dumb (`text → bytes`) — no SSML layer, no voice UI. `say` is **macOS-only** (it shells out to the `say` binary), so it's the free local dev default; on Linux/Windows/CI use a network adapter. **Run the dev loop on `say`, then swap one line for the final render** — same reel:
 
@@ -329,6 +369,17 @@ const vo = await prepareNarration(sayAdapter(), {
   aside: { text: "…but this one, slower.", opts: { rate: 150 } },
 });
 ```
+
+**Reading vs. caption.** What the voice should *say* and what the caption should *show* often differ (Japanese readings, acronyms). Pass a `lexicon` to substitute readings in the spoken text only, or give a line an explicit `caption`; the clip's `text` (used by `<Narration subtitle>`) is always the caption. Only the spoken text is hashed, so editing a caption never re-synthesizes.
+
+```ts
+const vo = await prepareNarration(voice, {
+  a: "町字の単位で集計します",                              // spoken: まちあざの単位で…
+  b: { text: "パブサブで配信", caption: "Pub/Sub で配信" },  // explicit per-line caption
+}, { lexicon: { "町字": "まちあざ", "Pub/Sub": "パブサブ" } });
+```
+
+**Long narration.** The first synthesis of many lines can take minutes. The page-load wait only counts *idle* time — while lines are still synthesizing it keeps waiting, and `Synthesizing narration…` / `…narration 12/72 line(s)` show progress. To pay for (and check) every line up front, run `kamishibai tts reel.tsx` — it loads the page once to fill the cache and stops, so the render that follows reads every line from cache. If synthesis fails, the error says how many lines finished and the provider's last error; finished lines are cached, so re-running resumes.
 
 A custom provider implements the Node `TTSAdapter` (`{ provider, synthesize }`) and registers it via `render({ ttsAdapters: [myAdapter] })`; the reel references it with an adapter whose `provider` matches. (Why the split: the reel is bundled for the browser, so its adapter is a serializable ref — `{ id, provider, opts }` — while the actual synthesis runs in Node, served to the page over `POST /__tts`.)
 
@@ -358,6 +409,7 @@ kamishibai render <entry|url> [options]
 | `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
 | `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
 | `--mux-args` | | raw ffmpeg args for the audio/subtitle mux pass, e.g. `"-movflags +faststart"` (mp4 only) |
+| `--probe-timeout` | | seconds to wait for the page to expose `window.kamishibai` with nothing in progress (default: 15); narration still synthesizing doesn't count |
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
 
@@ -384,6 +436,7 @@ A render is **capture** (seek the page into PNG frames) then **encode** (frames 
 ```sh
 kamishibai capture reel.tsx -f frames                   # frames + manifest + mux sidecar, no video
 kamishibai encode  -f frames -o reel.mp4                # frames → video, no browser
+kamishibai capture reel.tsx -f frames --only 120-130    # re-shoot a few frames to look at, no mp4
 ```
 
 `render reel.tsx -f frames -o out.mp4` is exactly those two in sequence. `encode` rebuilds the video from the dir — **no browser, no capture, just ffmpeg** — and replays the mux sidecar a full capture left (the resolved + ducked audio clips and soft subtitle cues), so audio and captions come back without re-capturing. It's the fastest path when the PNGs are already correct and you only want different encode/mux settings (`--crf`, `--preset`/`--preview`, `--max-width`, `--encode-args`, or a `.gif`). fps comes from the dir's manifest (override with `--fps`); a `--only` capture leaves the sidecar untouched (its markers are partial), and a dir of raw PNGs with no sidecar encodes silent.
@@ -392,6 +445,8 @@ kamishibai encode  -f frames -o reel.mp4                # frames → video, no b
 kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio + subs intact
 kamishibai encode -f frames --crf 28 -o smaller.mp4     # try a setting without re-capturing
 ```
+
+`kamishibai tts reel.tsx` is a third, smaller half: it only runs the narration pre-pass (load the page once, synthesize uncached lines into `.kamishibai-tts/`), with no capture or encode.
 
 For long jobs, capture and encode each print a `…captured X/total` / `…encoded X/total` heartbeat at most once a minute, so a slow reel shows it's advancing; short jobs finish before the first tick and stay quiet.
 

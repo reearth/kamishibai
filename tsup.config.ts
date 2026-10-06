@@ -9,6 +9,7 @@ export default defineConfig({
     easing: "src/easing.ts",
     subtitle: "src/subtitle.ts",
     tts: "src/tts/index.ts",
+    path: "src/path.ts",
   },
   format: ["esm"],
   target: "node20",

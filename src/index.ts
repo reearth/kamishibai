@@ -3,7 +3,7 @@
 // Slice a web page into parallel-capturable units, seek through time,
 // and bake each frame into an mp4. A mechanism, not a framework.
 // ------------------------------------------------------------------
-export { render, capture, encode } from "./render.ts";
+export { render, capture, encode, synthesize } from "./render.ts";
 export type {
   RenderOptions,
   RenderResult,
@@ -11,6 +11,8 @@ export type {
   CaptureResult,
   EncodeFramesDirOptions,
   EncodeResult,
+  SynthesizeOptions,
+  SynthesizeResult,
 } from "./render.ts";
 
 export { audio } from "./audio.ts";
@@ -25,10 +27,11 @@ export {
   geminiAdapter,
   pollyAdapter,
   prepareNarration,
+  applyLexicon,
 } from "./tts/index.ts";
-export type { TTSAdapterRef, NarrationClip, NarrationInput } from "./tts/index.ts";
+export type { TTSAdapterRef, NarrationClip, NarrationInput, Lexicon } from "./tts/index.ts";
 export { createTTSEngine } from "./tts/engine.ts";
-export type { TTSAdapter, TTSEngine, TTSEngineOptions, TTSFormat } from "./tts/engine.ts";
+export type { TTSAdapter, TTSEngine, TTSEngineOptions, TTSFormat, TTSStats } from "./tts/engine.ts";
 
 export {
   GLOBAL_KEY,
@@ -54,8 +57,8 @@ export {
 export type { FrameManifest, ManifestKey } from "./incremental.ts";
 
 // Lower-level building blocks, in case you want to assemble your own pipeline.
-export { probeMeta, captureChunk } from "./renderer.ts";
-export type { ChunkMarkers } from "./renderer.ts";
+export { probeMeta, captureChunk, waitForReel } from "./renderer.ts";
+export type { ChunkMarkers, ReelWaitOptions } from "./renderer.ts";
 export { renderPool } from "./pool.ts";
 export type { PoolMarkers } from "./pool.ts";
 export { serveEntry } from "./serve.ts";
