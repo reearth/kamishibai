@@ -23,9 +23,9 @@ import React, {
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { KamishibaiMeta } from "../protocol.ts";
-import type { AudioClip, DuckOptions } from "../audio.ts";
+import { createClipRegistry, type AudioClip, type DuckOptions } from "../audio.ts";
 import { loadVideo, type DecodedVideo } from "../video.ts";
-import { loadSubtitles, cueAt, type Cue as SubtitleCue } from "../subtitle.ts";
+import { loadSubtitles, cueAt, isPlayableCue, warnUnplayable, type Cue as SubtitleCue } from "../subtitle.ts";
 export type { Cue as SubtitleCue } from "../subtitle.ts";
 import type { NarrationClip, NarrationStep } from "../tts/index.ts";
 export type { NarrationClip } from "../tts/index.ts";
@@ -198,19 +198,19 @@ export const Enter: React.FC<{
 // composable: drop an <Audio> inside any scene and it lands at that scene's
 // start. The same convention works without React — set window.kamishibai
 // .audio to an array and push { src, atMs, gain } yourself.
-const audioRegistry: AudioClip[] = [];
-const audioSeen = new Set<string>();
+// Dedup and replacement live in createClipRegistry (keyed by clipKey, the same
+// identity the parallel-capture merge uses).
+const audioMarkers = createClipRegistry();
+const audioRegistry: AudioClip[] = audioMarkers.clips;
 
-function registerAudio(clip: AudioClip): void {
-  const key = `${clip.src}@${clip.atMs}@${clip.gain ?? 0}`;
-  if (audioSeen.has(key)) return;
-  audioSeen.add(key);
-  audioRegistry.push(clip);
+/** Register a declaration's clip. Pass the key this declaration registered
+ *  last (kept in a ref) so a prop change replaces its stale clip. */
+function registerAudio(clip: AudioClip, prevKey?: string): string {
+  return audioMarkers.register(clip, prevKey);
 }
 
 function resetAudio(): void {
-  audioRegistry.length = 0;
-  audioSeen.clear();
+  audioMarkers.reset();
 }
 
 // ---- subtitle markers ---------------------------------------------
@@ -225,6 +225,12 @@ const subtitleSeen = new Set<string>();
 function registerSubtitleCues(cues: SubtitleCue[]): void {
   for (const c of cues) {
     if (!c.text) continue;
+    // A cue that can't play (end <= start) would fail the soft-track mux after
+    // the whole capture; drop it here, as burn mode never shows it either.
+    if (!isPlayableCue(c)) {
+      warnUnplayable(c);
+      continue;
+    }
     const key = `${c.start}@${c.end}@${c.text}`;
     if (subtitleSeen.has(key)) continue;
     subtitleSeen.add(key);
@@ -266,12 +272,14 @@ export const Audio: React.FC<{
   fadeOutMs?: number;
   /** tile the source to fill to the reel end (or durationMs) — for BGM */
   loop?: boolean;
-  /** auto-dip this clip while other clips play (true = defaults) — for BGM */
+  /** auto-dip this clip while any non-ducked clip plays (true = defaults) — for
+   *  BGM. A clip without durationMs counts once its file length is probed. */
   duck?: boolean | DuckOptions;
   /** dB volume automation over the clip's timeline (atMs from clip start) */
   gainKeyframes?: Array<{ atMs: number; gain: number }>;
 }> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duck, gainKeyframes }) => {
   const { epochMs } = useClock();
+  const regKey = useRef<string | undefined>(undefined);
   const start = Math.round(atMs ?? epochMs + delayMs);
   const kfKey = gainKeyframes ? JSON.stringify(gainKeyframes) : "";
   const duckKey = duck ? JSON.stringify(duck) : "";
@@ -285,7 +293,7 @@ export const Audio: React.FC<{
     if (loop) clip.loop = true;
     if (duck) clip.duck = duck;
     if (gainKeyframes != null) clip.gainKeyframes = gainKeyframes;
-    registerAudio(clip);
+    regKey.current = registerAudio(clip, regKey.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duckKey, kfKey]);
   return null;
@@ -587,6 +595,7 @@ export const Video: React.FC<{
   // no audio stream. Set `muted` to opt out.
   const audioPath = audioSrc ?? src;
   const kfKey = gainKeyframes ? JSON.stringify(gainKeyframes) : "";
+  const audioKey = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (muted) return;
     const clip: AudioClip = {
@@ -598,7 +607,7 @@ export const Video: React.FC<{
     if (fadeInMs != null) clip.fadeInMs = fadeInMs;
     if (fadeOutMs != null) clip.fadeOutMs = fadeOutMs;
     if (gainKeyframes != null) clip.gainKeyframes = gainKeyframes;
-    registerAudio(clip);
+    audioKey.current = registerAudio(clip, audioKey.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [muted, audioPath, epochMs, startMs, durationMs, gain, fadeInMs, fadeOutMs, kfKey]);
 

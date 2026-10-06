@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDucking, duckKeyframes, type AudioClip } from "../src/audio.ts";
+import { applyDucking, clipKey, createClipRegistry, duckKeyframes, type AudioClip } from "../src/audio.ts";
 
 describe("duckKeyframes", () => {
   it("dips to amountDb across a window with attack/release ramps", () => {
@@ -70,5 +70,91 @@ describe("applyDucking", () => {
       { src: "bgm.mp3", atMs: 0, duck: { amountDb: -24 } },
     ];
     expect(applyDucking(clips)[1]!.gainKeyframes!.some((k) => k.gain === -24)).toBe(true);
+  });
+});
+
+describe("applyDucking windows", () => {
+  const bgm: AudioClip = { src: "bgm.mp3", atMs: 0, loop: true, duck: { attackMs: 0, releaseMs: 1 } };
+  // [first, last] ms of the dipped keyframes, or undefined when nothing dips
+  const dipSpan = (clips: AudioClip[], ctx?: Parameters<typeof applyDucking>[1]) => {
+    const kf = applyDucking(clips, ctx).find((c) => c.duck)!.gainKeyframes ?? [];
+    const dipped = kf.filter((k) => k.gain < 0).map((k) => k.atMs);
+    return dipped.length ? [Math.min(...dipped), Math.max(...dipped)] : undefined;
+  };
+
+  it("uses a probed source length for a clip without durationMs", () => {
+    const vo: AudioClip = { src: "vo.wav", atMs: 1000 };
+    expect(dipSpan([bgm, vo])).toBeUndefined(); // unknown length: no dip
+    expect(dipSpan([bgm, vo], { sourceMs: new Map([["vo.wav", 2000]]) })).toEqual([1000, 3000]);
+  });
+
+  it("subtracts trimStartMs and caps durationMs at what the source has left", () => {
+    const vo: AudioClip = { src: "vo.wav", atMs: 0, trimStartMs: 500, durationMs: 5000 };
+    expect(dipSpan([bgm, vo], { sourceMs: new Map([["vo.wav", 2000]]) })).toEqual([0, 1500]);
+  });
+
+  it("runs a non-ducked loop without durationMs to the reel end, and clamps to it", () => {
+    const amb: AudioClip = { src: "amb.wav", atMs: 1000, loop: true };
+    expect(dipSpan([bgm, amb])).toBeUndefined();
+    expect(dipSpan([bgm, amb], { reelMs: 4000 })).toEqual([1000, 4000]);
+    const long: AudioClip = { src: "vo.wav", atMs: 3000, durationMs: 5000 };
+    expect(dipSpan([bgm, long], { reelMs: 4000 })).toEqual([3000, 4000]);
+  });
+
+  it("never dips a ducked clip under another ducked clip", () => {
+    const bgm2: AudioClip = { ...bgm, src: "bgm2.mp3", durationMs: 3000 };
+    expect(dipSpan([bgm, bgm2])).toBeUndefined();
+  });
+});
+
+describe("clipKey", () => {
+  const base: AudioClip = { src: "a.wav", atMs: 0 };
+
+  it("distinguishes clips differing in any field", () => {
+    const variants: AudioClip[] = [
+      base,
+      { ...base, gain: -3 },
+      { ...base, trimStartMs: 100 },
+      { ...base, durationMs: 1000 },
+      { ...base, fadeInMs: 10 },
+      { ...base, fadeOutMs: 10 },
+      { ...base, loop: true },
+      { ...base, duck: true },
+      { ...base, duck: { amountDb: -6 } },
+      { ...base, gainKeyframes: [{ atMs: 0, gain: -1 }] },
+    ];
+    expect(new Set(variants.map(clipKey)).size).toBe(variants.length);
+  });
+
+  it("treats omitted defaults as equal to explicit ones", () => {
+    expect(clipKey({ ...base, gain: 0, trimStartMs: 0, loop: false })).toBe(clipKey(base));
+  });
+});
+
+describe("createClipRegistry", () => {
+  it("dedups identical clips but keeps clips that differ only in trim", () => {
+    const r = createClipRegistry();
+    r.register({ src: "a.wav", atMs: 0 });
+    r.register({ src: "a.wav", atMs: 0 });
+    r.register({ src: "a.wav", atMs: 0, trimStartMs: 500 });
+    expect(r.clips).toHaveLength(2);
+  });
+
+  it("replaces a declaration's stale clip when its props change", () => {
+    const r = createClipRegistry();
+    let key = r.register({ src: "a.wav", atMs: 0 });
+    key = r.register({ src: "a.wav", atMs: 0, durationMs: 1200 }, key);
+    expect(r.clips).toEqual([{ src: "a.wav", atMs: 0, durationMs: 1200 }]);
+    r.register({ src: "a.wav", atMs: 0, durationMs: 1200 }, key); // unchanged re-run
+    expect(r.clips).toHaveLength(1);
+  });
+
+  it("reset empties the live array in place", () => {
+    const r = createClipRegistry();
+    const live = r.clips;
+    r.register({ src: "a.wav", atMs: 0 });
+    r.reset();
+    expect(live).toHaveLength(0);
+    expect(r.clips).toBe(live);
   });
 });

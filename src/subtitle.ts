@@ -25,7 +25,26 @@ function parseTimestamp(s: string): number {
   return Math.round((h * 3600 + m * 60 + sec) * 1000);
 }
 
-/** Parse SRT or WebVTT text into cues (sorted by start). */
+/**
+ * Whether a cue can ever show: finite times and `end` after `start`. An
+ * inverted or zero-length cue never matches cueAt (so burn mode never draws
+ * it), and ffmpeg rejects it in a soft track (failing the mux after the whole
+ * capture) — so both paths drop it up front and agree.
+ */
+export function isPlayableCue(c: Cue): boolean {
+  return Number.isFinite(c.start) && Number.isFinite(c.end) && c.end > c.start;
+}
+
+/** Warn about a cue dropped by isPlayableCue. */
+export function warnUnplayable(c: Cue): void {
+  console.warn(
+    `kamishibai: dropping subtitle cue "${String(c.text ?? "").slice(0, 40)}" — its end (${c.end}ms) ` +
+      `is not after its start (${c.start}ms)`,
+  );
+}
+
+/** Parse SRT or WebVTT text into cues (sorted by start). Cues whose end is not
+ *  after their start are dropped with a warning (see isPlayableCue). */
 export function parseSubtitles(input: string): Cue[] {
   const text = input
     .replace(/^﻿/, "")
@@ -40,7 +59,12 @@ export function parseSubtitles(input: string): Cue[] {
     if (!m) continue;
     const cueText = lines.slice(idx + 1).join("\n").trim();
     if (!cueText) continue;
-    cues.push({ start: parseTimestamp(m[1]!), end: parseTimestamp(m[2]!), text: cueText });
+    const cue = { start: parseTimestamp(m[1]!), end: parseTimestamp(m[2]!), text: cueText };
+    if (!isPlayableCue(cue)) {
+      warnUnplayable(cue);
+      continue;
+    }
+    cues.push(cue);
   }
   cues.sort((a, b) => a.start - b.start);
   return cues;
@@ -62,11 +86,17 @@ export async function loadSubtitles(src: string): Promise<Cue[]> {
 }
 
 /** Sort cues by start and drop exact duplicates (same start/end/text) — used to
- *  merge cues collected from several <Subtitle>s across parallel capture. */
+ *  merge cues collected from several <Subtitle>s across parallel capture. Also
+ *  drops (with a warning) any cue that can't play, as a last guard for cues
+ *  pushed onto window.kamishibai.subtitles directly, so the mux never sees one. */
 export function mergeCues(cues: Cue[]): Cue[] {
   const seen = new Set<string>();
   const out: Cue[] = [];
   for (const c of cues) {
+    if (!isPlayableCue(c)) {
+      warnUnplayable(c);
+      continue;
+    }
     const key = `${c.start}@${c.end}@${c.text}`;
     if (seen.has(key)) continue;
     seen.add(key);

@@ -25,7 +25,8 @@ const MUX_SIDECAR_VERSION = 1;
  *  can rebuild the full video from a frames dir without re-capturing. */
 export interface MuxSidecar {
   version: number;
-  /** final clips (srcs resolved, ducking already applied), ready to mux */
+  /** final clips (srcs resolved to absolute paths or URLs, so any cwd can
+   *  mux them; ducking already applied), ready to mux */
   audio: AudioManifest;
   /** soft subtitle cues (empty when burned-in or none) */
   subtitles: Cue[];
@@ -40,14 +41,34 @@ export async function writeMuxSidecar(
   await writeFile(join(framesDir, MUX_SIDECAR_FILE), JSON.stringify(sidecar));
 }
 
-/** Read a frames dir's mux sidecar, or undefined if missing/unreadable. */
-export async function readMuxSidecar(framesDir: string): Promise<MuxSidecar | undefined> {
+/** Read a frames dir's mux sidecar, or undefined if it is missing, unreadable,
+ *  or from another sidecar version. `onUnusable` is told which of those it was. */
+export async function readMuxSidecar(
+  framesDir: string,
+  onUnusable?: (reason: string) => void,
+): Promise<MuxSidecar | undefined> {
+  const path = join(framesDir, MUX_SIDECAR_FILE);
+  let text: string;
   try {
-    const m = JSON.parse(await readFile(join(framesDir, MUX_SIDECAR_FILE), "utf8")) as MuxSidecar;
-    return m && typeof m === "object" && m.version === MUX_SIDECAR_VERSION ? m : undefined;
-  } catch {
+    text = await readFile(path, "utf8");
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    onUnusable?.(code === "ENOENT" ? `no mux sidecar in ${framesDir}` : `can't read ${path} (${code ?? e})`);
     return undefined;
   }
+  let m: MuxSidecar;
+  try {
+    m = JSON.parse(text) as MuxSidecar;
+  } catch {
+    onUnusable?.(`${path} is not valid JSON`);
+    return undefined;
+  }
+  if (!m || typeof m !== "object" || m.version !== MUX_SIDECAR_VERSION) {
+    const v = m && typeof m === "object" ? m.version : undefined;
+    onUnusable?.(`${path} has sidecar version ${v ?? "(none)"}, expected ${MUX_SIDECAR_VERSION} — re-render to refresh it`);
+    return undefined;
+  }
+  return m;
 }
 
 export interface AssembleOptions {

@@ -7,7 +7,7 @@
 import { captureChunk, type ReelWaitOptions } from "./renderer.ts";
 import type { Chunk } from "./segment.ts";
 import type { KamishibaiMeta } from "./protocol.ts";
-import type { AudioClip } from "./audio.ts";
+import { clipKey, type AudioClip } from "./audio.ts";
 import { mergeCues, type Cue } from "./subtitle.ts";
 
 /** The merged markers a full render collected: audio clips + subtitle cues. */
@@ -75,7 +75,7 @@ export async function renderPool(opts: RenderPoolOptions): Promise<PoolMarkers> 
   const seen = new Set<string>();
   const audio: AudioClip[] = [];
   for (const clip of perChunk.flatMap((m) => m.audio)) {
-    const key = `${clip.src}@${clip.atMs}@${clip.gain ?? 0}`;
+    const key = clipKey(clip);
     if (seen.has(key)) continue;
     seen.add(key);
     audio.push(clip);

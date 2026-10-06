@@ -39,6 +39,23 @@ export async function hasAudioStream(src: string): Promise<boolean> {
   }
 }
 
+/** A media file's duration in ms (best-effort via ffprobe), or undefined when
+ *  ffprobe is missing, errors, or reports no duration. */
+export async function probeDurationMs(src: string): Promise<number | undefined> {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "csv=p=0",
+      src,
+    ]);
+    const sec = Number(stdout.trim());
+    return Number.isFinite(sec) && sec > 0 ? Math.round(sec * 1000) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function runFfmpeg(
   args: string[],
   verbose: boolean,

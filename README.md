@@ -247,9 +247,9 @@ Or as a plain array (raw API, or the programmatic `render({ audio })` option):
 ]
 ```
 
-Per clip: `gain` (dB) · `trimStartMs` / `durationMs` (use a sub-section) · `fadeInMs` / `fadeOutMs` · `loop` (tile the source to the reel length) · `duck` (auto-dip under other clips) · `gainKeyframes` (manual dB automation).
+Per clip: `gain` (dB) · `trimStartMs` / `durationMs` (use a sub-section) · `fadeInMs` / `fadeOutMs` · `loop` (tile the source to the reel length) · `duck` (auto-dip under the non-ducked clips) · `gainKeyframes` (manual dB automation).
 
-**Auto-ducking** derives the dip from the schedule — every clip's start and length are known up front, so the music dips while narration plays and rises in the gaps, deterministically (no audio analysis). `duck: true` uses defaults (−12 dB, 250 ms attack, 600 ms release); tune with `duck: { amountDb: -16, attackMs: 200, releaseMs: 500 }`, or automate by hand with `gainKeyframes`.
+**Auto-ducking** derives the dip from the schedule — every clip's start and length are known before the mux, so the music dips while narration plays and rises in the gaps, deterministically (no audio analysis). A ducked clip dips under every *non-ducked* clip (ducked clips never dip under each other); a clip's length is its `durationMs`, else its source file's length after `trimStartMs` (probed with ffprobe at render time), else — for a `loop` clip — the reel end. A clip whose length can't be probed doesn't trigger a dip. `duck: true` uses defaults (−12 dB, 250 ms attack, 600 ms release); tune with `duck: { amountDb: -16, attackMs: 200, releaseMs: 500 }`, or automate by hand with `gainKeyframes`.
 
 `src` is read **from the filesystem by ffmpeg** (cwd-relative or absolute) — unlike `<Video>` / `staticFile` paths, which the *browser* fetches and must be served via `--public`. There's no `--audio` CLI flag (audio belongs to the reel); the programmatic `render({ audio })` option still works and is **merged** with the page's markers — handy for adding audio to a URL entry you don't control.
 
@@ -295,6 +295,8 @@ import { Subtitle, Cue } from "kamishibai/react";
 ```
 
 **Burn-in** (`--burn-subtitles` / `render({ burnSubtitles })`) draws the captions as pixels instead, using the `<Subtitle>` CSS (`bottom`, `style`) for full visual control. It's a global switch — soft `mov_text` is plain text styled by the player, so reach for burn-in when you need pixel-perfect captions, or for **GIF output**, which has no subtitle track (gif always burns or drops, and a sidecar `.srt` is still written).
+
+A cue whose end is not after its start can never show, so it's dropped with a console warning in both modes (rather than failing the soft-track mux after the capture).
 
 The parser/serializer is also framework-free for the raw API or Node:
 
@@ -442,7 +444,7 @@ kamishibai encode  -f frames -o reel.mp4                # frames → video, no b
 kamishibai capture reel.tsx -f frames --only 120-130    # re-shoot a few frames to look at, no mp4
 ```
 
-`render reel.tsx -f frames -o out.mp4` is exactly those two in sequence. `encode` rebuilds the video from the dir — **no browser, no capture, just ffmpeg** — and replays the mux sidecar a full capture left (the resolved + ducked audio clips and soft subtitle cues), so audio and captions come back without re-capturing. It's the fastest path when the PNGs are already correct and you only want different encode/mux settings (`--crf`, `--preset`/`--preview`, `--max-width`, `--encode-args`, or a `.gif`). fps comes from the dir's manifest; `--fps` here re-times the kept frames (a speed change, not a re-sample like on `render`); a `--only` capture leaves the sidecar untouched (its markers are partial), and a dir of raw PNGs with no sidecar encodes silent.
+`render reel.tsx -f frames -o out.mp4` is exactly those two in sequence. `encode` rebuilds the video from the dir — **no browser, no capture, just ffmpeg** — and replays the mux sidecar a full capture left (the ducked audio clips with srcs resolved to absolute paths, so `encode` works from any cwd, and the soft subtitle cues), so audio and captions come back without re-capturing. It's the fastest path when the PNGs are already correct and you only want different encode/mux settings (`--crf`, `--preset`/`--preview`, `--max-width`, `--encode-args`, or a `.gif`). fps comes from the dir's manifest; `--fps` here re-times the kept frames (a speed change, not a re-sample like on `render`); a `--only` capture leaves the sidecar untouched (its markers are partial), and a dir of raw PNGs with no usable sidecar encodes silent (the log says whether it was missing, unreadable, or from another version).
 
 ```sh
 kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio + subs intact

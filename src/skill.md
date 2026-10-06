@@ -234,7 +234,8 @@ Sugar API:
   `<Audio>`: declared, then muxed into an mp4 mov_text track + a sidecar .srt;
   no pixels, no effect on frame fingerprints). Render with `--burn-subtitles` to
   draw them as pixels instead (full CSS via `bottom`/`style`; required for gif).
-  Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
+  A cue whose end is not after its start is dropped with a console warning in
+  both modes. Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
   cuesToSrt) for the raw API.
 - `<Narration clip delayMs gain fadeInMs fadeOutMs subtitle>` — play a clip
   from `prepareNarration` (synthesized up front, see Narration below); with
@@ -400,7 +401,8 @@ To **look at a few frames without making a video**, use `capture` with
 --only` still encodes).
 
 **`capture`** writes the PNGs, the fingerprint manifest, and a **mux sidecar**
-(the resolved + ducked audio clips and the soft subtitle cues) into the dir. It
+(the ducked audio clips, srcs resolved to absolute paths so `encode` works from
+any cwd, and the soft subtitle cues) into the dir. It
 takes the capture-time flags: `-w`, `--fps`, `-s/--scale`, `-p/--public`, `-i`,
 `--only`, `--burn-subtitles`, `--probe-timeout`.
 
@@ -414,8 +416,9 @@ want different encode/mux settings (a new `--crf`/`--preset`, a `--max-width`,
   speed change), unlike `render --fps`, which re-samples the reel.
 - A `--only` capture does **not** update the sidecar (it seeks just the selected
   frames, so its markers are partial); the prior full capture's sidecar is kept.
-- Without a sidecar (e.g. a raw dir of PNGs, where you must pass `--fps`) the
-  output is silent.
+- Without a usable sidecar (e.g. a raw dir of PNGs, where you must pass
+  `--fps`) the output is silent; the log says whether the sidecar was missing,
+  unreadable, or from another version.
 - `encode` honors `--out`, `--fps`, `--crf`, `--preset`/`--preview`,
   `--max-width`, `--gif-loop`, `--encode-args`, `--mux-args`, `--verbose`.
 - `tts` honors only `-p/--public` and `--probe-timeout`. Any subcommand warns
@@ -456,7 +459,7 @@ window.kamishibai = {
 
 Per-clip: `gain` (dB), `trimStartMs`/`durationMs` (use a sub-section),
 `fadeInMs`/`fadeOutMs`, `loop` (tile the source to the reel length), `duck`
-(auto-dip under other clips — see below), and `gainKeyframes` (`[{ atMs, gain }]`)
+(auto-dip under the non-ducked clips — see below), and `gainKeyframes` (`[{ atMs, gain }]`)
 — dB volume automation over the clip's timeline, linearly interpolated, for
 manual ducking/swells.
 
@@ -467,7 +470,11 @@ a short track to fill the whole reel, and clamps to the video length, so you
 never hand-stitch loops; `fadeOutMs` lands at the reel end.
 
 **Auto-ducking:** `duck` (on `<Bgm>` or any `<Audio>`) dips the clip while any
-*other* clip plays. Because every clip's start and length are known up front,
+*non-ducked* clip plays (ducked clips never dip under each other). A clip's
+length is its `durationMs`, else its source file's length after `trimStartMs`
+(probed with ffprobe at render time), else — for a `loop` clip — the reel end; a
+clip whose length can't be probed doesn't trigger a dip (the render logs it).
+Because every clip's start and length are known before the mux,
 kamishibai derives the dip envelope from the schedule (no audio analysis): it's
 just generated `gainKeyframes`, so it stays deterministic. `duck` alone uses
 sensible defaults (−12 dB, 250 ms attack, 600 ms release, bridging short gaps);

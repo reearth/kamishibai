@@ -10,7 +10,7 @@ import { probeMeta, type ReelWaitOptions } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
-import { assertFfmpeg, hasAudioStream } from "./ffmpeg.ts";
+import { assertFfmpeg, hasAudioStream, probeDurationMs } from "./ffmpeg.ts";
 import { applyDucking, type AudioManifest, type AudioClip } from "./audio.ts";
 import type { Cue } from "./subtitle.ts";
 import { assemble, writeMuxSidecar, readMuxSidecar } from "./assemble.ts";
@@ -116,12 +116,13 @@ function defaultWorkers(): number {
   return Math.min(8, Math.max(1, os.cpus().length - 2));
 }
 
-/** Resolve an audio clip's src to something ffmpeg can read: an http(s) URL or
- *  existing file as-is, otherwise a served path resolved against publicDir
- *  (so <Video src="/clip.mp4"> finds publicDir/clip.mp4). */
+/** Resolve an audio clip's src to something ffmpeg can read: an http(s) URL
+ *  as-is, an existing file as an absolute path (so the mux sidecar still works
+ *  when `encode` runs from another cwd), otherwise a served path resolved
+ *  against publicDir (so <Video src="/clip.mp4"> finds publicDir/clip.mp4). */
 function resolveAudioSrc(src: string, publicDir?: string): string {
   if (/^https?:\/\//i.test(src)) return src;
-  if (existsSync(src)) return src;
+  if (existsSync(src)) return resolve(src);
   if (publicDir) {
     const candidate = join(resolve(publicDir), src.replace(/^\/+/, ""));
     if (existsSync(candidate)) return candidate;
@@ -129,11 +130,15 @@ function resolveAudioSrc(src: string, publicDir?: string): string {
   return src;
 }
 
-/** Resolve clip srcs and drop any whose source has no audio stream (e.g. a
- *  silent video auto-registered by <Video>), so the mux can't fail on them. */
+/** Resolve clip srcs, drop any whose source has no audio stream (e.g. a silent
+ *  video auto-registered by <Video>) so the mux can't fail on them, then
+ *  auto-duck — after the drop, so a dropped narration line doesn't leave a
+ *  phantom dip in the music. When something ducks, each source's length is
+ *  probed so a clip without `durationMs` still dips the ducked ones. */
 async function prepareAudio(
   clips: AudioManifest,
   publicDir: string | undefined,
+  reelMs: number,
   log: (msg: string) => void,
 ): Promise<AudioManifest> {
   const resolved = clips.map((c) => ({ ...c, src: resolveAudioSrc(c.src, publicDir) }));
@@ -142,7 +147,18 @@ async function prepareAudio(
     if (await hasAudioStream(clip.src)) kept.push(clip);
     else log(`  (skipping ${clip.src} — no audio stream)`);
   }
-  return kept;
+  const sourceMs = new Map<string, number>();
+  if (kept.some((c) => c.duck)) {
+    for (const c of kept) {
+      if (c.duck || sourceMs.has(c.src)) continue;
+      const ms = await probeDurationMs(c.src);
+      if (ms != null) sourceMs.set(c.src, ms);
+      else if (c.durationMs == null && !c.loop) {
+        log(`  (can't probe the length of ${c.src} — it won't duck other clips; set durationMs)`);
+      }
+    }
+  }
+  return applyDucking(kept, { reelMs, sourceMs });
 }
 
 /** Remove any existing f000000.png-style files so a previous, longer run
@@ -387,9 +403,9 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     // instead of silently dropping it, and still works for a URL entry you
     // don't control (where there are no page markers).
     const declared = [...collected.audio, ...(opts.audio ?? [])];
-    // Resolve srcs and drop silent clips first, then auto-duck (so a dropped
-    // narration line doesn't leave a phantom dip in the music).
-    const audioClips = applyDucking(await prepareAudio(declared, opts.publicDir, log));
+    // Resolve srcs, drop silent clips, then auto-duck against the reel length
+    // the mux clamps to.
+    const audioClips = await prepareAudio(declared, opts.publicDir, (total / meta.fps) * 1000, log);
 
     // Persist the mux inputs next to the frames so `encode` can rebuild the
     // full video later (audio + subtitles) without re-capturing — but only on a
@@ -548,10 +564,9 @@ export async function encode(opts: EncodeFramesDirOptions): Promise<EncodeResult
   }
 
   // Audio + soft subtitles from the sidecar a full render left; absent ⇒ silent.
-  const sidecar = await readMuxSidecar(framesDir);
-  if (!sidecar) {
-    log(`(no mux sidecar in ${framesDir} — encoding without audio/subtitles)`);
-  }
+  const sidecar = await readMuxSidecar(framesDir, (reason) =>
+    log(`(${reason} — encoding without audio/subtitles)`),
+  );
 
   log(`Encoding ${totalFrames} frame(s) from ${framesDir} @ ${fps}fps…`);
   await assemble({
