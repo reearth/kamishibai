@@ -27,6 +27,9 @@ function measure(d: string): { el: SVGPathElement; length: number } {
     // Attached (but invisible) so measurement works in every engine.
     host = document.createElementNS(SVG_NS, "svg");
     host.setAttribute("aria-hidden", "true");
+    // Never painted, and it grows with whichever paths this worker happened to
+    // measure first — keep it out of the kamishibai/react frame fingerprint.
+    host.setAttribute("data-kamishibai-ignore", "");
     host.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;visibility:hidden;";
     document.body.appendChild(host);
   }

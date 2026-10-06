@@ -157,10 +157,15 @@ sets any libx264 preset directly (preview only affects the mp4 encode, not gif).
 kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
 ```
 
-For React reels the fingerprint is automatic from the DOM. Content the DOM hash
-can't see — `<canvas>` / WebGL pixels — must contribute a cheap token via
-`useFingerprint(token)` (a string, or a function of ms naming what you draw,
-e.g. a frame index — NOT a pixel hash). `<Video>` already does this. Determinism
+For React reels the fingerprint is automatic: it hashes the whole `<body>` DOM
+(portals outside the stage included) and the text of every stylesheet rule.
+What it can't see — `<canvas>` / WebGL pixels, and the bytes behind a URL that
+didn't change (an image/font/video replaced under the same name) — must
+contribute a cheap token via `useFingerprint(token)` (a string, or a function
+of ms naming what you draw, e.g. a frame index — NOT a pixel hash), or carry a
+version in the URL (`/map.png?v=2`). `<Video>` already names its frame. Matching
+prints are trusted even without `-i`: a frame whose print equals the previous
+frame's is copied within the run. Determinism
 is required: a frame that isn't a pure function of its ms can be wrongly reused —
 for a clean full render, just omit `-i` (an explicit `--frames-dir` is cleared
 and rebuilt when not incremental).
@@ -239,14 +244,17 @@ Sugar API:
   A cue whose end is not after its start is dropped with a console warning in
   both modes. Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
   cuesToSrt) for the raw API.
-- `<Narration clip delayMs gain fadeInMs fadeOutMs subtitle>` — play a clip
-  from `prepareNarration` (synthesized up front, see Narration below); with
-  `subtitle`, also adds the line's text as a caption for the clip's window
+- `<Narration clip delayMs atMs gain fadeInMs fadeOutMs subtitle>` — play a
+  clip from `prepareNarration` (synthesized up front, see Narration below);
+  with `subtitle`, also adds the line's text as a caption for the clip's window
+  (wherever the audio lands, `atMs` included; soft by default —
+  `subtitleBottom`/`subtitleStyle` only apply with `--burn-subtitles`)
 - `<NarrationSteps steps subtitle>` — one `<Narration>` per step at its `atMs`
   (steps from `narrationScene` / `narrationSequence`)
 - `<Camera x y zoom rotate>` / `<Camera shots={[{ at, x, y, zoom, ease? }]}>` —
   children are laid out in world px; the world point `(x, y)` sits at the frame
-  center, scaled by `zoom`. Shots are keyframes on the current clock: position
+  center, scaled by `zoom` (> 0, or `cameraAt` throws); positive `rotate` rolls
+  the camera clockwise, so the world turns counter-clockwise on screen. Shots are keyframes on the current clock: position
   eases (default `eases.inOut`), zoom interpolates in log space (even push-ins).
   `cameraAt(ms, shots)` is the same math without React.
 
@@ -279,8 +287,8 @@ your own wrapper components.
   `ms`/`durationMs` measured from the scene start, and `<Audio>` / `<Narration>`
   `delayMs` is relative to the scene (use `atMs` for an absolute time). `<Cue>`
   nests the same way, resetting the local clock again.
-- **Wrapping.** Scenes self-register with the enclosing `<Series>` (the same
-  mechanism `<Audio>` uses), so `const MyScene = (p) => <Series.Scene
+- **Wrapping.** Scenes self-register with the enclosing `<Series>` (from an
+  effect, much like `<Audio>` markers), so `const MyScene = (p) => <Series.Scene
   durationMs={p.d}>…</Series.Scene>` renders correctly whether it's a direct
   child or nested in your own components. Keep scenes statically ordered —
   registration order is source order.
@@ -288,9 +296,18 @@ your own wrapper components.
   partial opacity, so two different layouts **ghost** (e.g. a centered title
   bleeding through the incoming slide). Set `exitFadeMs` on the outgoing scene to
   fade its *content* out; the fade ends where the next scene's crossfade begins,
-  so the old content is gone before the new one shows and only the backgrounds
-  blend. The two add up: a 700ms crossfade + 600ms exit-fade starts dimming the
+  so the old content is gone before the new one shows. A `<Stage background>`
+  directly in the scene keeps its background, so only the backgrounds blend;
+  content outside a Stage fades with the whole scene (what's under the Series
+  then shows until the next scene fades in). The crossfade is a true mix of
+  the two scenes — nothing beneath shows through mid-fade. The two add up: a 700ms crossfade + 600ms exit-fade starts dimming the
   content 1300ms before the outgoing scene ends.
+- **Checked timings.** A negative length, or a `crossfadeMs` longer than either
+  scene it joins, throws a `RangeError` (seriesLayout / seriesDuration / Series).
+- **Sub-frame windows.** Markers (`<Audio>`, soft `<Subtitle>`) register when
+  mounted, and only sampled frames (`i × 1000 / fps`) mount anything. A `<Cue
+  hold>` or scene shorter than one frame that no frame lands in is mounted
+  hidden for one frame, so its markers still count while nothing paints.
   Other transitions (wipe/swipe) are a few lines of `ramp()` + `transform` on the
   scene content.
 
@@ -321,7 +338,9 @@ const ease = bezier(0.16, 1, 0.3, 1);        // custom cubic-bezier
 - `bezier(x1,y1,x2,y2)` — custom easing
 - `eases` — `linear` | `smooth` | `inOut` | `pop`
 - `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped interpolation
-- `spring({ stiffness, damping, mass })` — physical spring as an easing (deterministic)
+- `spring({ stiffness, damping, mass })` — physical spring as an easing (deterministic);
+  `p` is one second of spring time and it ends at exactly 1 (leftover motion at
+  `p = 1` is removed linearly), so `ramp` lands on its target
 - `track(ms, [{ at, value, ease? }])` — multi-stop interpolation
 - `stagger(i, { each, from })` — cascade delay (ms)
 - `interpolateColor(a, b, t)` — hex color tween

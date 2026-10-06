@@ -60,6 +60,21 @@ describe("spring", () => {
   });
 });
 
+describe("spring in ramp", () => {
+  it("lands exactly on the target after the window, even when unsettled at p = 1", () => {
+    const loose = spring({ stiffness: 20, damping: 4 });
+    expect(ramp(5000, 0, 1000, 0, 1, loose)).toBe(1);
+    expect(ramp(1000, 0, 1000, 0, 1, loose)).toBe(1);
+    // continuous into the end: no jump at the window edge
+    expect(ramp(999, 0, 1000, 0, 1, loose)).toBeCloseTo(1, 2);
+  });
+
+  it("keeps the shape of a spring that is already settled by p = 1", () => {
+    // default spring (zeta 0.5, w0 10): x(0.3) = 1 + e^-1.5 * 0.559… ≈ 1.125
+    expect(spring()(0.3)).toBeCloseTo(1.125, 2);
+  });
+});
+
 describe("track", () => {
   it("holds flat outside the range and interpolates within", () => {
     const stops = [

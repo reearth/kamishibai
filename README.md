@@ -132,7 +132,7 @@ kamishibai render reel.tsx -f frames -o reel.mp4        # seed the cache
 kamishibai render reel.tsx -f frames -i -o reel.mp4     # re-render only what changed
 ```
 
-`kamishibai/react` returns the fingerprint automatically by hashing the committed DOM — so React reels get this for free, no annotation needed. The only thing the DOM hash can't see is `<canvas>`/WebGL pixels; those contribute a cheap token via `useFingerprint(token)` (`<Video>` already does). The cache auto-invalidates when the output geometry (fps/size/scale) changes, and `--only 0-30,90,120-150` is a manual escape hatch that renders just the frames you name. Both need a persisted `--frames-dir`. Caching trusts determinism — a frame that isn't a pure function of its ms can be wrongly reused; omit `-i` for a clean full render.
+`kamishibai/react` returns the fingerprint automatically by hashing the page's DOM (the whole `<body>`, so portals outside the stage count) and the text of every stylesheet rule — so React reels get this for free, no annotation needed. What the hash can't see: `<canvas>`/WebGL pixels, and the bytes behind a URL that didn't change (an image, font or video replaced on disk under the same name). Cover those with a cheap token via `useFingerprint(token)` (`<Video>` already names its frame), or put a version in the URL (`/map.png?v=2`). Matching prints are trusted even without `-i`: within a run, a frame whose print equals the previous frame's is copied, not captured. The cache auto-invalidates when the output geometry (fps/size/scale) changes, and `--only 0-30,90,120-150` is a manual escape hatch that renders just the frames you name. Both need a persisted `--frames-dir`. Caching trusts determinism — a frame that isn't a pure function of its ms can be wrongly reused; omit `-i` for a clean full render.
 
 Once `-i`/`--only` reduce capture to a handful of frames, the **full re-encode** of the PNG sequence becomes the dominant cost (every confirm re-encodes the whole reel, not just the changed frames). For a fast confirm loop, pair the reuse flag with `--preview` (= `--preset ultrafast`), which trades a larger file for a much quicker H.264 pass; drop it for the final render.
 
@@ -157,7 +157,11 @@ You don't need React — any page that sets `window.kamishibai` works. But `kami
 
 ### Scenes
 
-`<Series>` plays scenes back-to-back, each with its own local clock (so `useClock()` and `<Audio delayMs>` are measured from the scene's start). A `crossfadeMs` overlaps a scene with the previous one; `exitFadeMs` fades a scene's *content* out, finishing right where the next scene's crossfade begins (so crossfading two different layouts doesn't ghost — only the backgrounds blend).
+`<Series>` plays scenes back-to-back, each with its own local clock (so `useClock()` and `<Audio delayMs>` are measured from the scene's start). A `crossfadeMs` overlaps a scene with the previous one; `exitFadeMs` fades a scene's *content* out, finishing right where the next scene's crossfade begins (so crossfading two different layouts doesn't ghost). A `<Stage background>` directly in the scene keeps its background through the exit-fade, so only the backgrounds blend; content not inside a Stage fades with the rest of the scene, and whatever is under the `<Series>` shows through until the next scene fades in. The crossfade itself is a true mix of the two scenes — nothing beneath the Series shows through mid-fade.
+
+Timings are checked: a negative length, or a `crossfadeMs` longer than either scene it joins, throws a `RangeError` from `seriesLayout` / `seriesDuration` / `<Series>`.
+
+Markers (`<Audio>`, soft `<Subtitle>`) register when their component mounts, and the renderer only mounts what a sampled frame (`i × 1000 / fps` ms) shows. A `<Cue hold>` or `<Series.Scene>` window shorter than one frame that no frame lands in is mounted hidden for one frame instead, so its markers still land at their exact times while nothing paints.
 
 Scenes **self-register**, so a scene wrapped in your own component works at any depth — there's no "must be a direct child" rule:
 
@@ -181,7 +185,7 @@ The JSX form is equivalent — `<Series><Series.Scene durationMs={4000}>…</Ser
 
 ### Camera & paths
 
-`<Camera>` lays its children out in world coordinates and puts the world point `(x, y)` at the frame center, scaled by `zoom` (optional `rotate`). Give it a fixed state, or `shots` — keyframes on the current clock. Between shots the position eases (default `eases.inOut`) and the zoom interpolates in log space, so 1×→4× reads as evenly as 4×→16×. `cameraAt(ms, shots)` is the same math without React.
+`<Camera>` lays its children out in world coordinates and puts the world point `(x, y)` at the frame center, scaled by `zoom` (must be > 0; `cameraAt` throws otherwise), optionally rolled by `rotate` degrees (positive rolls the camera clockwise, so the world turns counter-clockwise on screen). Give it a fixed state, or `shots` — keyframes on the current clock. Between shots the position eases (default `eases.inOut`) and the zoom interpolates in log space, so 1×→4× reads as evenly as 4×→16×. `cameraAt(ms, shots)` is the same math without React.
 
 ```tsx
 import { Camera } from "kamishibai/react";
@@ -221,7 +225,7 @@ const ease = bezier(0.16, 1, 0.3, 1);    // custom cubic-bezier easing
 - `bezier(x1, y1, x2, y2)` — build a custom easing (the curve math CSS timing functions use)
 - `eases` — ready-made `linear` / `smooth` / `inOut` / `pop`
 - `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped time→value interpolation
-- `spring({ stiffness, damping, mass })` — a physical spring as an easing (overshoots, settles); analytical, so it's deterministic
+- `spring({ stiffness, damping, mass })` — a physical spring as an easing (overshoots, settles); analytical, so it's deterministic. `p` is one second of spring time, and like every ease it ends at exactly 1, so a `ramp` lands on its target — any motion left at `p = 1` is taken out linearly, so pick a spring that settles within that second
 - `track(ms, [{ at, value, ease? }])` — multi-stop interpolation (the n-point `ramp`)
 - `stagger(i, { each, from })` — cascade delay (ms) for item `i`
 - `interpolateColor(a, b, t)` — tween between hex colors
@@ -294,7 +298,7 @@ import { Subtitle, Cue } from "kamishibai/react";
 <Cue at={500} hold={2000}><Subtitle>just this line</Subtitle></Cue>
 ```
 
-**Burn-in** (`--burn-subtitles` / `render({ burnSubtitles })`) draws the captions as pixels instead, using the `<Subtitle>` CSS (`bottom`, `style`) for full visual control. It's a global switch — soft `mov_text` is plain text styled by the player, so reach for burn-in when you need pixel-perfect captions, or for **GIF output**, which has no subtitle track (gif always burns or drops, and a sidecar `.srt` is still written).
+**Burn-in** (`--burn-subtitles` / `render({ burnSubtitles })`) draws the captions as pixels instead, using the `<Subtitle>` CSS (`bottom`, `style`; and `<Narration subtitleBottom subtitleStyle>`) for full visual control — those props do nothing for the soft track. It's a global switch — soft `mov_text` is plain text styled by the player, so reach for burn-in when you need pixel-perfect captions, or for **GIF output**, which has no subtitle track (gif always burns or drops, and a sidecar `.srt` is still written).
 
 A cue whose end is not after its start can never show, so it's dropped with a console warning in both modes (rather than failing the soft-track mux after the capture).
 

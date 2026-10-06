@@ -33,7 +33,9 @@ const Clip: React.FC = () => {
           trimmed to the scene and faded out at the end. The src is resolved
           against --public; pass muted to drop it. */}
       <Video src="/clip.mp4" fadeOutMs={400} style={{ position: "absolute", inset: 0 }} />
-      {/* Captions burned in from a VTT file — cue times are local to this scene. */}
+      {/* Captions from a VTT file — cue times are local to this scene. A soft
+          track by default; burned in (with this bottom/style) under
+          --burn-subtitles. */}
       <Subtitle src="/captions.vtt" bottom={40} style={{ fontSize: 28 }} />
       <div
         style={{

@@ -21,6 +21,11 @@ describe("cameraAt", () => {
     expect(c.zoom).toBeCloseTo(2);
   });
 
+  it("rejects a zoom that isn't positive (log-space interpolation)", () => {
+    expect(() => cameraAt(0, [{ at: 0, x: 0, y: 0, zoom: 0 }])).toThrow(RangeError);
+    expect(() => cameraAt(0, [{ at: 0, x: 0, y: 0, zoom: -2 }])).toThrow(/zoom > 0/);
+  });
+
   it("is a neutral camera with no shots", () => {
     expect(cameraAt(0, [])).toEqual({ x: 0, y: 0, zoom: 1, rotate: 0 });
   });
@@ -29,5 +34,9 @@ describe("cameraAt", () => {
 describe("cameraTransform", () => {
   it("scales, then moves the world point to the origin", () => {
     expect(cameraTransform({ x: 10, y: 20, zoom: 2 })).toBe("scale(2) rotate(0deg) translate(-10px, -20px)");
+  });
+
+  it("rolls the world opposite to the camera's rotate", () => {
+    expect(cameraTransform({ x: 0, y: 0, zoom: 1, rotate: 15 })).toContain("rotate(-15deg)");
   });
 });

@@ -107,3 +107,27 @@ describe("exitFadeOpacity", () => {
     expect(exitFadeOpacity(p, 2999)).toBe(0);
   });
 });
+
+describe("degenerate timings", () => {
+  it("rejects a crossfade longer than the previous scene", () => {
+    const scenes = [{ durationMs: 300 }, { durationMs: 1000, crossfadeMs: 500 }];
+    expect(() => seriesLayout(scenes)).toThrow(RangeError);
+    expect(() => seriesDuration(scenes)).toThrow(/previous scene/);
+  });
+
+  it("rejects a crossfade longer than the scene itself", () => {
+    expect(() => seriesLayout([{ durationMs: 1000 }, { durationMs: 200, crossfadeMs: 500 }])).toThrow(
+      /its own durationMs/,
+    );
+  });
+
+  it("rejects negative lengths", () => {
+    expect(() => seriesLayout([{ durationMs: -1 }])).toThrow(RangeError);
+    expect(() => seriesLayout([{ durationMs: 100, exitFadeMs: -5 }])).toThrow(RangeError);
+  });
+
+  it("accepts a crossfade equal to both scene lengths", () => {
+    const placed = seriesLayout([{ durationMs: 500 }, { durationMs: 500, crossfadeMs: 500 }]);
+    expect(placed[1]!.start).toBe(0);
+  });
+});

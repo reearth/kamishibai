@@ -10,9 +10,10 @@ import { eases, type Ease } from "./easing.ts";
 export interface CameraState {
   x: number;
   y: number;
-  /** scale factor (1 = world units are pixels, 2 = twice as close) */
+  /** scale factor, > 0 (1 = world units are pixels, 2 = twice as close) */
   zoom: number;
-  /** roll in degrees (default 0) */
+  /** camera roll in degrees (default 0). Positive rolls the camera clockwise,
+   *  so the world appears to turn counter-clockwise on screen. */
   rotate?: number;
 }
 
@@ -24,9 +25,13 @@ export interface CameraShot extends CameraState {
 }
 
 /** The camera state at `ms`, interpolated across `shots` (held before the
- *  first and after the last). */
+ *  first and after the last). Throws a RangeError for a zoom that isn't > 0,
+ *  since zoom interpolates in log space. */
 export function cameraAt(ms: number, shots: CameraShot[]): CameraState {
   if (shots.length === 0) return { x: 0, y: 0, zoom: 1, rotate: 0 };
+  for (const s of shots) {
+    if (!(s.zoom > 0)) throw new RangeError(`kamishibai: camera shot at ${s.at} needs zoom > 0 (got ${s.zoom})`);
+  }
   const sorted = [...shots].sort((a, b) => a.at - b.at);
   const first = sorted[0]!;
   const last = sorted[sorted.length - 1]!;

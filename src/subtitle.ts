@@ -1,7 +1,8 @@
 // kamishibai/subtitle — parse SRT / WebVTT into time-indexed cues.
 // ------------------------------------------------------------------
-// Framework-free. The React <Subtitle> component (kamishibai/react) draws
-// the active cue per frame, but the parser is pure and usable anywhere.
+// Framework-free. The React <Subtitle> component (kamishibai/react) declares
+// cues for a soft track (or draws the active cue per frame in burn mode), but
+// the parser is pure and usable anywhere.
 // ------------------------------------------------------------------
 
 export interface Cue {

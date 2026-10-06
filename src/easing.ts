@@ -73,17 +73,31 @@ export interface SpringConfig {
 
 /**
  * A physical spring as an easing function. `p` is treated as the spring's
- * time (so a window of `ramp(ms, 0, D, …, spring())` settles over D), and the
- * output settles toward 1 — overshooting past it for low damping. Analytical
- * and deterministic (no per-frame state), so it's safe for parallel capture.
+ * time in seconds (so `ramp(ms, 0, D, …, spring())` plays one second of
+ * spring motion over D), and the output settles toward 1 — overshooting past
+ * it for low damping. Like every Ease it ends at exactly 1 (p >= 1), so a
+ * ramp lands on its target value: whatever the spring hasn't settled by p = 1
+ * is taken out linearly across the window instead of jumping at its end.
+ * Pick stiffness/damping that settle within that second for a natural look
+ * (the defaults leave < 1% to correct). Analytical and deterministic (no
+ * per-frame state), so it's safe for parallel capture.
  */
 export function spring(config: SpringConfig = {}): Ease {
   const { stiffness = 100, damping = 10, mass = 1 } = config;
   const w0 = Math.sqrt(stiffness / mass); // natural angular frequency
   const zeta = damping / (2 * Math.sqrt(stiffness * mass)); // damping ratio
+  const raw = springCurve(w0, zeta);
+  const residual = 1 - raw(1); // how far from settled the spring is at p = 1
   return (p: number): number => {
     if (p <= 0) return 0;
-    const t = p;
+    if (p >= 1) return 1;
+    return raw(p) + residual * p;
+  };
+}
+
+/** The unit step response x(t) of a spring (x(0) = 0, settling toward 1). */
+function springCurve(w0: number, zeta: number): Ease {
+  return (t: number): number => {
     if (zeta < 1) {
       const wd = w0 * Math.sqrt(1 - zeta * zeta);
       return (

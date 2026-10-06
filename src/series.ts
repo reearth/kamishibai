@@ -17,7 +17,9 @@ export interface SceneSpec {
    * fade this scene's content out over `exitFadeMs` ms, ending where the next
    * scene's crossfade begins (or at the scene end when there is none). Pairs
    * with a crossfade to avoid ghosting: the outgoing content is gone before
-   * the incoming scene arrives, so only the backgrounds blend (default 0).
+   * the incoming scene arrives. In kamishibai/react a `<Stage background>`
+   * directly in the scene keeps its background, so only the backgrounds
+   * blend; content outside a Stage fades with everything else (default 0).
    */
   exitFadeMs?: number;
 }
@@ -37,11 +39,34 @@ export interface SceneLayout {
 }
 
 /**
+ * Reject timings that can't form a timeline: negative lengths, or a crossfade
+ * longer than either scene it joins (the incoming scene would start before the
+ * outgoing one, or never reach full opacity). Throws a RangeError.
+ */
+function checkScenes(scenes: SceneSpec[]): void {
+  scenes.forEach((s, i) => {
+    const xf = s.crossfadeMs ?? 0;
+    const bad = (why: string) => {
+      throw new RangeError(`kamishibai: scene ${i}: ${why}`);
+    };
+    if (!(s.durationMs >= 0)) bad(`durationMs must be >= 0 (got ${s.durationMs})`);
+    if (!(xf >= 0)) bad(`crossfadeMs must be >= 0 (got ${xf})`);
+    if (!((s.exitFadeMs ?? 0) >= 0)) bad(`exitFadeMs must be >= 0 (got ${s.exitFadeMs})`);
+    if (i === 0) return;
+    if (xf > s.durationMs) bad(`crossfadeMs ${xf} exceeds its own durationMs ${s.durationMs}`);
+    const prev = scenes[i - 1]!.durationMs;
+    if (xf > prev) bad(`crossfadeMs ${xf} exceeds the previous scene's durationMs ${prev}`);
+  });
+}
+
+/**
  * Resolve each scene's start and crossfade envelope from its spec.
  * `start_i = start_{i-1} + dur_{i-1} − crossfade_i` (the first scene starts
  * at 0; a crossfade pulls the next scene earlier so the two overlap).
+ * Throws a RangeError for degenerate timings (see checkScenes).
  */
 export function seriesLayout(scenes: SceneSpec[]): SceneLayout[] {
+  checkScenes(scenes);
   const starts: number[] = [];
   let cursor = 0;
   scenes.forEach((s, i) => {
@@ -63,9 +88,10 @@ export function seriesLayout(scenes: SceneSpec[]): SceneLayout[] {
  * Opacity of a scene's content at `local` ms under its exit-fade (1 when the
  * scene has none). The fade *ends where the next scene's crossfade begins*
  * (`durationMs − xfOut`), not at the scene end — so the outgoing content is
- * fully gone before the incoming scene starts to show and only the
- * backgrounds blend. Ending it at the scene end instead would leave the old
- * content visible under the incoming one for the whole overlap.
+ * fully gone before the incoming scene starts to show. Ending it at the scene
+ * end instead would leave the old content visible under the incoming one for
+ * the whole overlap. An exit-fade longer than `durationMs − xfOut` starts
+ * before the scene does, so the content is already partly faded at local 0.
  */
 export function exitFadeOpacity(place: SceneLayout, local: number): number {
   if (place.exitFadeMs <= 0) return 1;
@@ -79,9 +105,11 @@ export function exitFadeOpacity(place: SceneLayout, local: number): number {
 /**
  * Total length of a Series, in ms: `Σ durations − Σ crossfades`. Feed this to
  * `meta.durationMs` so the reel ends exactly when the last scene does — too
- * long leaves trailing blank frames, too short cuts the last scene.
+ * long leaves trailing blank frames, too short cuts the last scene. Throws a
+ * RangeError for degenerate timings, like seriesLayout.
  */
 export function seriesDuration(scenes: SceneSpec[]): number {
+  checkScenes(scenes);
   return scenes.reduce(
     (total, s, i) => total + s.durationMs - (i === 0 ? 0 : (s.crossfadeMs ?? 0)),
     0,

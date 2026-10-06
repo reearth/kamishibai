@@ -90,23 +90,47 @@ export const ClockProvider = ClockContext.Provider;
 export const useClock = (): Clock => useContext(ClockContext);
 
 // ---- Stage --------------------------------------------------------
+// A <Series.Scene> with an exit-fade hands its content opacity down. The
+// outermost <Stage>(s) inside it claim that fade: the `background` prop stays
+// opaque on a layer of its own and only the Stage's children (and `style`)
+// fade, so a crossfade blends the scenes' backgrounds without ghosting their
+// content. Stages nested in those see no fade (the outer one applies it).
+interface SceneFade {
+  opacity: number;
+  claim: () => () => void;
+}
+const SceneFadeContext = createContext<SceneFade | null>(null);
+
 export const Stage: React.FC<{
   children: React.ReactNode;
   background?: string;
   style?: React.CSSProperties;
-}> = ({ children, background, style }) => (
-  <div
-    style={{
-      position: "absolute",
-      inset: 0,
-      overflow: "hidden",
-      background,
-      ...style,
-    }}
-  >
-    {children}
-  </div>
-);
+}> = ({ children, background, style }) => {
+  const fade = useContext(SceneFadeContext);
+  const claim = fade?.claim;
+  useLayoutEffect(() => claim?.(), [claim]);
+  const body = (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        background: fade ? undefined : background,
+        ...style,
+        ...(fade ? { opacity: Number(style?.opacity ?? 1) * fade.opacity } : null),
+      }}
+    >
+      <SceneFadeContext.Provider value={null}>{children}</SceneFadeContext.Provider>
+    </div>
+  );
+  if (!fade) return body;
+  return (
+    <>
+      <div style={{ position: "absolute", inset: 0, background }} />
+      {body}
+    </>
+  );
+};
 
 // ---- Camera -------------------------------------------------------
 // Lay children out in "world" coordinates and film them: the world point
@@ -140,18 +164,38 @@ export const Camera: React.FC<
   );
 };
 
+// ---- frame sampling -------------------------------------------------
+// The renderer only ever seeks to frame times (i * 1000 / fps), so a window
+// [at, at + len) shorter than one frame interval can fall between two samples
+// and never mount — and markers inside it (<Audio>, soft <Subtitle>) would
+// never register. `missedWindow` is true on the first sampled frame after
+// such a window: the window's owner then mounts its children *hidden* for that
+// one frame, so the markers still land at their exact (sub-frame) times while
+// no pixels appear, matching what the sampled video can show.
+function missedWindow(clock: Clock, at: number, len: number): boolean {
+  if (!(len > 0)) return false; // an empty window is meant to show nothing
+  const perMs = clock.fps / 1000;
+  const startG = clock.epochMs + at;
+  // first sample at or after the window start (tolerating float noise)
+  const first = Math.ceil(startG * perMs - 1e-6);
+  if (first / perMs < startG + len - 1e-6) return false; // a sample lands inside
+  return Math.round((clock.epochMs + clock.ms) * perMs) === first;
+}
+
+const hiddenStyle: React.CSSProperties = { display: "none" };
+
 // ---- Cue ----------------------------------------------------------
 // Reveal children starting at `at` ms (optionally only for `hold` ms),
 // and hand them a LOCAL clock that starts at zero when the cue begins.
+// A `hold` shorter than one frame that no frame samples is mounted hidden for
+// one frame (see missedWindow), so its <Audio>/<Subtitle> markers still count.
 export const Cue: React.FC<{
   at: number;
   hold?: number;
   children: React.ReactNode;
 }> = ({ at, hold, children }) => {
   const clock = useClock();
-  if (clock.ms < at) return null;
-  if (hold != null && clock.ms >= at + hold) return null;
-  return (
+  const inner = (
     <ClockProvider
       value={{
         ...clock,
@@ -163,6 +207,10 @@ export const Cue: React.FC<{
       {children}
     </ClockProvider>
   );
+  if (hold != null && missedWindow(clock, at, hold)) return <div style={hiddenStyle}>{inner}</div>;
+  if (clock.ms < at) return null;
+  if (hold != null && clock.ms >= at + hold) return null;
+  return inner;
 };
 
 // ---- Enter --------------------------------------------------------
@@ -319,7 +367,8 @@ export const Bgm: React.FC<{
   fadeOutMs?: number;
   /** auto-dip under narration/other clips (true = defaults, or tune the dip) */
   duck?: boolean | DuckOptions;
-  /** dB volume automation (atMs from the reel start) — manual alternative to duck */
+  /** dB volume automation (atMs from the clip start, i.e. from this `atMs`) —
+   *  manual alternative to duck */
   gainKeyframes?: Array<{ atMs: number; gain: number }>;
 }> = ({ src, atMs = 0, gain, trimStartMs, fadeInMs, fadeOutMs, duck, gainKeyframes }) => (
   <Audio
@@ -341,8 +390,8 @@ export const Bgm: React.FC<{
 // (so scene i starts at Σ prev durations − Σ prev crossfades).
 //
 // Scenes discover themselves: each <Series.Scene> registers its timing with
-// the enclosing <Series> from a layout effect — the same mechanism <Audio>
-// and the settler barrier use. So a scene wrapped in your own component works
+// the enclosing <Series> from a layout effect (as settlers do; <Audio> markers
+// use a plain effect). So a scene wrapped in your own component works
 // at any depth; there's no fragile "must be a direct child" rule. Registration
 // order is the source order, so keep scenes statically ordered. You can also
 // drive a Series from data via the `scenes` prop (handy with seriesDuration /
@@ -380,6 +429,13 @@ const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs
     return () => unregister(id);
   }, [register, unregister, id, durationMs, crossfadeMs, exitFadeMs]);
 
+  // <Stage>s directly in this scene claim the exit-fade (see SceneFade).
+  const [stageClaims, setStageClaims] = useState(0);
+  const claimStage = useCallback(() => {
+    setStageClaims((n) => n + 1);
+    return () => setStageClaims((n) => n - 1);
+  }, []);
+
   // No placement yet means the registry hasn't settled (first commit) or this
   // scene is outside a Series — render nothing until we know where it lands.
   const place = series?.layout.get(id);
@@ -387,31 +443,56 @@ const SeriesScene: React.FC<SceneProps> = ({ durationMs, crossfadeMs, exitFadeMs
 
   const { start, xfIn, xfOut } = place;
   const end = start + durationMs;
-  if (clock.ms < start || clock.ms >= end) return null;
+  const missed = missedWindow(clock, start, durationMs);
+  if (!missed && (clock.ms < start || clock.ms >= end)) return null;
   const local = clock.ms - start;
 
-  // Background crossfade: overlap the neighbours at partial opacity.
+  // Crossfade: the incoming scene fades in (α = t) over the outgoing one
+  // (α = 1 − t), and the incoming layer adds rather than covers
+  // (plus-lighter, inside the Series' isolated group). The two weights sum to
+  // 1, so the result is a true t-mix of the two scenes — nothing under the
+  // Series shows through mid-fade, while transparent scenes still fade out.
   let opacity = 1;
-  if (xfIn > 0 && local < xfIn) opacity = Math.min(opacity, local / xfIn);
+  const fadingIn = xfIn > 0 && local < xfIn;
+  if (fadingIn) opacity = Math.min(opacity, local / xfIn);
   if (xfOut > 0 && local >= durationMs - xfOut) {
     opacity = Math.min(opacity, (durationMs - local) / xfOut);
   }
 
   // Content exit-fade (anti-ghosting): fade this scene's content out so it's
-  // gone by the time the next scene starts crossfading in, and only the
-  // backgrounds blend. Authored as an inner layer over the crossfade.
+  // gone by the time the next scene starts crossfading in. A <Stage> directly
+  // in the scene keeps its `background` and fades only its children, so only
+  // the backgrounds blend; without one, the whole scene layer fades.
   const contentOpacity = exitFadeOpacity(place, local);
+  const fade: SceneFade | null =
+    place.exitFadeMs > 0 ? { opacity: contentOpacity, claim: claimStage } : null;
 
   const inner = (
-    <ClockProvider value={{ ...clock, ms: local, durationMs, epochMs: clock.epochMs + start }}>
-      {children}
-    </ClockProvider>
+    <SceneFadeContext.Provider value={fade}>
+      <ClockProvider value={{ ...clock, ms: local, durationMs, epochMs: clock.epochMs + start }}>
+        {children}
+      </ClockProvider>
+    </SceneFadeContext.Provider>
   );
 
   return (
-    <div style={{ position: "absolute", inset: 0, opacity }}>
-      {contentOpacity < 1 ? (
-        <div style={{ position: "absolute", inset: 0, opacity: contentOpacity }}>{inner}</div>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        opacity,
+        ...(fadingIn ? { mixBlendMode: "plus-lighter" as React.CSSProperties["mixBlendMode"] } : null),
+        ...(missed ? hiddenStyle : null),
+      }}
+    >
+      {/* Always present when there's an exit-fade, so the subtree never
+          remounts when the fade starts. */}
+      {place.exitFadeMs > 0 ? (
+        <div
+          style={{ position: "absolute", inset: 0, opacity: stageClaims > 0 ? 1 : contentOpacity }}
+        >
+          {inner}
+        </div>
       ) : (
         inner
       )}
@@ -472,19 +553,23 @@ const SeriesBase: React.FC<SeriesProps> = ({ children, scenes }) => {
     [register, unregister, layout],
   );
 
+  // The isolated group gives the crossfade's plus-lighter blend (see
+  // SeriesScene) only the Series' own scenes to add to, never what's beneath.
   return (
     <SeriesContext.Provider value={ctx}>
-      {children}
-      {scenes?.map((s, i) => (
-        <SeriesScene
-          key={`__series_scene_${i}`}
-          durationMs={s.durationMs}
-          crossfadeMs={s.crossfadeMs}
-          exitFadeMs={s.exitFadeMs}
-        >
-          {s.content}
-        </SeriesScene>
-      ))}
+      <div style={{ position: "absolute", inset: 0, isolation: "isolate" }}>
+        {children}
+        {scenes?.map((s, i) => (
+          <SeriesScene
+            key={`__series_scene_${i}`}
+            durationMs={s.durationMs}
+            crossfadeMs={s.crossfadeMs}
+            exitFadeMs={s.exitFadeMs}
+          >
+            {s.content}
+          </SeriesScene>
+        ))}
+      </div>
     </SeriesContext.Provider>
   );
 };
@@ -501,6 +586,12 @@ Series.Scene = SeriesScene;
 type Settler = (ms: number) => Promise<void> | void;
 const settlers = new Set<Settler>();
 
+/** Name the component and src in a load failure a settler reports. */
+function loadError(component: string, src: string, e: unknown): Error {
+  const msg = e instanceof Error ? e.message : String(e);
+  return new Error(`<${component} src="${src}"> failed to load: ${msg}`);
+}
+
 function registerSettler(fn: Settler): () => void {
   settlers.add(fn);
   return () => {
@@ -509,13 +600,14 @@ function registerSettler(fn: Settler): () => void {
 }
 
 // ---- fingerprints -------------------------------------------------
-// After each seek, mount() hashes the committed DOM into a per-frame
-// fingerprint (see Driver). The DOM captures everything declared in JSX —
-// including imperative text/style mutations done in a settler, since the hash
-// is taken *after* settlers run. What it can't see is a <canvas>'s pixels:
-// they serialize to nothing. So anything that paints to a canvas (Video,
-// WebGL, hand-drawn ctx) contributes a cheap token here describing what it drew
-// for this ms, and that token folds into the frame's fingerprint.
+// After each seek, mount() hashes the page's DOM and stylesheets into a
+// per-frame fingerprint (see Driver). The DOM captures everything declared in
+// JSX — including portals outside the stage, and imperative text/style
+// mutations done in a settler, since the hash is taken *after* settlers run.
+// What it can't see is a <canvas>'s pixels: they serialize to nothing. So
+// anything that paints to a canvas (Video, WebGL, hand-drawn ctx) contributes a
+// cheap token here describing what it drew for this ms, and that token folds
+// into the frame's fingerprint.
 type Fingerprinter = (ms: number) => string;
 const fingerprinters = new Set<Fingerprinter>();
 
@@ -526,24 +618,55 @@ function registerFingerprint(fn: Fingerprinter): () => void {
   };
 }
 
-// The committed DOM is the realized JSX for this ms, so its serialization is a
-// complete description of what will paint — except canvas pixels, which the
-// fingerprinters fill in. Tokens are sorted so registration order (scenes
-// mounting/unmounting) doesn't perturb an otherwise-identical frame.
+// The print covers the whole <body> (the stage plus anything portaled or
+// appended outside it) and the text of every stylesheet rule, so a CSS edit or
+// a portal changes it. Its blind spots: canvas pixels (the fingerprinters fill
+// those in), the bytes behind an unchanged URL (an image or font swapped on
+// disk), and anything else that paints without touching the DOM or the CSS.
+// Elements marked `data-kamishibai-ignore` (e.g. kamishibai/path's hidden
+// measuring <svg>) are left out. Tokens are sorted so registration order
+// (scenes mounting/unmounting) doesn't perturb an otherwise-identical frame.
 function computeFingerprint(host: HTMLElement, ms: number): string {
   const tokens: string[] = [];
   for (const f of fingerprinters) tokens.push(f(ms));
   tokens.sort();
-  return fnv1a64(host.innerHTML + " " + tokens.join(" "));
+  return fnv1a64(domSnapshot(host) + "\0" + styleSnapshot() + "\0" + tokens.join("\0"));
+}
+
+function domSnapshot(host: HTMLElement): string {
+  const body = document.body;
+  if (!body || !body.contains(host)) return host.innerHTML;
+  let html = body.outerHTML;
+  for (const el of body.querySelectorAll("[data-kamishibai-ignore]")) {
+    html = html.replace(el.outerHTML, "");
+  }
+  return html;
+}
+
+function styleSnapshot(): string {
+  const out: string[] = [];
+  const sheets = [...document.styleSheets, ...(document.adoptedStyleSheets ?? [])];
+  for (const sheet of sheets) {
+    if (sheet.disabled) continue;
+    try {
+      for (const rule of sheet.cssRules) out.push(rule.cssText);
+    } catch {
+      // Cross-origin sheet: its rules are unreadable, so only its URL counts.
+      out.push(`@sheet ${sheet.href ?? ""}`);
+    }
+  }
+  return out.join("\n");
 }
 
 /**
- * Contribute a per-frame fingerprint token for content the DOM hash can't see
- * (canvas / WebGL pixels). Pass a stable string, or a function of the global
- * ms that cheaply names what you draw for that ms (e.g. a frame index) — NOT a
- * pixel hash. Frames whose every token (and DOM) match are treated as
- * identical and skipped. Memoize a function token (useCallback) to avoid
- * re-registering each render.
+ * Contribute a per-frame fingerprint token for content the DOM hash can't see:
+ * canvas / WebGL pixels, or asset bytes behind a URL that didn't change (pass
+ * e.g. a version or content hash of the file). Pass a stable string, or a
+ * function of the global ms that cheaply names what you draw for that ms (e.g.
+ * a frame index) — NOT a pixel hash. Frames whose every token (and DOM and CSS)
+ * match are treated as identical: within a run the previous still is copied
+ * (even without --incremental), and with --incremental a cached PNG is reused.
+ * Memoize a function token (useCallback) to avoid re-registering each render.
  */
 export function useFingerprint(token: string | Fingerprinter): void {
   useLayoutEffect(() => {
@@ -614,16 +737,23 @@ export const Video: React.FC<{
   useLayoutEffect(() => {
     const loaded = loadVideoCached(src);
     let video: DecodedVideo | undefined;
-    void loaded.then((v) => {
-      video = v;
-      const c = canvasRef.current;
-      if (c) {
-        c.width = v.width;
-        c.height = v.height;
-      }
-    });
+    void loaded.then(
+      (v) => {
+        video = v;
+        const c = canvasRef.current;
+        if (c) {
+          c.width = v.width;
+          c.height = v.height;
+        }
+      },
+      () => {}, // a load failure is reported by the settler (it rejects the seek)
+    );
     const settler: Settler = async (globalMs) => {
-      const v = video ?? (await loaded);
+      const v =
+        video ??
+        (await loaded.catch((e): never => {
+          throw loadError("Video", src, e);
+        }));
       video = v;
       const c = canvasRef.current;
       if (!c) return;
@@ -717,9 +847,14 @@ export const Subtitle: React.FC<{
       if (!dynamic) return;
       const pending = cues ? null : loadSubtitlesCached(src!);
       let resolved: SubtitleCue[] | undefined = cues ?? undefined;
-      if (pending) void pending.then((c) => (resolved = c));
+      // A load failure is reported by the settler (it rejects the seek).
+      if (pending) void pending.then((c) => (resolved = c), () => {});
       const settler: Settler = async (globalMs) => {
-        const cs = resolved ?? (await pending!);
+        const cs =
+          resolved ??
+          (await pending!.catch((e): never => {
+            throw loadError("Subtitle", src!, e);
+          }));
         resolved = cs;
         const el = ref.current;
         if (!el) return;
@@ -745,11 +880,12 @@ export const Subtitle: React.FC<{
     if (cues) place(cues);
     else if (src) void loadSubtitlesCached(src).then(place);
     else if (childText) {
-      // Static caption: spans the enclosing scope (epoch .. epoch + duration).
+      // Static caption: spans the enclosing scope (epoch .. epoch + duration),
+      // exactly the window burn mode draws it in — delayMs is for src / cues.
       registerSubtitleCues([
         {
-          start: epochRef.current + delayMs,
-          end: epochRef.current + delayMs + durationRef.current,
+          start: epochRef.current,
+          end: epochRef.current + durationRef.current,
           text: childText,
         },
       ]);
@@ -798,10 +934,11 @@ export const Subtitle: React.FC<{
 
 // ---- Narration ----------------------------------------------------
 // Thin sugar over <Audio>: drop a clip from prepareNarration into a scene and
-// it plays from the scene start (+ delayMs), trimmed to its own length. With
-// `subtitle`, the same text is also burned as a caption for the clip's window
-// — text → voice → caption, all from one source. No new mux path; it rides
-// the existing <Audio> + <Subtitle> machinery.
+// it plays from the scene start (+ delayMs), or at an absolute atMs, trimmed
+// to its own length. With `subtitle`, the same text is also a caption for the
+// clip's window — a soft track by default, burned in with --burn-subtitles —
+// text → voice → caption, all from one source. No new mux path; it rides the
+// existing <Audio> + <Subtitle> machinery.
 export const Narration: React.FC<{
   /** a clip returned by prepareNarration ({ src, durationMs, text }) */
   clip: NarrationClip;
@@ -815,13 +952,18 @@ export const Narration: React.FC<{
   fadeInMs?: number;
   /** fade-out over this many ms (at the clip's end) */
   fadeOutMs?: number;
-  /** also burn the narration text as a caption for the clip's window */
+  /** also caption the narration text for the clip's window (soft track by
+   *  default; pixels with --burn-subtitles) */
   subtitle?: boolean;
-  /** caption distance from the bottom edge, in px (default 80) */
+  /** caption distance from the bottom edge, in px (default 80) — burn mode only */
   subtitleBottom?: number;
-  /** caption style overrides */
+  /** caption style overrides — burn mode only */
   subtitleStyle?: React.CSSProperties;
 }> = ({ clip, atMs, delayMs = 0, gain, fadeInMs, fadeOutMs, subtitle, subtitleBottom, subtitleStyle }) => {
+  const { epochMs } = useClock();
+  // The caption's <Cue> is scope-relative, so turn an absolute atMs into an
+  // offset from this scope's start — it must land where the audio does.
+  const captionAt = atMs != null ? atMs - epochMs : delayMs;
   return (
     <>
       {clip.src ? (
@@ -836,7 +978,7 @@ export const Narration: React.FC<{
         />
       ) : null}
       {subtitle ? (
-        <Cue at={delayMs} hold={clip.durationMs}>
+        <Cue at={captionAt} hold={clip.durationMs}>
           <Subtitle bottom={subtitleBottom} style={subtitleStyle}>
             {clip.text}
           </Subtitle>
@@ -856,11 +998,11 @@ export const NarrationSteps: React.FC<{
   steps: NarrationStep[];
   /** volume in dB for every clip */
   gain?: number;
-  /** also caption each clip for its own window */
+  /** also caption each clip for its own window (soft track by default) */
   subtitle?: boolean;
-  /** caption distance from the bottom edge, in px (default 80) */
+  /** caption distance from the bottom edge, in px (default 80) — burn mode only */
   subtitleBottom?: number;
-  /** caption style overrides */
+  /** caption style overrides — burn mode only */
   subtitleStyle?: React.CSSProperties;
 }> = ({ steps, gain, subtitle, subtitleBottom, subtitleStyle }) => (
   <>
@@ -906,7 +1048,7 @@ const Driver: React.FC<{
     window.kamishibai = {
       meta,
       seek: (target: number) =>
-        new Promise<string>((resolve) => {
+        new Promise<string>((resolve, reject) => {
           // Commit the new tree SYNCHRONOUSLY before doing anything else.
           // Without flushSync, React 18 may schedule the state update
           // concurrently and the rAF chain below can run (and a screenshot
@@ -919,17 +1061,25 @@ const Driver: React.FC<{
             setMs(target);
           });
           // DOM is committed; run any settlers (e.g. video frame decode/draw)
-          // for this ms, then settle the paint (rAF) before resolving.
+          // for this ms and wait for *all* of them, then settle the paint
+          // (rAF) before resolving. A failed settler (a video that won't
+          // decode, a caption file that won't load) rejects the seek, so the
+          // capture fails loudly instead of shooting a blank frame.
           requestAnimationFrame(() => {
-            Promise.all([...settlers].map((s) => s(target)))
-              .catch(() => {})
-              .then(() =>
-                requestAnimationFrame(() =>
-                  // Fingerprint *after* the settled paint, so a settler's
-                  // imperative DOM writes (e.g. <Subtitle> text) are included.
-                  requestAnimationFrame(() => resolve(computeFingerprint(host, target))),
-                ),
+            void Promise.allSettled([...settlers].map(async (s) => s(target))).then((results) => {
+              const errors = results
+                .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+                .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)));
+              if (errors.length > 0) {
+                reject(new Error(`kamishibai: seek(${target}) failed: ${errors.join("; ")}`));
+                return;
+              }
+              requestAnimationFrame(() =>
+                // Fingerprint *after* the settled paint, so a settler's
+                // imperative DOM writes (e.g. <Subtitle> text) are included.
+                requestAnimationFrame(() => resolve(computeFingerprint(host, target))),
               );
+            });
           });
         }),
       audio: audioRegistry,
