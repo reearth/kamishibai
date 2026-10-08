@@ -39,8 +39,8 @@ import { resolveAudioSrc } from "../render.ts";
 import { createTTSEngine, type TTSAdapter } from "../tts/engine.ts";
 import { PLAYER_HTML } from "./player-html.ts";
 
-/** What the player overlays (switchable in the player too): nothing; soft
- *  subtitles and the lines with no audio yet; or also every sound as text. */
+/** What the player overlays (switchable in the player too): nothing; the soft
+ *  subtitles; or also every sound as text. */
 export type CcMode = "off" | "captions" | "storyboard";
 export const CC_MODES: readonly CcMode[] = ["off", "captions", "storyboard"];
 

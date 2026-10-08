@@ -73,9 +73,9 @@ Dev options (dev):
   -p, --public <dir>    static assets dir served at the root, as in render
       --port <n>        port to listen on (default: 4321; a free one if taken)
       --mute            start the player muted
-      --cc <mode>       the player's starting overlay: off; captions (soft
-                        subtitles + lines with no audio yet); storyboard (also
-                        every sound as text). The player remembers its last.
+      --cc <mode>       the player's starting overlay: off; captions (the soft
+                        subtitles); storyboard (also every sound as text). The
+                        player remembers its last.
       --no-sweep        don't seek every frame in the background to collect
                         the sound up front (for a heavy reel)
       --no-open         don't open the browser

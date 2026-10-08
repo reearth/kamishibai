@@ -19,8 +19,8 @@ import { frameCount, frameTimeMs, type KamishibaiMeta, type KamishibaiPage } fro
 import { applyDucking, clipKey, type AudioClip } from "../audio.ts";
 import type { Cue } from "../subtitle.ts";
 
-/** What the overlay shows: nothing; soft subtitles and the lines with no audio
- *  yet; or, on top of those, every sound as text (a storyboard). */
+/** What the overlay shows: nothing; the soft subtitles; or, on top of those,
+ *  every sound as text (a storyboard). */
 type Cc = "off" | "captions" | "storyboard";
 const CC_MODES: Cc[] = ["off", "captions", "storyboard"];
 
@@ -675,18 +675,14 @@ function overlay(): void {
   const cue = cc !== "off" ? [...cues.values()].find((c) => c.start <= t && t < c.end) : undefined;
   ui.caption.textContent = cue?.text ?? "";
 
+  // Only the storyboard lists the sounds; captions mode is the subtitles alone.
   ui.chips.replaceChildren();
-  if (cc === "off") return;
+  if (cc !== "storyboard") return;
   for (const c of clips.values()) {
-    // Captions show a line only while it has no audio yet; the storyboard
-    // shows every sound.
-    if (cc === "captions" && c.src !== "") continue;
     const len = clipLength(c, undefined) ?? UNKNOWN_CLIP_MS;
     if (!(c.atMs <= t && t < c.atMs + len)) continue;
-    // A line already on screen as the caption: captions mode doesn't repeat
-    // it; the storyboard lists every sound, so it names it without the text.
+    // A line already on screen as the caption is named without its text.
     const captioned = !!cue && c.label === cue.text;
-    if (cc === "captions" && captioned) continue;
     const chip = document.createElement("div");
     chip.className = `chip${isVoice(c) ? " voice" : ""}`;
     const kind = document.createElement("span");

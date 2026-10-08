@@ -153,7 +153,7 @@ export const PLAYER_HTML = `<!doctype html>
   <h2>CC</h2>
   <dl>
     <dt>off</dt><dd>nothing over the picture</dd>
-    <dt>captions</dt><dd>subtitles, and lines with no audio yet</dd>
+    <dt>captions</dt><dd>the subtitles</dd>
     <dt>storyboard</dt><dd>every sound as text, narration included (a line already in the captions is just named "captioned")</dd>
   </dl>
   <h2>Keys</h2>
