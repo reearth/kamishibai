@@ -119,12 +119,16 @@ export function openaiAdapter(opts: {
   speed?: number;
   /** voice/style direction, e.g. pace or tone (gpt-4o-mini-tts) */
   instructions?: string;
+  /** API base URL, e.g. a proxy (default OPENAI_BASE_URL env, else https://api.openai.com/v1).
+   *  It picks where to send, not the audio, so it stays out of the cache id. */
+  baseUrl?: string;
 } = {}): TTSAdapterRef {
   const model = opts.model ?? "tts-1";
   const voice = opts.voice ?? "alloy";
   const o: Record<string, unknown> = { model, voice };
   if (opts.speed != null) o.speed = opts.speed;
   if (opts.instructions != null) o.instructions = opts.instructions;
+  if (opts.baseUrl) o.baseUrl = opts.baseUrl;
   // speed + instructions affect the audio, so fold them into the cache id.
   const id = `openai:${model}:${voice}:${opts.speed ?? ""}:${opts.instructions ?? ""}`;
   return { id, provider: "openai", opts: o };
@@ -134,12 +138,17 @@ export function openaiAdapter(opts: {
 export function elevenLabsAdapter(opts: {
   voiceId: string;
   model?: string;
+  /** API base URL, e.g. a proxy (default ELEVENLABS_BASE_URL env, else https://api.elevenlabs.io).
+   *  It picks where to send, not the audio, so it stays out of the cache id. */
+  baseUrl?: string;
 }): TTSAdapterRef {
   const model = opts.model ?? "eleven_multilingual_v2";
+  const o: Record<string, unknown> = { voiceId: opts.voiceId, model };
+  if (opts.baseUrl) o.baseUrl = opts.baseUrl;
   return {
     id: `elevenlabs:${opts.voiceId}:${model}`,
     provider: "elevenlabs",
-    opts: { voiceId: opts.voiceId, model },
+    opts: o,
   };
 }
 
@@ -150,11 +159,15 @@ export function googleAdapter(opts: {
   name?: string;
   /** "MALE" | "FEMALE" | "NEUTRAL" (when `name` is not pinned) */
   ssmlGender?: string;
+  /** API base URL, e.g. a proxy (default GOOGLE_TTS_BASE_URL env, else https://texttospeech.googleapis.com).
+   *  It picks where to send, not the audio, so it stays out of the cache id. */
+  baseUrl?: string;
 } = {}): TTSAdapterRef {
   const languageCode = opts.languageCode ?? "en-US";
   const voice: Record<string, unknown> = { languageCode };
   if (opts.name) voice.name = opts.name;
   if (opts.ssmlGender) voice.ssmlGender = opts.ssmlGender;
+  if (opts.baseUrl) voice.baseUrl = opts.baseUrl;
   return {
     id: `google:${languageCode}:${opts.name ?? opts.ssmlGender ?? "default"}`,
     provider: "google",
@@ -171,11 +184,15 @@ export function geminiAdapter(opts: {
   voice?: string;
   /** style direction prepended to each line, e.g. "Say cheerfully" */
   instructions?: string;
+  /** API base URL, e.g. a proxy (default GEMINI_BASE_URL env, else https://generativelanguage.googleapis.com).
+   *  It picks where to send, not the audio, so it stays out of the cache id. */
+  baseUrl?: string;
 } = {}): TTSAdapterRef {
   const model = opts.model ?? "gemini-2.5-flash-preview-tts";
   const voice = opts.voice ?? "Kore";
   const o: Record<string, unknown> = { model, voice };
   if (opts.instructions != null) o.instructions = opts.instructions;
+  if (opts.baseUrl) o.baseUrl = opts.baseUrl;
   return {
     id: `gemini:${model}:${voice}:${opts.instructions ?? ""}`,
     provider: "gemini",
@@ -193,13 +210,18 @@ export function pollyAdapter(opts: {
   languageCode?: string;
   /** AWS region for the endpoint (default AWS_REGION env, else us-east-1) */
   region?: string;
+  /** endpoint URL, e.g. a VPC endpoint or a proxy (default
+   *  AWS_ENDPOINT_URL_POLLY env, else https://polly.<region>.amazonaws.com).
+   *  `region` still names the signing scope. */
+  baseUrl?: string;
 } = {}): TTSAdapterRef {
   const voiceId = opts.voiceId ?? "Joanna";
   const engine = opts.engine ?? "neural";
   const synth: Record<string, unknown> = { voiceId, engine };
   if (opts.languageCode) synth.languageCode = opts.languageCode;
-  // region picks the endpoint, not the audio — kept out of the cache id.
+  // region and baseUrl pick the endpoint, not the audio — kept out of the cache id.
   if (opts.region) synth.region = opts.region;
+  if (opts.baseUrl) synth.baseUrl = opts.baseUrl;
   return {
     id: `polly:${voiceId}:${engine}:${opts.languageCode ?? ""}`,
     provider: "polly",

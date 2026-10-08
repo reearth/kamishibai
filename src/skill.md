@@ -652,8 +652,11 @@ audio is subject to its own terms. Adapters: `openaiAdapter({ model, voice })`
 back to `GOOGLE_API_KEY`),
 `pollyAdapter({ voiceId, engine })` (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`,
 `AWS_REGION`; signed with a built-in SigV4, no AWS SDK), or
-`elevenLabsAdapter({ voiceId, model })` (`ELEVENLABS_API_KEY`). The
-adapter sets the batch voice; a single line can override its opts with the
+`elevenLabsAdapter({ voiceId, model })` (`ELEVENLABS_API_KEY`). Each
+network adapter takes a `baseUrl` (a proxy or a compatible server), else reads
+`OPENAI_BASE_URL` / `GOOGLE_TTS_BASE_URL` / `GEMINI_BASE_URL` /
+`ELEVENLABS_BASE_URL` / `AWS_ENDPOINT_URL_POLLY`; it is not part of the cache
+key. The adapter sets the batch voice; a single line can override its opts with the
 object form `{ text, opts }` (merged over the adapter's, e.g. `{ rate: 150 }`)
 — the override folds into the cache key. Custom
 provider: implement the Node `TTSAdapter` (`{ provider, synthesize }`) and pass

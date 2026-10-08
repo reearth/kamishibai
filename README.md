@@ -368,6 +368,8 @@ const voice = elevenLabsAdapter({ voiceId: "…" });                    // ELEVE
 
 (Polly is signed with a minimal built-in SigV4 — no AWS SDK dependency. Google returns base64 audio, decoded for you; Gemini returns raw PCM, wrapped as WAV.)
 
+To send requests through a proxy or a compatible server, give any network adapter a `baseUrl`, or set its env var in the render process: `OPENAI_BASE_URL` (default `https://api.openai.com/v1`), `GOOGLE_TTS_BASE_URL`, `GEMINI_BASE_URL`, `ELEVENLABS_BASE_URL`, `AWS_ENDPOINT_URL_POLLY`. The base URL stays out of the cache key, so switching it never re-synthesizes.
+
 The adapter sets the voice for the whole batch; a single line can override its options (merged over the adapter's) with the object form. The override folds into the cache key, so only that line re-synthesizes — and changing `voice`/`model` busts *every* line. **Finalize the narration text first, then iterate on timing/visuals** (those are free); text and voice changes cost money.
 
 ```ts

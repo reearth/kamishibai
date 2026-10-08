@@ -103,6 +103,14 @@ const FORMATS: TTSFormat[] = ["mp3", "aiff", "wav"];
 
 // ---- built-in adapters --------------------------------------------
 
+/** The API origin (plus any path prefix) an adapter sends to: the ref's
+ *  `baseUrl`, else the env var, else the provider's public endpoint. Lets a
+ *  render go through a proxy or a compatible server. */
+function resolveBaseUrl(opts: Record<string, unknown>, envVar: string, fallback: string): string {
+  const v = (opts.baseUrl as string | undefined) || process.env[envVar] || fallback;
+  return v.replace(/\/+$/, "");
+}
+
 const sayAdapter: TTSAdapter = {
   provider: "say",
   async synthesize(text, opts) {
@@ -139,7 +147,8 @@ const openaiAdapter: TTSAdapter = {
     // (e.g. pace/tone) instead. Both are passed straight through.
     if (opts.speed != null) body.speed = opts.speed;
     if (opts.instructions != null) body.instructions = opts.instructions;
-    const res = await fetch("https://api.openai.com/v1/audio/speech", {
+    const base = resolveBaseUrl(opts, "OPENAI_BASE_URL", "https://api.openai.com/v1");
+    const res = await fetch(`${base}/audio/speech`, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -155,7 +164,8 @@ const elevenLabsAdapter: TTSAdapter = {
     const key = process.env.ELEVENLABS_API_KEY;
     if (!key) throw new Error("ELEVENLABS_API_KEY is not set");
     const voiceId = String(opts.voiceId);
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const base = resolveBaseUrl(opts, "ELEVENLABS_BASE_URL", "https://api.elevenlabs.io");
+    const res = await fetch(`${base}/v1/text-to-speech/${voiceId}`, {
       method: "POST",
       headers: { "xi-api-key": key, "content-type": "application/json" },
       body: JSON.stringify({ text, model_id: opts.model ?? "eleven_multilingual_v2" }),
@@ -174,8 +184,9 @@ const googleAdapter: TTSAdapter = {
     const voice: Record<string, unknown> = { languageCode: opts.languageCode ?? "en-US" };
     if (opts.name) voice.name = opts.name;
     if (opts.ssmlGender) voice.ssmlGender = opts.ssmlGender;
+    const base = resolveBaseUrl(opts, "GOOGLE_TTS_BASE_URL", "https://texttospeech.googleapis.com");
     const res = await fetch(
-      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`,
+      `${base}/v1/text:synthesize?key=${encodeURIComponent(key)}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -219,8 +230,9 @@ const geminiAdapter: TTSAdapter = {
     const model = String(opts.model ?? "gemini-2.5-flash-preview-tts");
     // Gemini TTS has no separate style field — direction is part of the prompt.
     const prompt = opts.instructions ? `${opts.instructions}: ${text}` : text;
+    const base = resolveBaseUrl(opts, "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com");
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      `${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
         headers: { "x-goog-api-key": key, "content-type": "application/json" },
@@ -258,13 +270,13 @@ function sha256Hex(data: string): string {
 function signPolly(o: {
   region: string;
   host: string;
+  path: string;
   body: string;
   accessKey: string;
   secretKey: string;
   sessionToken?: string;
 }): Record<string, string> {
   const service = "polly";
-  const path = "/v1/speech";
   // YYYYMMDDTHHMMSSZ + the YYYYMMDD date stamp.
   const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
   const dateStamp = amzDate.slice(0, 8);
@@ -281,7 +293,7 @@ function signPolly(o: {
 
   const canonicalRequest = [
     "POST",
-    path,
+    o.path,
     "",
     canonicalHeaders,
     signedHeaders,
@@ -322,7 +334,11 @@ const pollyAdapter: TTSAdapter = {
     if (!accessKey || !secretKey)
       throw new Error("AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are not set");
     const region = String(opts.region ?? process.env.AWS_REGION ?? "us-east-1");
-    const host = `polly.${region}.amazonaws.com`;
+    // The signature covers the host and path, so both come from the URL
+    // actually requested. The region still names the signing scope.
+    const url = new URL(
+      `${resolveBaseUrl(opts, "AWS_ENDPOINT_URL_POLLY", `https://polly.${region}.amazonaws.com`)}/v1/speech`,
+    );
     const body = JSON.stringify({
       OutputFormat: "mp3",
       Text: text,
@@ -332,13 +348,14 @@ const pollyAdapter: TTSAdapter = {
     });
     const headers = signPolly({
       region,
-      host,
+      host: url.host,
+      path: url.pathname,
       body,
       accessKey,
       secretKey,
       sessionToken: process.env.AWS_SESSION_TOKEN,
     });
-    const res = await fetch(`https://${host}/v1/speech`, { method: "POST", headers, body });
+    const res = await fetch(url, { method: "POST", headers, body });
     if (!res.ok) throw new Error(`AWS Polly ${res.status}: ${await res.text().catch(() => "")}`);
     return { audio: new Uint8Array(await res.arrayBuffer()), format: "mp3" };
   },
