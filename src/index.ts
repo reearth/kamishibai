@@ -15,6 +15,9 @@ export type {
   SynthesizeResult,
 } from "./render.ts";
 
+export { dev } from "./dev/server.ts";
+export type { DevOptions, DevServer, CcMode } from "./dev/server.ts";
+
 export { audio } from "./audio.ts";
 export type { AudioClip, AudioManifest } from "./audio.ts";
 

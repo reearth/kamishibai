@@ -6,8 +6,14 @@
 
 export interface AudioClip {
   /** path to an audio file, or a video file whose audio track to use
-   *  (relative to the render's working dir, or absolute) */
+   *  (relative to the render's working dir, or absolute). "" is a
+   *  placeholder for a sound that has no file yet (a narration line
+   *  `kamishibai dev` hasn't synthesized): it is never muxed, and the dev
+   *  player shows its `label` instead */
   src: string;
+  /** what the clip is, for people: the dev player shows it in storyboard
+   *  mode (a narration line's caption, say). Never muxed. */
+  label?: string;
   /** when this clip starts, in milliseconds from the reel start */
   atMs: number;
   /** volume adjustment in decibels (negative = quieter); default 0 */
@@ -73,6 +79,7 @@ export function clipKey(c: AudioClip): string {
     !!c.loop,
     c.duck ?? false,
     c.gainKeyframes ?? null,
+    c.label ?? null,
   ]);
 }
 

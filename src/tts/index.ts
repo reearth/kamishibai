@@ -90,8 +90,10 @@ function resolveInput(
 
 /** What `prepareNarration` returns per key — enough to place + caption the clip. */
 export interface NarrationClip {
-  /** path to the synthesized audio file (read by the audio mux); "" in a
-   *  serverless live preview, where the duration is only estimated */
+  /** path to the synthesized audio file (read by the audio mux); "" when
+   *  the line has no audio yet — in a serverless live preview, or in
+   *  `kamishibai dev` before the line is synthesized — and the duration is
+   *  only estimated */
   src: string;
   /** measured duration in ms — so a scene can fit the narration */
   durationMs: number;
@@ -230,7 +232,8 @@ export function pollyAdapter(opts: {
 }
 
 /** ~14 readable chars/sec, floored — only used for serverless live preview. */
-function estimateMs(text: string): number {
+/** A guessed spoken length for a line with no audio yet (~14 chars/s). */
+export function estimateMs(text: string): number {
   return Math.max(600, Math.round((text.length / 14) * 1000));
 }
 

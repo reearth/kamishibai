@@ -10,6 +10,8 @@ export default defineConfig({
     subtitle: "src/subtitle.ts",
     tts: "src/tts/index.ts",
     path: "src/path.ts",
+    // The dev player's browser script, served by `kamishibai dev`.
+    "dev-player": "src/dev/player.ts",
   },
   format: ["esm"],
   target: "node20",

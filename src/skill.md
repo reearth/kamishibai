@@ -14,6 +14,8 @@ parallel. This document is the complete usage guide — follow it as-is.
   output is reproducible (in a pinned environment) and parallelisable.
 - You are expected to iterate in a loop: **render → look at frames → fix the
   code → render again.** There is no GUI editor; you are the editor.
+  (`kamishibai dev` is a player for people to watch a reel while it's edited,
+  not an editor.)
 
 ## Start here
 
@@ -416,6 +418,25 @@ kamishibai render reel.tsx -p public -o reel.mp4        # serve ./public at root
 kamishibai render http://localhost:3000 -o page.mp4
 kamishibai tts reel.tsx                                 # synthesize narration only
 ```
+
+### Live preview for people: `kamishibai dev`
+
+```sh
+kamishibai dev reel.tsx [-p public] [--mute] [--cc off|captions|storyboard] [--no-sweep]
+```
+
+A browser player that reloads on save. It is for the person you work with, so
+suggest it when they want to watch while editing. To check frames yourself,
+keep using `capture --only` and look at the PNGs. It needs a long-running
+process and a browser, so don't start it unless asked.
+
+- It drives the reel only through `seek(ms)`, so any reel that renders previews.
+- It **never calls a TTS provider.** Cached lines play with their real audio;
+  a new or edited line gets an estimated length and no audio (`src: ""`, a
+  placeholder that a render never muxes). Run `kamishibai tts reel.tsx` to bake
+  the real voice. Lengths, and so the layout, can shift when you do.
+- The **Copy --only** button gives the person a frame range in the form
+  `--only 120-150`, ready to pass to `capture`/`render`.
 
 ### Splitting a render: `capture` + `encode`
 

@@ -47,13 +47,31 @@ describe("TTS engine", () => {
     });
 
     await engine.handle({ adapter: ref, items: { a: "one", b: "two" } });
-    expect(engine.stats()).toEqual({ total: 2, done: 2, failed: 0, cached: 0 });
+    expect(engine.stats()).toEqual({ total: 2, done: 2, failed: 0, cached: 0, estimated: 0 });
     expect(engine.busy()).toBe(false);
 
     const before = events.length;
     await engine.handle({ adapter: ref, items: { a: "one" } });
     expect(events.length).toBe(before); // cached — no new work reported
     expect(engine.stats()).toMatchObject({ total: 2, done: 2, cached: 1 });
+  });
+
+  it("cacheOnly serves cached lines and estimates the rest without calling the provider", async () => {
+    const spoken: string[] = [];
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const baked = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
+      adapter: ref,
+      items: { a: "one" },
+    });
+    expect(spoken).toEqual(["one"]);
+
+    const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir, cacheOnly: true });
+    const out = await engine.handle({ adapter: ref, items: { a: "one", b: { text: "two", caption: "2" } } });
+    expect(spoken).toEqual(["one"]); // nothing new was spoken
+    expect(out.a).toEqual(baked.a);
+    expect(out.b).toEqual({ src: "", durationMs: 600, text: "2" });
+    expect(engine.stats()).toMatchObject({ total: 0, cached: 1, estimated: 1 });
+    expect(engine.busy()).toBe(false);
   });
 
   it("records failures with the last error", async () => {

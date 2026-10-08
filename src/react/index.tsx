@@ -367,7 +367,9 @@ export const Audio: React.FC<{
   duck?: boolean | DuckOptions;
   /** dB volume automation over the clip's timeline (atMs from clip start) */
   gainKeyframes?: Array<{ atMs: number; gain: number }>;
-}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duck, gainKeyframes }) => {
+  /** what the clip is, shown by the dev player's storyboard mode; never muxed */
+  label?: string;
+}> = ({ src, atMs, delayMs = 0, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duck, gainKeyframes, label }) => {
   const { epochMs } = useClock();
   const regKey = useRef<string | undefined>(undefined);
   const start = Math.round(atMs ?? epochMs + delayMs);
@@ -383,9 +385,10 @@ export const Audio: React.FC<{
     if (loop) clip.loop = true;
     if (duck) clip.duck = duck;
     if (gainKeyframes != null) clip.gainKeyframes = gainKeyframes;
+    if (label != null) clip.label = label;
     regKey.current = registerAudio(clip, regKey.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duckKey, kfKey]);
+  }, [src, start, gain, trimStartMs, durationMs, fadeInMs, fadeOutMs, loop, duckKey, kfKey, label]);
   return null;
 };
 
@@ -1007,17 +1010,19 @@ export const Narration: React.FC<{
   const captionAt = atMs != null ? atMs - epochMs : delayMs;
   return (
     <>
-      {clip.src ? (
-        <Audio
-          src={clip.src}
-          atMs={atMs}
-          delayMs={delayMs}
-          durationMs={clip.durationMs}
-          gain={gain}
-          fadeInMs={fadeInMs}
-          fadeOutMs={fadeOutMs}
-        />
-      ) : null}
+      {/* A line with no audio yet (src "") is still declared, as a
+          placeholder: the renderer never muxes it, and the dev player shows
+          its text where the voice will go. */}
+      <Audio
+        src={clip.src}
+        atMs={atMs}
+        delayMs={delayMs}
+        durationMs={clip.durationMs}
+        gain={gain}
+        fadeInMs={fadeInMs}
+        fadeOutMs={fadeOutMs}
+        label={clip.text}
+      />
       {subtitle ? (
         <Cue at={captionAt} hold={clip.durationMs}>
           <Subtitle bottom={subtitleBottom} style={subtitleStyle}>

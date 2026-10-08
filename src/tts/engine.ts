@@ -18,7 +18,7 @@ import { mkdir, writeFile, readFile, rename, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { TTSAdapterRef, NarrationClip, NarrationInput } from "./index.ts";
+import { estimateMs, type TTSAdapterRef, type NarrationClip, type NarrationInput } from "./index.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -66,6 +66,13 @@ export interface TTSEngineOptions {
   cacheDir?: string;
   /** called whenever a synthesis (a cache miss) starts or settles */
   onProgress?: (stats: TTSStats) => void;
+  /**
+   * Never call a provider: a cached line comes back as usual, and an uncached
+   * one comes back with no audio (`src: ""`) and an estimated duration. For
+   * `kamishibai dev`, so editing the script costs nothing; `kamishibai tts`
+   * bakes the real audio when the lines are settled.
+   */
+  cacheOnly?: boolean;
 }
 
 /** Running totals of the synthesis work. `total` / `done` / `failed` count
@@ -80,6 +87,8 @@ export interface TTSStats {
   failed: number;
   /** lines served from the cache without calling the provider */
   cached: number;
+  /** lines returned with no audio and an estimated duration (cacheOnly) */
+  estimated: number;
   /** the most recent error from any line — a synthesis, or measuring a
    *  cached file — if any */
   lastError?: string;
@@ -382,7 +391,7 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
 
   const inflight = new Map<string, Promise<NarrationClip>>();
   const durations = new Map<string, number>();
-  const stats: TTSStats = { total: 0, done: 0, failed: 0, cached: 0 };
+  const stats: TTSStats = { total: 0, done: 0, failed: 0, cached: 0, estimated: 0 };
   const report = () => opts.onProgress?.({ ...stats });
 
   function existingFile(hash: string): string | undefined {
@@ -470,6 +479,11 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         report();
         throw new Error(stats.lastError);
       }
+    }
+
+    if (opts.cacheOnly) {
+      stats.estimated += 1;
+      return { src: "", durationMs: estimateMs(text), text };
     }
 
     let p = inflight.get(hash);

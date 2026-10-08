@@ -61,6 +61,7 @@ export interface KamishibaiPage {
   audio?: Array<{
     src: string;
     atMs: number;
+    label?: string;
     gain?: number;
     trimStartMs?: number;
     durationMs?: number;

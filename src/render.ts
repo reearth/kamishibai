@@ -123,7 +123,7 @@ function defaultWorkers(): number {
  *  as-is, an existing file as an absolute path (so the mux sidecar still works
  *  when `encode` runs from another cwd), otherwise a served path resolved
  *  against publicDir (so <Video src="/clip.mp4"> finds publicDir/clip.mp4). */
-function resolveAudioSrc(src: string, publicDir?: string): string {
+export function resolveAudioSrc(src: string, publicDir?: string): string {
   if (/^https?:\/\//i.test(src)) return src;
   if (existsSync(src)) return resolve(src);
   if (publicDir) {
@@ -144,7 +144,12 @@ async function prepareAudio(
   reelMs: number,
   log: (msg: string) => void,
 ): Promise<AudioManifest> {
-  const resolved = clips.map((c) => ({ ...c, src: resolveAudioSrc(c.src, publicDir) }));
+  // A placeholder (src "") is a sound with no file yet; there is nothing to mux.
+  const placeholders = clips.filter((c) => c.src === "").length;
+  if (placeholders > 0) log(`  (skipping ${placeholders} placeholder clip(s) with no audio file)`);
+  const resolved = clips
+    .filter((c) => c.src !== "")
+    .map((c) => ({ ...c, src: resolveAudioSrc(c.src, publicDir) }));
   const kept: AudioClip[] = [];
   for (const clip of resolved) {
     if (await hasAudioStream(clip.src)) kept.push(clip);

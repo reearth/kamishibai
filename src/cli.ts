@@ -5,13 +5,16 @@
 //   kamishibai capture <entry|url> -f <dir>    frames only
 //   kamishibai encode  -f <dir> [options]      frames -> video
 //   kamishibai tts     <entry>                 narration pre-pass only
+//   kamishibai dev     <entry>                 live preview in the browser
 //   kamishibai skill                           print the usage guide
 //
 // HELP below is the option reference; FLAGS_FOR says which subcommand
 // honors which flag (the rest are ignored with a warning).
 // ------------------------------------------------------------------
 import { parseArgs } from "node:util";
+import { spawn } from "node:child_process";
 import { render, encode, capture, synthesize } from "./render.ts";
+import { dev, CC_MODES, type CcMode } from "./dev/server.ts";
 import SKILL from "./skill.md";
 
 const HELP = `kamishibai — seek a web page frame by frame and bake it into an mp4.
@@ -21,6 +24,7 @@ Usage:
   kamishibai capture <entry|url> -f <dir> [opts] capture frames only, no encode
   kamishibai encode -f <frames-dir> [options]    re-encode kept frames, no capture
   kamishibai tts <entry> [options]               bake narration into the TTS cache only
+  kamishibai dev <entry> [options]               live preview in the browser
   kamishibai skill                    print the full usage guide (markdown)
 
 Arguments:
@@ -65,6 +69,19 @@ Encode options (render, encode):
                         --mux-args "-movflags +faststart" (mp4 only)
       --verbose         stream ffmpeg output
 
+Dev options (dev):
+  -p, --public <dir>    static assets dir served at the root, as in render
+      --port <n>        port to listen on (default: 4321; a free one if taken)
+      --mute            start the player muted
+      --cc <mode>       the player's starting overlay: off; captions (soft
+                        subtitles + lines with no audio yet); storyboard (also
+                        every sound as text). The player remembers its last.
+      --no-sweep        don't seek every frame in the background to collect
+                        the sound up front (for a heavy reel)
+      --no-open         don't open the browser
+                        dev never calls a TTS provider: cached lines play,
+                        new ones get an estimated length. Bake them with tts.
+
 Other:
       --keep-frames     (render) keep the intermediate PNG frames
   -h, --help            show this help
@@ -85,6 +102,7 @@ Examples:
   kamishibai encode -f frames -o reel.mp4                     # then encode them
   kamishibai encode -f frames --preview -o preview.mp4        # fast, no capture
   kamishibai tts reel.tsx                                     # synthesize narration first
+  kamishibai dev reel.tsx -p public                           # preview while editing
   kamishibai skill > kamishibai.md
 `;
 
@@ -102,6 +120,7 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   capture: new Set(CAPTURE_FLAGS),
   encode: new Set(ENCODE_FLAGS),
   tts: new Set(["public", "probe-timeout"]),
+  dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
 };
 
 // libx264's speed presets, slowest-compressing last. Validated so a typo fails
@@ -135,6 +154,21 @@ function takeRawOption(argv: string[], name: string): { value?: string; rest: st
   return { value, rest };
 }
 
+/** Open `url` in the default browser; a failure only means the user opens it. */
+function openBrowser(url: string): void {
+  const [cmd, args] =
+    process.platform === "darwin"
+      ? ["open", [url]]
+      : process.platform === "win32"
+        ? ["cmd", ["/c", "start", "", url]]
+        : ["xdg-open", [url]];
+  try {
+    spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {}).unref();
+  } catch {
+    /* no opener: the URL is printed above */
+  }
+}
+
 async function main(): Promise<void> {
   // Extract the options whose values may start with "-" first (ffmpeg flags,
   // `--gif-loop -1`) since they confuse parseArgs, then parse the rest as usual.
@@ -162,6 +196,11 @@ async function main(): Promise<void> {
       "burn-subtitles": { type: "boolean" },
       "probe-timeout": { type: "string" },
       verbose: { type: "boolean" },
+      port: { type: "string" },
+      mute: { type: "boolean" },
+      cc: { type: "string" },
+      "no-sweep": { type: "boolean" },
+      "no-open": { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -180,9 +219,9 @@ async function main(): Promise<void> {
     process.exit(values.help ? 0 : 1);
   }
 
-  if (command !== "render" && command !== "encode" && command !== "capture" && command !== "tts") {
+  if (!command || !FLAGS_FOR[command]) {
     process.stderr.write(
-      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / encode -f <frames-dir>)\n`,
+      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / dev / encode -f <frames-dir>)\n`,
     );
     process.exit(1);
   }
@@ -253,6 +292,40 @@ async function main(): Promise<void> {
   const splitArgs = (s: string | undefined) => (s?.trim() ? s.trim().split(/\s+/) : undefined);
   const encodeArgs = splitArgs(enc.value);
   const muxArgs = splitArgs(mux.value);
+
+  // `kamishibai dev` serves the reel with a player and rebuilds it on save,
+  // until interrupted.
+  if (command === "dev") {
+    if (!entry) {
+      process.stderr.write(`Missing <entry>.\n\n${HELP}`);
+      process.exit(1);
+    }
+    const port = values.port !== undefined ? Number(values.port) : undefined;
+    if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) {
+      throw new Error(`--port must be an integer from 0 to 65535, got "${values.port}"`);
+    }
+    const cc = values.cc as CcMode | undefined;
+    if (cc !== undefined && !CC_MODES.includes(cc)) {
+      throw new Error(`--cc must be one of ${CC_MODES.join(", ")}, got "${values.cc}"`);
+    }
+    const server = await dev({
+      entry,
+      publicDir: values.public,
+      port,
+      mute: values.mute,
+      cc,
+      sweep: !values["no-sweep"],
+      onLog: (msg) => process.stderr.write(`${msg}\n`),
+    });
+    process.stderr.write(`kamishibai dev → ${server.url}  (Ctrl+C to stop)\n`);
+    if (!values["no-open"]) openBrowser(server.url);
+    const stop = () => {
+      void server.close().then(() => process.exit(0));
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    return;
+  }
 
   // `kamishibai tts` runs only the narration pre-pass: load the page once so
   // its prepareNarration fills the cache, then stop — no capture, no encode.

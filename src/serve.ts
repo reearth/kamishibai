@@ -11,8 +11,8 @@
 // Every way you get back { url, close } and the renderer points Chrome
 // at `url`.
 // ------------------------------------------------------------------
-import { build } from "esbuild";
-import { createServer, type Server, type IncomingMessage } from "node:http";
+import { build, type BuildOptions } from "esbuild";
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,7 +51,7 @@ export interface ServeOptions {
   burnSubtitles?: boolean;
 }
 
-const SCRIPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+export const SCRIPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -68,25 +68,42 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".otf": "font/otf",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".aiff": "audio/aiff",
+  ".m4a": "audio/mp4",
+  ".ogg": "audio/ogg",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
 };
 
-function isUrl(entry: string): boolean {
+/** The content type to serve a file with, by its extension. */
+export function mimeType(path: string): string {
+  return MIME[extname(path).toLowerCase()] ?? "application/octet-stream";
+}
+
+export function isUrl(entry: string): boolean {
   return /^https?:\/\//i.test(entry);
 }
 
 /** Sets the burn flag before any page script runs, so <Subtitle> sees it at mount. */
 const BURN_SCRIPT = `<script>window.__KAMISHIBAI_BURN_SUBTITLES__=true</script>`;
 
-/** Insert the burn flag into an .html entry's page, as early as possible. */
-function injectBurnFlag(html: string): string {
+/** Insert `snippet` into a page as early as possible, before its own scripts. */
+export function injectEarly(html: string, snippet: string): string {
   // After <head>, else after the doctype (prepending would force quirks mode).
   const m = /<head(\s[^>]*)?>/i.exec(html) ?? /<!doctype[^>]*>/i.exec(html);
   const at = m ? m.index + m[0].length : 0;
-  return html.slice(0, at) + BURN_SCRIPT + html.slice(at);
+  return html.slice(0, at) + snippet + html.slice(at);
+}
+
+/** Insert the burn flag into an .html entry's page, as early as possible. */
+function injectBurnFlag(html: string): string {
+  return injectEarly(html, BURN_SCRIPT);
 }
 
 /** Minimal self-contained host page for a bundled script entry. */
-function hostHtml(burnSubtitles = false): string {
+export function hostHtml(burnSubtitles = false): string {
   const config = burnSubtitles ? `\n    ${BURN_SCRIPT}` : "";
   return `<!doctype html>
 <html lang="en">
@@ -118,7 +135,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 /** True when `p` is `root` itself or lies beneath it (no `..` escape). */
-function isInside(root: string, p: string): boolean {
+export function isInside(root: string, p: string): boolean {
   const rel = relative(root, p);
   return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
@@ -142,18 +159,32 @@ async function resolveFile(roots: string[], urlPath: string): Promise<string | "
   return undefined;
 }
 
+export interface StaticServerOptions {
+  tts?: TTSRequestHandler;
+  /** rewrites every .html response */
+  transformHtml?: (html: string) => string;
+  /** answers a request before the static roots; return true once handled */
+  handle?: (req: IncomingMessage, res: ServerResponse, urlPath: string) => Promise<boolean>;
+  /** extra headers on every static file response */
+  headers?: Record<string, string>;
+  /** the port to listen on (default: any free one) */
+  port?: number;
+}
+
 /**
  * Start a tiny static file server over `roots` (earlier roots shadow later
- * ones), return it + its port. `transformHtml` rewrites every .html response.
+ * ones), return it + its port.
  */
-async function staticServer(
+export async function staticServer(
   roots: string[],
-  opts: { tts?: TTSRequestHandler; transformHtml?: (html: string) => string } = {},
+  opts: StaticServerOptions = {},
 ): Promise<{ server: Server; port: number }> {
   const absRoots = roots.map((r) => resolve(r));
   const server = createServer(async (req, res) => {
     try {
       const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0] ?? "/");
+
+      if (opts.handle && (await opts.handle(req, res, urlPath))) return;
 
       // Narration pre-pass: synthesize (and cache) in Node, return durations.
       if (req.method === "POST" && urlPath === "/__tts") {
@@ -184,10 +215,10 @@ async function staticServer(
         return;
       }
       const ext = extname(filePath).toLowerCase();
-      const type = MIME[ext] ?? "application/octet-stream";
+      const type = mimeType(filePath);
       if (ext === ".html" && opts.transformHtml) {
         const html = opts.transformHtml(await readFile(filePath, "utf8"));
-        res.writeHead(200, { "content-type": type }).end(html);
+        res.writeHead(200, { ...opts.headers, "content-type": type }).end(html);
         return;
       }
       // Send headers only once the file is actually open, so a read failure
@@ -195,7 +226,7 @@ async function staticServer(
       const stream = createReadStream(filePath);
       stream
         .on("open", () => {
-          res.writeHead(200, { "content-type": type });
+          res.writeHead(200, { ...opts.headers, "content-type": type });
           stream.pipe(res);
         })
         .on("error", () => {
@@ -208,14 +239,45 @@ async function staticServer(
     }
   });
 
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  await new Promise<void>((r, reject) => {
+    server.once("error", reject);
+    server.listen(opts.port ?? 0, "127.0.0.1", () => {
+      server.off("error", reject);
+      r();
+    });
+  });
   const addr = server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;
   return { server, port };
 }
 
-function closeServer(server: Server): Promise<void> {
+export function closeServer(server: Server): Promise<void> {
   return new Promise((r) => server.close(() => r()));
+}
+
+/** How a script entry is bundled into the page's bundle.js. */
+export function bundleOptions(entry: string, outfile: string): BuildOptions {
+  return {
+    entryPoints: [entry],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    outfile,
+    sourcemap: "inline",
+    jsx: "automatic",
+    define: { "process.env.NODE_ENV": '"production"' },
+    loader: {
+      ".png": "dataurl",
+      ".jpg": "dataurl",
+      ".jpeg": "dataurl",
+      ".svg": "dataurl",
+      ".woff": "dataurl",
+      ".woff2": "dataurl",
+      ".gif": "dataurl",
+    },
+    logLevel: "silent",
+  };
 }
 
 /**
@@ -261,27 +323,7 @@ export async function serveEntry(entry: string, opts: ServeOptions = {}): Promis
 
   const dir = await mkdtemp(join(tmpdir(), "kamishibai-"));
   try {
-    await build({
-      entryPoints: [abs],
-      bundle: true,
-      format: "esm",
-      platform: "browser",
-      target: "es2022",
-      outfile: join(dir, "bundle.js"),
-      sourcemap: "inline",
-      jsx: "automatic",
-      define: { "process.env.NODE_ENV": '"production"' },
-      loader: {
-        ".png": "dataurl",
-        ".jpg": "dataurl",
-        ".jpeg": "dataurl",
-        ".svg": "dataurl",
-        ".woff": "dataurl",
-        ".woff2": "dataurl",
-        ".gif": "dataurl",
-      },
-      logLevel: "silent",
-    });
+    await build(bundleOptions(abs, join(dir, "bundle.js")));
     await writeFile(join(dir, "index.html"), hostHtml(opts.burnSubtitles), "utf8");
   } catch (err) {
     await rm(dir, { recursive: true, force: true });
