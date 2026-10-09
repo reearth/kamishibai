@@ -12,6 +12,7 @@ can contain breaking changes, and they are called out under **Changed**.
 - **TTS cache-only mode:** `createTTSEngine({ cacheOnly: true })` never calls a provider. A cached line comes back as usual; an uncached one comes back with `src: ""` and an estimated duration. `dev` uses this, so editing narration costs nothing. `TTSStats` gains `estimated`.
 - **Placeholder clips and labels:** an `AudioClip` with `src: ""` is a placeholder for a sound with no file yet. A render skips it and logs that it did. `AudioClip.label` (and `<Audio label>`) names a clip for the dev player and is never muxed. `<Narration>` now always declares its clip, labeled with the caption, including before the line has audio.
 - **TTS base URL:** every network adapter takes a `baseUrl`, so requests can go through a proxy or a compatible server. Without it, the adapter reads `OPENAI_BASE_URL`, `GOOGLE_TTS_BASE_URL`, `GEMINI_BASE_URL`, `ELEVENLABS_BASE_URL` or `AWS_ENDPOINT_URL_POLLY`. The base URL is not part of the cache key.
+- **Capture timings:** `captureChunk` takes `onTiming`, called after each frame with how it was produced (`shot`, `copy`, `cached` or `skipped`) and how long its seek, settle, screenshot and copy took. With `onPageTimings`, it also receives what the page recorded inside each seek; kamishibai/react records its commit, settler, paint and fingerprint phases. Both are for benchmarking and cost nothing when unset. `FrameTiming` is exported.
 
 ### Changed
 

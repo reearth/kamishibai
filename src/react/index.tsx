@@ -1100,6 +1100,14 @@ const Driver: React.FC<{
       meta,
       seek: (target: number) =>
         new Promise<string>((resolve, reject) => {
+          // Benchmarking only: the renderer sets this array when it wants the
+          // page's own phase timings (see captureChunk's onTiming).
+          const bench = (window as { __KAMISHIBAI_BENCH__?: unknown[] }).__KAMISHIBAI_BENCH__;
+          const t0 = bench ? performance.now() : 0;
+          let tCommit = 0;
+          let tRaf = 0;
+          let tSettled = 0;
+          let tPaint = 0;
           // Commit the new tree SYNCHRONOUSLY before doing anything else.
           // Without flushSync, React 18 may schedule the state update
           // concurrently and the rAF chain below can run (and a screenshot
@@ -1111,6 +1119,7 @@ const Driver: React.FC<{
             setDriven(true);
             setMs(target);
           });
+          if (bench) tCommit = performance.now();
           // A reel that threw while rendering (e.g. a Series timing
           // RangeError) shows nothing from then on: fail the capture with the
           // original error instead of shooting blank frames.
@@ -1125,7 +1134,9 @@ const Driver: React.FC<{
           // decode, a caption file that won't load) rejects the seek, so the
           // capture fails loudly instead of shooting a blank frame.
           requestAnimationFrame(() => {
+            if (bench) tRaf = performance.now();
             void Promise.allSettled([...settlers].map(async (s) => s(target))).then((results) => {
+              if (bench) tSettled = performance.now();
               const errors = results
                 .filter((r): r is PromiseRejectedResult => r.status === "rejected")
                 .map((r) => errorMessage(r.reason));
@@ -1136,7 +1147,24 @@ const Driver: React.FC<{
               requestAnimationFrame(() =>
                 // Fingerprint *after* the settled paint, so a settler's
                 // imperative DOM writes (e.g. <Subtitle> text) are included.
-                requestAnimationFrame(() => resolve(computeFingerprint(host, target))),
+                requestAnimationFrame(() => {
+                  if (!bench) {
+                    resolve(computeFingerprint(host, target));
+                    return;
+                  }
+                  tPaint = performance.now();
+                  const fp = computeFingerprint(host, target);
+                  const tFp = performance.now();
+                  bench.push({
+                    ms: target,
+                    commitMs: tCommit - t0,
+                    rafMs: tRaf - tCommit,
+                    settlersMs: tSettled - tRaf,
+                    paintMs: tPaint - tSettled,
+                    fingerprintMs: tFp - tPaint,
+                  });
+                  resolve(fp);
+                }),
               );
             });
           });

@@ -20,6 +20,22 @@ export interface ChunkMarkers {
 
 const frameName = (i: number): string => `f${String(i).padStart(6, "0")}.png`;
 
+/** How one frame was produced and where its time went (see `onTiming`). */
+export interface FrameTiming {
+  index: number;
+  /** shot = settled + screenshot; copy = same as the previous frame;
+   *  cached = last run's PNG kept; skipped = not selected by --only */
+  kind: "shot" | "copy" | "cached" | "skipped";
+  /** the seek() round trip, page work included (ms) */
+  seekMs: number;
+  /** the extra double-rAF settle before a screenshot (ms; 0 unless shot) */
+  settleMs: number;
+  /** page.screenshot, encode + write included (ms; 0 unless shot) */
+  shotMs: number;
+  /** copying the previous still (ms; 0 unless copy) */
+  copyMs: number;
+}
+
 /** How long to wait for a page to expose window.kamishibai. */
 export interface ReelWaitOptions {
   /** give up after this long with nothing in progress (ms; default 15s) */
@@ -171,6 +187,13 @@ export interface CaptureChunkOptions {
   browser?: Browser;
   /** how long to wait for the page to expose window.kamishibai */
   wait?: ReelWaitOptions;
+  /** called after each frame with where its time went — for benchmarking;
+   *  costs two clock reads per phase when set, nothing when not */
+  onTiming?: (t: FrameTiming) => void;
+  /** with `onTiming`, receives what the page itself recorded per seek (the
+   *  entries a page pushes onto `window.__KAMISHIBAI_BENCH__`; kamishibai/react
+   *  records its commit / settler / paint / fingerprint phases there) */
+  onPageTimings?: (entries: unknown[]) => void;
 }
 
 /**
@@ -179,7 +202,8 @@ export interface CaptureChunkOptions {
  * mounted.
  */
 export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMarkers> {
-  const { url, meta, chunk, framesDir, onFrame, onFingerprint, prevFingerprints, shouldRender } = opts;
+  const { url, meta, chunk, framesDir, onFrame, onFingerprint, prevFingerprints, shouldRender, onTiming } = opts;
+  const now = onTiming ? () => performance.now() : () => 0;
   const browser = opts.browser ?? (await chromium.launch());
   const owns = !opts.browser;
   try {
@@ -196,6 +220,12 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
     await page.addInitScript((fps) => {
       (window as { __KAMISHIBAI_FPS__?: number }).__KAMISHIBAI_FPS__ = fps;
     }, meta.fps);
+    // Benchmarking: ask the page to record its own per-seek phases too.
+    if (onTiming) {
+      await page.addInitScript(() => {
+        (window as { __KAMISHIBAI_BENCH__?: unknown[] }).__KAMISHIBAI_BENCH__ = [];
+      });
+    }
     await page.goto(url, { waitUntil: "networkidle" });
     await waitForReel(page, watched);
     // Web fonts must be ready before the first capture, or text reflows.
@@ -215,6 +245,7 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
       if (shouldRender && !shouldRender(i)) {
         prevPath = undefined;
         prevFp = undefined;
+        onTiming?.({ index: i, kind: "skipped", seekMs: 0, settleMs: 0, shotMs: 0, copyMs: 0 });
         onFrame?.(i);
         continue;
       }
@@ -222,11 +253,13 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
       // Build the still for `ms`; awaits the page's seek() promise. It returns
       // `false` (identical to the previous frame), a fingerprint string, or
       // void/true (capture normally).
+      const t0 = now();
       const changed = (await page.evaluate(
         ([key, t]) => Promise.resolve((window as any)[key].seek(t)),
         [GLOBAL_KEY, ms] as const,
       )) as boolean | string | undefined;
 
+      const t1 = now();
       const fp = typeof changed === "string" ? changed : undefined;
       if (fp !== undefined) onFingerprint?.(i, fp);
 
@@ -239,6 +272,7 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
       const sameAsPrev =
         !cacheHit && !!prevPath && (changed === false || (fp !== undefined && fp === prevFp));
 
+      let t2 = t1;
       if (cacheHit) {
         // The cached still is already correct on disk — nothing to do.
       } else if (sameAsPrev) {
@@ -249,7 +283,20 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
         await page.evaluate(
           () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
         );
+        t2 = now();
         await page.screenshot({ path: thisPath, clip });
+      }
+      if (onTiming) {
+        const t3 = now();
+        const kind = cacheHit ? "cached" : sameAsPrev ? "copy" : "shot";
+        onTiming({
+          index: i,
+          kind,
+          seekMs: t1 - t0,
+          settleMs: kind === "shot" ? t2 - t1 : 0,
+          shotMs: kind === "shot" ? t3 - t2 : 0,
+          copyMs: kind === "copy" ? t3 - t1 : 0,
+        });
       }
       // After a cache hit the file already exists; either way thisPath is the
       // current still for the copy chain.
@@ -266,6 +313,11 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
         subtitles: k && Array.isArray(k.subtitles) ? k.subtitles : [],
       };
     }, GLOBAL_KEY)) as ChunkMarkers;
+    if (onTiming && opts.onPageTimings) {
+      opts.onPageTimings(
+        await page.evaluate(() => (window as { __KAMISHIBAI_BENCH__?: unknown[] }).__KAMISHIBAI_BENCH__ ?? []),
+      );
+    }
     await page.close();
     return markers;
   } finally {
