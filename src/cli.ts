@@ -6,7 +6,7 @@
 //   kamishibai encode  -f <dir> [options]      frames -> video
 //   kamishibai tts     <entry>                 narration pre-pass only
 //   kamishibai dev     <entry>                 live preview in the browser
-//   kamishibai skill                           print the usage guide
+//   kamishibai skill [topic…|all]              print the usage guide
 //
 // HELP below is the option reference; FLAGS_FOR says which subcommand
 // honors which flag (the rest are ignored with a warning).
@@ -16,6 +16,7 @@ import { spawn } from "node:child_process";
 import { render, encode, capture, synthesize } from "./render.ts";
 import { dev, CC_MODES, type CcMode } from "./dev/server.ts";
 import SKILL from "./skill.md";
+import { skillText } from "./skill.ts";
 
 const HELP = `kamishibai — seek a web page frame by frame and bake it into an mp4.
 
@@ -25,7 +26,8 @@ Usage:
   kamishibai encode -f <frames-dir> [options]    re-encode kept frames, no capture
   kamishibai tts <entry> [options]               bake narration into the TTS cache only
   kamishibai dev <entry> [options]               live preview in the browser
-  kamishibai skill                    print the full usage guide (markdown)
+  kamishibai skill [topic…|all]                  print the usage guide: the core and a
+                                                 topic list, the named topics, or all
 
 Arguments:
   <entry|url>           a URL, an .html file, or a script (.ts/.tsx/.js/.jsx)
@@ -103,7 +105,9 @@ Examples:
   kamishibai encode -f frames --preview -o preview.mp4        # fast, no capture
   kamishibai tts reel.tsx                                     # synthesize narration first
   kamishibai dev reel.tsx -p public                           # preview while editing
-  kamishibai skill > kamishibai.md
+  kamishibai skill                                            # core guide + topic list
+  kamishibai skill audio narration                            # two topics
+  kamishibai skill all > kamishibai.md                        # the whole guide
 `;
 
 const CAPTURE_FLAGS = [
@@ -207,10 +211,15 @@ async function main(): Promise<void> {
 
   const [command, entry] = positionals;
 
-  // `kamishibai skill` (alias: skills) prints the usage guide verbatim — meant
-  // to be piped into an agent's context or saved as a file.
+  // `kamishibai skill` (alias: skills) prints the usage guide for an agent's
+  // context: the core and a topic list, or the named topics, or `all`.
   if (command === "skill" || command === "skills") {
-    process.stdout.write(SKILL);
+    try {
+      process.stdout.write(skillText(SKILL, positionals.slice(1)));
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
     return;
   }
 

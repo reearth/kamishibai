@@ -21,6 +21,7 @@ can contain breaking changes, and they are called out under **Changed**.
 - **WebGL on the GPU (macOS).** Headless Chrome draws WebGL with SwiftShader, on the CPU. When the probe sees the page create a WebGL context, the capture's Chrome draws it with ANGLE over Metal instead: a three.js reel of 500 spheres renders about 4 times faster. A page without WebGL is captured as before. `probeReel()` returns the meta and whether the page uses WebGL.
 - **One Chrome for all workers.** The workers are pages of one headless Chrome instead of a Chrome each. Starting several Chromes at once, each with its own GPU process, cost seconds before the first frame: a short reel renders 5 to 20% faster, and a WebGL one the most. The pixels are the same.
 - **Docs:** the README is now a short overview (the idea, the contract, a quick start). The details moved to [`docs/`](https://github.com/reearth/kamishibai/blob/main/docs/README.md), one page per topic.
+- **`kamishibai skill` prints the core guide and a topic list**, not the whole guide. The core is about half the guide, which fits in one read of an agent's shell tool. `kamishibai skill <topic…>` prints topics (`incremental`, `scenes`, `dev`, `capture-encode`, `audio`, `video`, `narration`), and `kamishibai skill all` prints the whole guide as before. An unknown topic exits with an error that lists them. In a benchmark, all 30 agent runs printed the guide, and in 26 the output overflowed the shell tool and was read a second time from a file.
 
 ### Fixed
 

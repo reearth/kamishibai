@@ -3,7 +3,9 @@
 How to author and render videos with **kamishibai**: a mechanism that seeks a
 web page frame by frame and bakes the stills into an mp4. You write a page that
 draws "the state at time `ms`"; kamishibai captures it reproducibly and in
-parallel. This document is the complete usage guide — follow it as-is.
+parallel. This document is the usage guide — follow it as-is.
+
+<!-- topics -->
 
 ## Mental model
 
@@ -99,6 +101,22 @@ window.kamishibai = {
 - Keep `seek` a **pure function of `ms`** — no `Date.now()`, no unseeded
   `Math.random()`, no real-time animation — or parallel workers will disagree.
 
+**Fingerprints.** When `seek` returns a fingerprint string, the renderer copies
+the previous still wherever two adjacent prints match, instead of shooting it
+again. For React reels the fingerprint is automatic: it hashes the whole `<body>` DOM
+(portals outside the stage included) and the text of every stylesheet rule.
+What it can't see — `<canvas>` / WebGL pixels, and the bytes behind a URL that
+didn't change (an image/font/video replaced under the same name) — must
+contribute a cheap token via `useFingerprint(token)` (a string, or a function
+of ms naming what you draw, e.g. a frame index — NOT a pixel hash), or carry a
+version in the URL (`/map.png?v=2`). `<Video>` already names its frame. Matching
+prints are trusted even without `-i`: a frame whose print equals the previous
+frame's is copied within the run. Determinism
+is required: a frame that isn't a pure function of its ms can be wrongly reused —
+for a clean full render, just omit `-i` (an explicit `--frames-dir` is cleared
+and rebuilt when not incremental).
+
+<!-- topic: incremental | Skipping static spans, fingerprints, and re-rendering only what changed (`-i`, `--only`, `--preview`) -->
 ### Skipping static spans
 
 If a stretch of the reel doesn't change visually, return `false` from `seek`
@@ -140,7 +158,8 @@ so both need a persisted `--frames-dir`:
   **tail-only edit** — it's far faster than `-i`, which still has to walk the
   whole reel to fingerprint it. It refuses a dir captured at a different
   fps / size / scale, and a range starting past the last frame is an error.
-  Audio and captions come from the prior full render's mux sidecar (below).
+  Audio and captions come from the prior full render's mux sidecar
+  (`kamishibai skill capture-encode`).
 
 ```sh
 kamishibai render reel.tsx -f frames -o reel.mp4        # seed the cache
@@ -159,25 +178,13 @@ sets any libx264 preset directly (preview only affects the mp4 encode, not gif).
 kamishibai render reel.tsx -f frames -i --preview -o reel.mp4   # fast confirm
 ```
 
-For React reels the fingerprint is automatic: it hashes the whole `<body>` DOM
-(portals outside the stage included) and the text of every stylesheet rule.
-What it can't see — `<canvas>` / WebGL pixels, and the bytes behind a URL that
-didn't change (an image/font/video replaced under the same name) — must
-contribute a cheap token via `useFingerprint(token)` (a string, or a function
-of ms naming what you draw, e.g. a frame index — NOT a pixel hash), or carry a
-version in the URL (`/map.png?v=2`). `<Video>` already names its frame. Matching
-prints are trusted even without `-i`: a frame whose print equals the previous
-frame's is copied within the run. Determinism
-is required: a frame that isn't a pure function of its ms can be wrongly reused —
-for a clean full render, just omit `-i` (an explicit `--frames-dir` is cleared
-and rebuilt when not incremental).
-
 **Confirm loop & gotchas.** After a localized edit, the fastest *playable* check
 is `--only <range> --preview` — capture only the frames that moved, then a quick
 ultrafast encode you can scrub in a player (the encode still scales with reel
 length, so a long reel is minutes, not seconds). Run **one render per frames-dir
 at a time**: concurrent encodes just contend (both slow), and a render killed
 mid-encode leaves an mp4 with **no moov atom** that players reject — re-run.
+<!-- /topic -->
 
 ## Writing a reel
 
@@ -227,7 +234,7 @@ Sugar API:
   Scenes **self-register**, so one wrapped in your own component works at any
   depth. Drive it from data with `<Series scenes={[{ durationMs, crossfadeMs,
   exitFadeMs, content }]} />`, and size the reel with `seriesDuration(scenes)`
-  (see **Scenes** below)
+  (`kamishibai skill scenes`)
 - `<Audio src delayMs atMs gain fadeInMs fadeOutMs loop>` — declare audio inside
   a scene; it starts at the scene's start (+`delayMs`) and is collected for
   muxing automatically
@@ -235,7 +242,7 @@ Sugar API:
   at the reel start, tiled to fill the whole video and muxed under everything
   else; `duck` auto-dips it while narration plays
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
-  video via WebCodecs (see Video below); draws the clip frame for the current
+  video via WebCodecs (`kamishibai skill video`); draws the clip frame for the current
   scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
 - `<Subtitle src | cues | children>` — captions from an SRT/VTT file (`src`),
   inline `cues`, or direct text (`children`, timed via the enclosing `<Cue>`).
@@ -248,7 +255,7 @@ Sugar API:
   fails to load fails the capture. Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
   cuesToSrt) for the raw API.
 - `<Narration clip delayMs atMs gain fadeInMs fadeOutMs subtitle>` — play a
-  clip from `prepareNarration` (synthesized up front, see Narration below);
+  clip from `prepareNarration` (synthesized up front, `kamishibai skill narration`);
   with `subtitle`, also adds the line's text as a caption for the clip's window
   (wherever the audio lands, `atMs` included; soft by default —
   `subtitleBottom`/`subtitleStyle` only apply with `--burn-subtitles`)
@@ -278,6 +285,7 @@ The JSX form is equivalent and composes the same way — `<Series><Series.Scene
 durationMs={4000}>…</Series.Scene>…</Series>`, including scenes returned from
 your own wrapper components.
 
+<!-- topic: scenes | `<Series>` in depth: sizing with crossfades, local clocks, exit fades against ghosting, timing errors -->
 ### Scenes (`<Series>`)
 
 - **Sizing.** A crossfade *overlaps* the previous scene, so a reel is
@@ -327,6 +335,7 @@ your own wrapper components.
   the override before it loads.
   Other transitions (wipe/swipe) are a few lines of `ramp()` + `transform` on the
   scene content.
+<!-- /topic -->
 
 ## Positions along a path (`kamishibai/path`)
 
@@ -419,6 +428,7 @@ kamishibai render http://localhost:3000 -o page.mp4
 kamishibai tts reel.tsx                                 # synthesize narration only
 ```
 
+<!-- topic: dev | `kamishibai dev`, the live player for the person you work with -->
 ### Live preview for people: `kamishibai dev`
 
 ```sh
@@ -437,7 +447,9 @@ process and a browser, so don't start it unless asked.
   the real voice. Lengths, and so the layout, can shift when you do.
 - The **Copy --only** button gives the person a frame range in the form
   `--only 120-150`, ready to pass to `capture`/`render`.
+<!-- /topic -->
 
+<!-- topic: capture-encode | Splitting a render into `capture` and `encode`: re-encode kept frames, look at a few frames without a video -->
 ### Splitting a render: `capture` + `encode`
 
 A render is **capture** (seek the page → PNG frames) then **encode** (frames →
@@ -489,6 +501,7 @@ kamishibai render reel.tsx -f frames -o reel.mp4        # capture once (writes t
 kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio + subs intact
 kamishibai encode -f frames --crf 28 -o smaller.mp4     # try a setting without re-capturing
 ```
+<!-- /topic -->
 
 ## Resolution
 
@@ -497,6 +510,7 @@ Resolution is **not** a CLI flag of its own — it comes from `meta.width`/
 multiplies only the captured pixels: a 1920×1080 reel at `-s 2` outputs
 3840×2160 with the same layout (use it for crisp/retina output).
 
+<!-- topic: audio | Sound: clips, background music, gain and fades, auto-ducking, credits -->
 ## Audio
 
 kamishibai does not generate sound. **Audio is declared in the page** — files +
@@ -504,7 +518,7 @@ start times — and muxed at the end. `atMs` is the clip's start in milliseconds
 `gain` is dB (negative = quieter). The output is clamped to the reel length
 (video is the master timeline). The renderer reads `window.kamishibai.audio`
 after capture and muxes it. With React, use `<Audio>` / `<Narration>` / `<Bgm>`
-(above); with the raw API, push markers yourself:
+(in the sugar list of the core guide); with the raw API, push markers yourself:
 
 ```ts
 window.kamishibai = {
@@ -559,7 +573,9 @@ video description, or a **spoken** credit: incompetech requires the credit to
 be voiced in audio-only works). Check each asset's license when you add it,
 keep a credits list, and tell the requester what must be credited and where
 before the final render. The `video-craft` skill has the details.
+<!-- /topic -->
 
+<!-- topic: video | Frame-accurate video clips (`kamishibai/video`, `<Video>`) -->
 ## Video (frame-accurate)
 
 Don't use a raw `<video>` — `currentTime` seeking is approximate and
@@ -580,7 +596,9 @@ audio is muxed automatically (trimmed to the scene, with optional gain/fades) �
 pass `muted` to drop it. WebCodecs works because kamishibai serves on localhost
 (secure context). Codecs: VP9/AV1 are portable; H.264 is platform-dependent.
 Frames decode on demand (one GOP at a time), so long clips stay memory-bounded.
+<!-- /topic -->
 
+<!-- topic: narration | Voice-over with TTS: `prepareNarration`, narration-driven layout, readings, adapters, the cache -->
 ## Narration (TTS)
 
 TTS is non-deterministic and billable, so it never runs during `seek()`.
@@ -690,6 +708,7 @@ character of a line and **only that line** re-synthesizes; change
 `voice`/`model`/`instructions` and **every** line is re-billed. So the cheap
 workflow is: **finalize the narration text first, then iterate on timing and
 visuals** (those are free) — text and voice changes cost money.
+<!-- /topic -->
 
 ## Library (programmatic)
 
@@ -713,7 +732,7 @@ When a frame looks wrong, **dump the frames and look.** Render with
 glitch (a stray colour, a misplaced element, a blank tail) to an exact frame.
 Frames are named `f000123.png` by index, so `index ÷ fps` is the timestamp, and
 a blank run at the end almost always means `meta.durationMs` is longer than the
-content (see **Scenes** — size it with `seriesDuration`). The worker count
+content (size it with `seriesDuration`; `kamishibai skill scenes`). The worker count
 never changes a deterministic reel's pixels, so if a glitch appears or moves
 when you change `--workers` (often on a chunk's first frame), the reel depends
 on state left over from the previous seek — fix that rather than pinning

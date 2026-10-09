@@ -82,13 +82,13 @@ gh skills search kamishibai     # find skills across GitHub
 gh skills update --all          # update installed skills
 ```
 
-- **`kamishibai`** — points the agent at `kamishibai skill`, which prints the full authoring guide (the contract, the React sugar, audio / TTS, the render CLI, determinism) — always matching the installed version.
+- **`kamishibai`** — points the agent at `kamishibai skill`, which prints the authoring guide (the contract, the React sugar, the render CLI, determinism) with a list of topics, such as audio and TTS narration, to print as needed. It always matches the installed version.
 - **`video-craft`** — the *taste* layer, not the API: narration as the spine, pacing & silence, audio-synced reveals, transitions, mix & ducking, and the outline → script sign-off → pilot → render loop.
 
 Or pipe the guide straight into your agent's context yourself:
 
 ```sh
-kamishibai skill > kamishibai.md
+kamishibai skill all > kamishibai.md
 ```
 
 ---
