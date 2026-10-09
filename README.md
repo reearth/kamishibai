@@ -13,6 +13,8 @@ It deliberately does *not* try to be a frame-accurate compositing engine or ship
 
 **Free · DOM-or-anything · code/CI-first · AI-friendly · no guarantees (MIT)** — that's the combination it's built for.
 
+**Website: [reearth.github.io/kamishibai](https://reearth.github.io/kamishibai/)** · [Lexicon of motion](https://reearth.github.io/kamishibai/lexicon/), camera moves, motion, transitions and light, each with a loop and words to hand an agent.
+
 ---
 
 ## Quick start
