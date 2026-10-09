@@ -12,6 +12,7 @@
   --kaki: #d9662a; /* fills: the ball, captured frames, chapter cards */
   --kaki-text: #b84e14; /* text on paper (4.5:1) */
   --copy: #c8cbd2; /* copied frames */
+  --night: #1e1a17; /* the dark ground of a picture; NIGHT in src/lib/draw/kit.ts */
   --sans: "Geist", "Zen Kaku Gothic New", system-ui, sans-serif;
   --mono: "Geist Mono", ui-monospace, monospace;
   color-scheme: light;

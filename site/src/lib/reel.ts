@@ -5,7 +5,7 @@
 // draws exactly that moment, so `kamishibai render <page url>` turns the page
 // itself into a video. The site is its own example.
 // ------------------------------------------------------------------
-import type { Shape } from "./draw.ts";
+import { H, PAINT, SHAPES, W, type Shape } from "./draw.ts";
 
 export interface ReelMeta {
   fps: number;
@@ -43,10 +43,33 @@ export function reel(meta: ReelMeta, draw: (ms: number, driven: boolean) => void
   };
 }
 
-/** Put a drawing's shapes onto the elements a frame already has. */
-export function paint(frame: HTMLElement, shapes: Shape[]): void {
+/**
+ * Draw term `id` at loop progress t into its frame: its shapes onto the
+ * elements the frame already has, or its paint onto the frame's canvas.
+ */
+export function drawTerm(frame: HTMLElement, id: string, t: number): void {
+  const p = PAINT[id];
+  if (p) {
+    const cv = frame.firstElementChild as HTMLCanvasElement | null;
+    const g = cv?.getContext("2d");
+    if (!cv || !g || !cv.clientWidth) return;
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== w || cv.height !== h) {
+      cv.width = w;
+      cv.height = h;
+    }
+    g.setTransform(w / W, 0, 0, h / H, 0, 0);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = "source-over";
+    g.clearRect(0, 0, W, H);
+    g.save();
+    p(g, t);
+    g.restore();
+    return;
+  }
   const els = frame.children;
-  shapes.forEach((s, i) => {
+  SHAPES[id]?.(t).forEach((s: Shape, i) => {
     const el = els[i] as HTMLElement | undefined;
     if (el) Object.assign(el.style, s);
   });

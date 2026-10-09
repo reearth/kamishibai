@@ -23,11 +23,20 @@ Defined in `src/styles/global.css`. Use the variables; don't write raw colors in
 | `--kaki` | `#d9662a` | **Fills only**: the ball, captured frames, chapter cards |
 | `--kaki-text` | `#b84e14` | **Text** in the accent; 4.5:1 on paper |
 | `--copy` | `#c8cbd2` | Copied (not captured) frames |
+| `--night` | `#1e1a17` | The dark ground of a picture (`Term.dark`); matches `NIGHT` in `src/lib/draw/kit.ts` |
 
 - There is one accent, the orange of a kamishibai frame. Don't add a second hue. Lighter tints of `--kaki` are fine for steps in a sequence, as in the Chrome rows.
 - Accent text is always `--kaki-text`. `--kaki` is too light to read on paper.
 - Light theme only. A dark theme was tried and didn't suit the paper.
-- No gradients, glows or blur. Shadows only lift a card off the desk, and grow while it is being pulled.
+- No gradients, glows or blur in the site itself. Shadows only lift a card off the desk, and grow while it is being pulled.
+- The favicon (`public/favicon.svg`) is a 4:3 card on ink with the ball on its floor, in the same colours.
+
+### Colour in pictures
+
+A Lexicon picture is drawn in the same palette, from the constants in `src/lib/draw/kit.ts`: ink, the orange and its tints, two greys and `MIST` for the floor. Two exceptions:
+
+- A technique that is about colour (RGB split, duotone, colour temperature, VHS…) may bring its own colours.
+- Gradients, glows and blur are allowed inside a picture when the technique needs them (glow, lens flare, rack focus, vignette). A term that needs the dark, such as most of Light, is drawn on `NIGHT` (`Term.dark: true`).
 
 ## Type
 
@@ -46,14 +55,27 @@ Defined in `src/styles/global.css`. Use the variables; don't write raw colors in
 
 ## Motion
 
-- **Everything is a function of time.** A drawing is `draw(t) → shapes` (`src/lib/draw.ts`, `src/lib/ball.ts`) and has no state between frames. Loops are seamless, so the picture at `t = LOOP_MS` matches `t = 0`.
+- **Everything is a function of time.** A drawing is a function of `t` (`src/lib/draw.ts`, `src/lib/ball.ts`) and has no state between frames. Loops are seamless, so the picture at `t = LOOP_MS` matches `t = 0`.
 - `reel()` (`src/lib/reel.ts`) runs the drawings on the wall clock, and hands control to `seek(ms)` once a renderer calls it. Don't use CSS animations or `setInterval` for anything in a picture; a renderer can't seek them.
 - CSS transitions are for hover feedback only.
 - **Scroll is the playhead.** With `s = scrollTop / height`, sheet `floor(s)` is pulled out over the middle 76% of its screen of scroll, eased with smoothstep. It moves left and turns slightly, and must leave the screen completely.
 - Honour `prefers-reduced-motion`: the ball holds a single frame.
 
+### Lexicon drawings
+
+- Each chapter has two files with the same name: its terms in `src/lib/terms/<chapter>.ts`, and their drawings in `src/lib/draw/<chapter>.ts`. `src/lib/terms.ts` and `src/lib/draw.ts` merge them, and a term and its drawing share an id. A new chapter is imported in both, and added to `Category` and `CHAPTERS`.
+- `src/lib/draw/kit.ts` holds the contract and the tools: the palette, easing, `rand()` and `noise()` (seeded, so loops repeat), shape and canvas helpers.
+- A drawing is one of two kinds:
+  - **`SHAPES`**, `(t) => Shape[]`: a few rectangles and circles in % of the frame. The build writes `t = 0` into the page, so the picture is there before any script runs. Return the same number of shapes for every `t`.
+  - **`PAINT`**, `(g, t) => void`: draws on a canvas whose units are always 400×300. For type, noise, particles and anything else shapes can't do.
+- `drawTerm()` in `src/lib/reel.ts` draws either kind into its frame (`src/components/Frame.astro`).
+- Never use `Math.random()`. Effects that change every frame, such as grain or line boil, step `t` (about 10 fps) and seed `rand()` with the step.
+- Up to about 20 loops paint every frame on the grid, so each paint must be cheap, about 1 ms. Don't loop over every pixel of the canvas; work on a coarse grid, or draw into a small offscreen canvas and scale it up.
+
 ## Layout
 
+- Every sheet of the top page starts with the same header (`src/components/TopBar.astro`): the logo, then Lexicon, Docs and GitHub. The sheet's content sits in `.body` below it.
+- The deck is the card and its script panel, nothing else. There is no strip of thumbnails; scroll, the ‹ › buttons and the arrow keys move through it.
 - **A sheet never scrolls inside.** Everything on it must fit its height. When it doesn't, cut or shrink content at that breakpoint instead of letting it overflow.
 - Keep the bottom-left HUD clear. On phones and short screens, sheets reserve padding at the bottom for it.
 - Picture frames are always **4:3** with a 1px ink border. Size them by height and `aspect-ratio`; if something also caps the width, the ratio breaks and the ball turns into an oval. The deck card works out its height from the width left beside the script panel for this reason.
@@ -64,10 +86,12 @@ Defined in `src/styles/global.css`. Use the variables; don't write raw colors in
 | Query | Where | What changes |
 |---|---|---|
 | `max-width: 1179px`, `max-height: 719px` | Top | Hides the contact sheet and the frame lane (`.wide-only`) |
-| `max-width: 900px` | Deck | Card above the script instead of beside it |
+| `min-width: 561px` and `max-width: 1279px` | Lexicon | The deck link drops below the chips, on the left |
+| `max-width: 900px` | Deck | Card above the script instead of beside it; the script fills the height below the card |
 | `max-width: 760px` | Top | Phone sheets: tighter padding, inline headline, HUD shows dots only |
+| `max-width: 760px` and `max-height: 700px` | Top | Short phones: the Start sheet drops its side notes |
 | `max-width: 560px` | Lexicon | Two cards a row with names only; the chips scroll sideways |
-| `max-height: 500px` | Both | A phone on its side: drops the ball preview and step descriptions; deck card and script side by side |
+| `max-height: 500px` | All | A phone on its side: drops the ball preview and step descriptions; the Lexicon chips scroll sideways; deck card and script side by side |
 
 ## Checking a change
 

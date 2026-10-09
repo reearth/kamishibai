@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- A 4:3 picture card on ink: the ball resting on its floor. -->
+  <rect width="32" height="32" rx="7" fill="#121212"/>
+  <rect x="4" y="7" width="24" height="18" fill="#fafaf7"/>
+  <rect x="4" y="21" width="24" height="1.5" fill="#121212"/>
+  <circle cx="16" cy="16.5" r="4.5" fill="#d9662a"/>
+</svg>

@@ -1,7 +1,8 @@
 ---
-// One term's 4:3 frame. The build draws it at t = 0; the page's clock
-// redraws the same shapes from then on.
-import { DRAW } from "../lib/draw.ts";
+// One term's 4:3 frame. A term drawn as shapes is drawn here at t = 0, and
+// the page's clock redraws the same shapes from then on; a painted term
+// gets a canvas that the page's clock paints.
+import { PAINT, SHAPES } from "../lib/draw.ts";
 import { shapeStyle } from "../lib/reel.ts";
 
 interface Props {
@@ -9,14 +10,16 @@ interface Props {
   dark?: boolean;
 }
 const { id, dark } = Astro.props;
-const shapes = DRAW[id]?.(0) ?? [];
+const painted = id in PAINT;
+const shapes = painted ? [] : (SHAPES[id]?.(0) ?? []);
 ---
 <span class={`frame${dark ? " dark" : ""}`} data-term={id} aria-hidden="true">
-  {shapes.map((s) => <span class="shape" style={shapeStyle(s)}></span>)}
+  {painted ? <canvas class="paint"></canvas> : shapes.map((s) => <span class="shape" style={shapeStyle(s)}></span>)}
 </span>
 
 <style>
   .frame { display: block; position: relative; aspect-ratio: 4 / 3; background: var(--frame-bg); border: 1px solid var(--ink); overflow: hidden; }
-  .frame.dark { background: #1e1a17; }
+  .frame.dark { background: var(--night); }
   .shape { position: absolute; display: block; }
+  .paint { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 </style>
