@@ -1,0 +1,45 @@
+/* The site's look: white paper on a grey desk, ink, and one kamishibai-frame
+   orange. Monospace is for code and numbers only. */
+:root {
+  --desk: #e7e5df;
+  --paper: #fafaf7;
+  --frame-bg: #ffffff;
+  --ink: #121212;
+  --ink-2: #3e3e3a;
+  --ink-3: #6e6e69;
+  --rule: #d8d6cf;
+  --well: #efeee9;
+  --kaki: #d9662a; /* fills: the ball, captured frames, chapter cards */
+  --kaki-text: #b84e14; /* text on paper (4.5:1) */
+  --copy: #c8cbd2; /* copied frames */
+  --sans: "Geist", "Zen Kaku Gothic New", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: var(--ink); }
+a:hover { color: var(--kaki-text); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--kaki-text); outline-offset: 3px; }
+
+.mono { font-family: var(--mono); }
+.btn {
+  appearance: none; background: transparent; border: 1px solid var(--ink); padding: 12px 18px;
+  font-size: 15px; font-weight: 500; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+}
+.btn.solid { background: var(--ink); color: var(--paper); }
+.btn.solid:hover { color: var(--paper); background: #000; }
+.btn.ghost { border-color: transparent; }
+.code {
+  font-family: var(--mono); font-size: clamp(12px, 1.6vw, 16px); background: var(--well); border: 1px solid var(--rule);
+  padding: 14px 18px; overflow-x: auto; white-space: pre; margin: 0;
+}
+.site-nav { display: flex; gap: 28px; font-size: 15px; font-weight: 500; }
+.site-nav a { text-decoration: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

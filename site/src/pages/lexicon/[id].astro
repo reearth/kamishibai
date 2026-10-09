@@ -1,0 +1,17 @@
+---
+// A permalink for every card in the deck: a term, or a chapter's title card.
+// It is the Lexicon page with the deck open at that card.
+import Base from "../../layouts/Base.astro";
+import Lexicon from "../../components/Lexicon.astro";
+import { buildDeck } from "../../lib/terms.ts";
+
+export function getStaticPaths() {
+  return buildDeck().map((card) => ({ params: { id: card.id }, props: { card } }));
+}
+const { card } = Astro.props;
+const title = card.kind === "term" ? `${card.en} (${card.ja})` : `${card.cat} (${card.ja})`;
+const description = card.kind === "term" ? card.desc : `${card.count} ${card.cat.toLowerCase()} terms in the Lexicon of motion.`;
+---
+<Base title={`${title} — Lexicon of motion`} description={description}>
+  <Lexicon initial={card.id} />
+</Base>

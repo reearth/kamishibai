@@ -1,0 +1,22 @@
+---
+// One term's 4:3 frame. The build draws it at t = 0; the page's clock
+// redraws the same shapes from then on.
+import { DRAW } from "../lib/draw.ts";
+import { shapeStyle } from "../lib/reel.ts";
+
+interface Props {
+  id: string;
+  dark?: boolean;
+}
+const { id, dark } = Astro.props;
+const shapes = DRAW[id]?.(0) ?? [];
+---
+<span class={`frame${dark ? " dark" : ""}`} data-term={id} aria-hidden="true">
+  {shapes.map((s) => <span class="shape" style={shapeStyle(s)}></span>)}
+</span>
+
+<style>
+  .frame { display: block; position: relative; aspect-ratio: 4 / 3; background: var(--frame-bg); border: 1px solid var(--ink); overflow: hidden; }
+  .frame.dark { background: #1e1a17; }
+  .shape { position: absolute; display: block; }
+</style>

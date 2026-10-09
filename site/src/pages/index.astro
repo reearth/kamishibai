@@ -1,0 +1,280 @@
+---
+import Base from "../layouts/Base.astro";
+import { FRAMES, FPS, ballAt, ballStyle, isCopy } from "../lib/ball.ts";
+
+const base = import.meta.env.BASE_URL;
+const frames = Array.from({ length: FRAMES }, (_, i) => ({ i, style: ballStyle(ballAt(i)), copy: isCopy(i) }));
+const captured = frames.filter((f) => !f.copy).length;
+const chrome = [0, 1, 2];
+---
+<Base
+  title="kamishibai — turn any web page into a video"
+  description="kamishibai seeks a web page to each moment, captures the still, and hands the stills to ffmpeg. Every frame is a pure function of its time."
+>
+  <main class="reel">
+    <div class="stage">
+      <!-- The sheets, top one last. Scrolling pulls each one out sideways, the
+           way a kamishibai card is pulled. -->
+      <section class="sheet" data-sheet="4" aria-labelledby="start">
+        <span class="no mono">05 / 05</span>
+        <h2 class="h2" id="start">Start.</h2>
+        <div class="codes">
+          <pre class="code">npm i kamishibai react react-dom</pre>
+          <pre class="code">npx kamishibai dev reel.tsx</pre>
+          <pre class="code">npx kamishibai render reel.tsx -o reel.mp4</pre>
+        </div>
+        <div class="row">
+          <a class="btn solid" href="https://github.com/reearth/kamishibai">GitHub</a>
+          <a class="btn" href="https://github.com/reearth/kamishibai/blob/main/docs/README.md">Docs</a>
+          <a class="btn" href={`${base}lexicon/`}>Lexicon of motion</a>
+        </div>
+        <span class="small">MIT · Node.js 20+ · ffmpeg on PATH</span>
+      </section>
+
+      <section class="sheet" data-sheet="3" aria-labelledby="static">
+        <span class="no mono">04 / 05</span>
+        <h2 class="h2" id="static">A frame that doesn't change costs nothing.</h2>
+        <div class="lane wide" aria-hidden="true">
+          {frames.map((f) => <span class={f.copy ? "copy" : "captured"}></span>)}
+        </div>
+        <div class="legend">
+          <span><i class="captured"></i>captured</span>
+          <span><i class="copy"></i>copied from the frame before</span>
+          <span class="mono">renders {captured} of {FRAMES} frames</span>
+        </div>
+        <p class="lead">When seek returns the same fingerprint as the frame before, the still is copied, not captured. With <code class="mono">--incremental</code>, an edit re-captures only the frames it changed.</p>
+      </section>
+
+      <section class="sheet" data-sheet="2" aria-labelledby="parallel">
+        <span class="no mono">03 / 05</span>
+        <h2 class="h2" id="parallel">Any frame, any Chrome.</h2>
+        <div class="chunks" aria-hidden="true">
+          {chrome.map((k) => (
+            <div class="chunk">
+              <span class="mono">Chrome #{k + 1}</span>
+              <div class="cells">
+                {Array.from({ length: 24 }, (_, i) => <span class={Math.floor(i / 8) === k ? `on c${k}` : ""}></span>)}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p class="lead">A frame depends only on its time, so the reel is cut into chunks and every chunk goes to its own headless Chrome. ffmpeg puts the stills, the sound and the subtitles together.</p>
+      </section>
+
+      <section class="sheet split" data-sheet="1" aria-labelledby="contract">
+        <div class="col">
+          <span class="no mono">02 / 05</span>
+          <h2 class="h2" id="contract">One contract.</h2>
+          <p class="lead">A page exposes one global. Inside seek, re-render React, draw on a canvas, move a WebGL camera. The renderer only seeks, waits for the page to settle, and takes the still.</p>
+        </div>
+        <pre class="code dark">{`window.kamishibai = {
+  meta: { fps: 30, durationMs: 6000,
+          width: 1920, height: 1080 },
+  seek(ms) {
+    // build the still for this moment
+  },
+};`}</pre>
+      </section>
+
+      <section class="sheet hero" data-sheet="0" aria-labelledby="title">
+        <header class="top">
+          <a class="logo" href={base}>kamishibai</a>
+          <nav class="site-nav">
+            <a href={`${base}lexicon/`}>Lexicon</a>
+            <a href="https://github.com/reearth/kamishibai/blob/main/docs/README.md">Docs</a>
+            <a href="https://github.com/reearth/kamishibai">GitHub</a>
+          </nav>
+        </header>
+        <div class="split">
+          <div class="col">
+            <span class="no mono">01 / 05</span>
+            <h1 class="h1" id="title">A video is<br />a stack of<br />moments.</h1>
+            <p class="lead">kamishibai seeks any web page to each moment and captures it. Every frame is a pure function of its time.</p>
+            <span class="hint">Scroll to pull the page</span>
+          </div>
+          <div class="sheet-art">
+            <div class="preview" aria-hidden="true">
+              <div class="floor"></div>
+              <div class="ball" id="ball" style={ballStyle(ballAt(0))}></div>
+            </div>
+            <div class="meta mono" aria-live="off">
+              <span>seek(<span id="seek-ms">0ms</span>) · <span id="seek-mode">playing</span></span>
+              <span>frame <span id="frame-no">00</span> / {FRAMES - 1} · <span id="frame-fate">capture</span></span>
+            </div>
+            <div class="contact wide-only" id="contact">
+              {frames.map((f) => (
+                <span class="cell" data-frame={f.i} title={`frame ${f.i}`}>
+                  <span class="floor"></span>
+                  <span class="ball" style={f.style}></span>
+                </span>
+              ))}
+            </div>
+            <div class="lane wide-only" aria-hidden="true">
+              {frames.map((f) => <span class={f.copy ? "copy" : "captured"}></span>)}
+            </div>
+            <span class="small wide-only">Hover a frame to seek to it. Every frame is drawn from its time alone.</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="hud mono" aria-hidden="true">
+        <span>scroll = seek(<span id="scroll-ms">0ms</span>)</span>
+        <span class="dots">{[0, 1, 2, 3, 4].map((i) => <i data-dot={i}></i>)}</span>
+      </div>
+    </div>
+    <div class="runway" aria-hidden="true"></div>
+  </main>
+</Base>
+
+<style>
+  .reel { position: relative; }
+  .stage { position: sticky; top: 0; height: 100svh; min-height: 600px; overflow: hidden; }
+  .runway { height: 400svh; }
+  .sheet {
+    position: absolute; inset: 20px; overflow: hidden; background: var(--paper);
+    padding: clamp(24px, 5vw, 64px) clamp(20px, 6vw, 80px);
+    display: flex; flex-direction: column; justify-content: center; gap: 28px;
+    transform-origin: left center; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    will-change: transform;
+  }
+  .sheet[data-sheet="0"] { z-index: 5; justify-content: flex-start; padding-top: 28px; }
+  .sheet[data-sheet="1"] { z-index: 4; }
+  .sheet[data-sheet="2"] { z-index: 3; }
+  .sheet[data-sheet="3"] { z-index: 2; }
+  .sheet[data-sheet="4"] { z-index: 1; }
+  .split { display: flex; flex-wrap: wrap; align-items: center; gap: 56px; }
+  .sheet.split { flex-direction: row; }
+  .hero > .split { flex: 1; min-height: 0; }
+  .col { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; }
+  .no { font-size: 12px; color: var(--ink-3); }
+  .h1 { margin: 0; font-size: clamp(40px, min(7vw, 9vh), 80px); line-height: 0.98; font-weight: 800; letter-spacing: -0.05em; }
+  .h2 { margin: 0; font-size: clamp(32px, 5.6vw, 64px); line-height: 1; font-weight: 800; letter-spacing: -0.045em; max-width: 900px; }
+  .lead { margin: 0; max-width: 560px; font-size: 18px; line-height: 1.6; color: var(--ink-2); }
+  .hint { font-size: 15px; font-weight: 500; color: var(--kaki-text); }
+  .small { font-size: 13px; color: var(--ink-3); }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .codes { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
+  .code.dark { flex: 1 1 520px; min-width: 0; background: var(--ink); color: var(--paper); border: 0; padding: clamp(18px, 3vw, 36px); line-height: 1.75; }
+
+  .sheet-art { flex: 0 1 auto; width: min(520px, 64vh); max-width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  /* align-self keeps the column from stretching it, so the 4:3 holds. */
+  .preview { position: relative; align-self: flex-start; height: min(300px, 32vh); aspect-ratio: 4 / 3; max-width: 100%; background: var(--frame-bg); border: 1px solid var(--ink); overflow: hidden; }
+  .floor { position: absolute; left: 0; right: 0; top: 84%; height: 1px; background: var(--ink); }
+  .ball { position: absolute; width: 11%; aspect-ratio: 1; border-radius: 50%; background: var(--kaki); transform-origin: 50% 100%; }
+  .meta { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); }
+  .contact { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+  .cell { position: relative; aspect-ratio: 4 / 3; background: var(--frame-bg); outline: 1px solid var(--rule); overflow: hidden; cursor: crosshair; }
+  .cell.now { box-shadow: 0 0 0 2px var(--kaki); }
+  .lane { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 2px; height: 8px; margin-top: 4px; }
+  .lane.wide { height: 18px; gap: 3px; max-width: 1100px; }
+  .lane .captured, .legend .captured { background: var(--kaki); }
+  .lane .copy, .legend .copy { background: var(--copy); }
+  .legend { display: flex; flex-wrap: wrap; gap: 24px; font-size: 13px; color: var(--ink-2); align-items: center; }
+  .legend span { display: flex; gap: 8px; align-items: center; }
+  .legend i { width: 14px; height: 8px; }
+  .chunks { display: flex; flex-direction: column; gap: 10px; max-width: 1100px; }
+  .chunk { display: flex; align-items: center; gap: 16px; }
+  .chunk > span { width: 96px; flex: none; font-size: 13px; color: var(--ink-2); }
+  .cells { flex: 1; display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 3px; height: 26px; }
+  .cells span { background: var(--well); }
+  .cells .c0 { background: var(--kaki); }
+  .cells .c1 { background: #e8955f; }
+  .cells .c2 { background: #f2c3a0; }
+
+  .hud { position: absolute; left: 40px; bottom: 40px; z-index: 10; display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--ink-2); background: rgba(250, 250, 247, 0.92); padding: 8px 12px; border: 1px solid var(--rule); }
+  .dots { display: flex; gap: 3px; }
+  .dots i { width: 18px; height: 6px; background: var(--rule); }
+  .dots i.on { background: var(--kaki); }
+
+  /* The contact sheet needs room: wide and tall screens only. */
+  @media (max-width: 1179px), (max-height: 719px) { .wide-only { display: none !important; } }
+  @media (max-width: 1179px) { .preview { height: min(240px, 26vh); } }
+  @media (max-width: 760px) { .hud { left: 24px; bottom: 24px; } }
+</style>
+
+<script>
+  import { FRAMES, FPS, ballAt, ballStyle, isCopy } from "../lib/ball.ts";
+  import { reel } from "../lib/reel.ts";
+
+  const sheets = [...document.querySelectorAll<HTMLElement>(".sheet")].sort(
+    (a, b) => Number(a.dataset.sheet) - Number(b.dataset.sheet),
+  );
+  const dots = [...document.querySelectorAll<HTMLElement>("[data-dot]")];
+  const scrollMs = document.getElementById("scroll-ms")!;
+  const ball = document.getElementById("ball")!;
+  const seekMs = document.getElementById("seek-ms")!;
+  const seekMode = document.getElementById("seek-mode")!;
+  const frameNo = document.getElementById("frame-no")!;
+  const frameFate = document.getElementById("frame-fate")!;
+  const cells = [...document.querySelectorAll<HTMLElement>(".cell")];
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const smooth = (p: number) => p * p * (3 - 2 * p);
+
+  // Scroll is the playhead: s counts screens scrolled. Each sheet rests, then
+  // is pulled out over the middle of its screen of scroll.
+  function pull(): void {
+    const s = Math.min(sheets.length - 1, window.scrollY / Math.max(1, window.innerHeight));
+    const idx = Math.floor(s);
+    const q = smooth(clamp((s - idx - 0.12) / 0.76));
+    sheets.forEach((el, i) => {
+      const p = i < idx ? 1 : i === idx ? q : 0;
+      el.style.transform = p === 0 ? "" : `translateX(${(-p * 108).toFixed(2)}%) rotate(${(-p * 1.6).toFixed(3)}deg)`;
+      el.style.boxShadow = p > 0 && p < 1 ? `0 ${(2 + p * 30).toFixed(0)}px ${(6 + p * 60).toFixed(0)}px rgba(0,0,0,.22)` : "";
+      el.inert = i !== Math.round(s);
+    });
+    scrollMs.textContent = `${Math.round(s * 1000)}ms`;
+    dots.forEach((d, i) => d.classList.toggle("on", i === Math.round(s)));
+  }
+
+  // The ball plays on the wall clock until a frame is hovered; then it shows
+  // that frame. Either way the picture is ballAt(frame), nothing else.
+  let held: number | null = null;
+  let shown = -1;
+  function show(f: number): void {
+    if (f === shown) return;
+    shown = f;
+    ball.setAttribute("style", ballStyle(ballAt(f)));
+    seekMs.textContent = `${Math.round((f * 1000) / FPS)}ms`;
+    frameNo.textContent = String(f).padStart(2, "0");
+    frameFate.textContent = isCopy(f) ? "copy" : "capture";
+    cells.forEach((c, i) => c.classList.toggle("now", i === f));
+  }
+  const ballLoop = ((FRAMES + 8) * 1000) / FPS; // the reel, then a short pause
+  function playBall(ms: number): void {
+    const f = held ?? (reduced ? 16 : Math.min(FRAMES - 1, Math.floor(((ms % ballLoop) * FPS) / 1000)));
+    seekMode.textContent = held != null ? "seeking" : "playing";
+    show(f);
+  }
+  cells.forEach((c) => c.addEventListener("mouseenter", () => (held = Number(c.dataset.frame))));
+  document.getElementById("contact")?.addEventListener("mouseleave", () => (held = null));
+
+  let queued = false;
+  addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      pull();
+    });
+  }, { passive: true });
+  addEventListener("resize", pull);
+  pull();
+
+  // As a reel, the page pulls its sheets one after another while the ball
+  // plays: each sheet rests, then is pulled over the last PULL_MS of its share.
+  const SHEET_MS = 3200;
+  const PULL_MS = 800;
+  reel({ fps: 30, durationMs: sheets.length * SHEET_MS, width: 1440, height: 900 }, (ms, driven) => {
+    if (driven) {
+      const k = Math.min(sheets.length - 1, Math.floor(ms / SHEET_MS));
+      const p = k < sheets.length - 1 ? clamp((ms - k * SHEET_MS - (SHEET_MS - PULL_MS)) / PULL_MS) : 0;
+      window.scrollTo(0, (k + (p > 0 ? 0.12 + 0.76 * p : 0)) * window.innerHeight);
+      pull();
+    }
+    playBall(ms);
+  });
+</script>
