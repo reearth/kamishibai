@@ -165,7 +165,9 @@ const host = new URL(base, Astro.site).host + base;
   .url { font-size: 13px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .deck-body { flex: 1; min-height: 0; display: flex; gap: clamp(20px, 3vw, 48px); }
   .pile { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; }
-  .holder { position: relative; height: min(100%, calc((100vw - 560px) * 0.75)); min-height: 200px; aspect-ratio: 4 / 3; max-width: calc(100% - 96px); }
+  /* As tall as fits, or as tall as 4:3 allows in the width beside the script
+     (stage padding, the 380px script, the gap, the ‹ › buttons). */
+  .holder { position: relative; height: min(100%, calc((100vw - 2 * clamp(16px, 3vw, 40px) - 380px - clamp(20px, 3vw, 48px) - 96px) * 0.75)); min-height: 200px; aspect-ratio: 4 / 3; max-width: calc(100% - 96px); }
   .dcard { position: absolute; inset: 0; background: var(--paper); padding: 4%; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06); will-change: transform; }
   .dcard[hidden] { display: none; }
   .dcard :global(.frame) { height: 100%; aspect-ratio: auto; }
@@ -200,6 +202,53 @@ const host = new URL(base, Astro.site).host + base;
     .scripts { width: auto; flex: 1 1 auto; }
     .note, .url, .thumbs { display: none; }
     .holder { height: auto; width: calc(100% - 96px); max-width: none; }
+  }
+  /* Phones: two cards a row, names only; the chips scroll sideways. */
+  @media (max-width: 560px) {
+    .intro { padding-top: 16px; gap: 14px; }
+    .lead { font-size: 16px; line-height: 1.55; }
+    .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 calc(-1 * clamp(16px, 4vw, 40px)); padding: 0 clamp(16px, 4vw, 40px); scrollbar-width: none; }
+    .chip { flex: none; }
+    .chip.accent { margin-left: 0; }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .card { padding: 8px 8px 10px; gap: 8px; }
+    .name { flex-direction: column; gap: 2px; }
+    .name b { font-size: 15px; }
+    .name span { font-size: 12px; }
+    .desc { display: none; }
+    .deck-stage { padding: 12px 16px; }
+    .deck-top { padding: 0 0 10px; }
+    .deck-body { gap: 12px; }
+    .holder { width: calc(100% - 80px); min-height: 0; }
+    .nav.prev { left: -42px; }
+    .nav.next { right: -42px; }
+    .chapter .big { font-size: 36px; }
+    .chapter .sub { font-size: 15px; }
+    .script { padding: 16px; gap: 10px; }
+    .script h2 { font-size: 26px; }
+    .script .ja { font-size: 14px; margin-top: 2px; }
+    .script p { font-size: 14px; line-height: 1.55; }
+    .ask { padding: 10px 12px; gap: 8px; }
+    .ask p { font-size: 13px; line-height: 1.5; }
+    .deck-foot { display: none; }
+  }
+  /* Short screens (a phone on its side): card and script side by side. */
+  @media (max-height: 500px) {
+    .deck-stage { min-height: 0; padding: 8px 16px; }
+    .deck-top { padding: 0 0 6px; }
+    .deck-body { flex-direction: row; gap: 16px; }
+    /* The height that keeps 4:3 in the width left beside the script. */
+    .holder { height: min(100%, calc((100vw - 48px - min(300px, 38vw) - 96px) * 0.75)); width: auto; max-width: none; min-height: 0; }
+    .scripts { width: min(300px, 38vw); flex: none; }
+    .script { padding: 14px; gap: 8px; }
+    .script h2 { font-size: 22px; }
+    .script .ja { font-size: 13px; margin-top: 2px; }
+    .script p { font-size: 13px; line-height: 1.5; }
+    .ask { padding: 8px 10px; gap: 6px; }
+    .ask p { font-size: 12px; line-height: 1.45; }
+    .ask > span, .note, .deck-foot { display: none; }
+    .chapter .big { font-size: 32px; }
+    .chapter .sub { font-size: 14px; }
   }
 </style>
 

@@ -6,10 +6,11 @@ const base = import.meta.env.BASE_URL;
 const frames = Array.from({ length: FRAMES }, (_, i) => ({ i, style: ballStyle(ballAt(i)), copy: isCopy(i) }));
 const captured = frames.filter((f) => !f.copy).length;
 const chrome = [0, 1, 2];
+const ask = "Make a 20-second video with the kamishibai npm package.";
 ---
 <Base
-  title="kamishibai — turn any web page into a video"
-  description="kamishibai seeks a web page to each moment, captures the still, and hands the stills to ffmpeg. Every frame is a pure function of its time."
+  title="kamishibai — if your agent can write a web page, it can make a video"
+  description="kamishibai turns a web page that draws any moment into an MP4. One small contract to learn, and anything a browser can draw."
 >
   <main class="reel">
     <div class="stage">
@@ -18,10 +19,15 @@ const chrome = [0, 1, 2];
       <section class="sheet" data-sheet="4" aria-labelledby="start">
         <span class="no mono">05 / 05</span>
         <h2 class="h2" id="start">Start.</h2>
+        <div class="ask">
+          <span>Ask your agent</span>
+          <p>{ask}</p>
+          <button type="button" class="btn solid" data-copy={ask}>Copy</button>
+        </div>
         <div class="codes">
+          <span class="small">Or by hand. Teach your agent with the skill first, if you like.</span>
+          <pre class="code">npx skills add reearth/kamishibai --skill kamishibai</pre>
           <pre class="code">npm i kamishibai react react-dom</pre>
-          <pre class="code">npx kamishibai dev reel.tsx</pre>
-          <pre class="code">npx kamishibai render reel.tsx -o reel.mp4</pre>
         </div>
         <div class="row">
           <a class="btn solid" href="https://github.com/reearth/kamishibai">GitHub</a>
@@ -31,23 +37,9 @@ const chrome = [0, 1, 2];
         <span class="small">MIT · Node.js 20+ · ffmpeg on PATH</span>
       </section>
 
-      <section class="sheet" data-sheet="3" aria-labelledby="static">
+      <section class="sheet" data-sheet="3" aria-labelledby="redo">
         <span class="no mono">04 / 05</span>
-        <h2 class="h2" id="static">A frame that doesn't change costs nothing.</h2>
-        <div class="lane wide" aria-hidden="true">
-          {frames.map((f) => <span class={f.copy ? "copy" : "captured"}></span>)}
-        </div>
-        <div class="legend">
-          <span><i class="captured"></i>captured</span>
-          <span><i class="copy"></i>copied from the frame before</span>
-          <span class="mono">renders {captured} of {FRAMES} frames</span>
-        </div>
-        <p class="lead">When seek returns the same fingerprint as the frame before, the still is copied, not captured. With <code class="mono">--incremental</code>, an edit re-captures only the frames it changed.</p>
-      </section>
-
-      <section class="sheet" data-sheet="2" aria-labelledby="parallel">
-        <span class="no mono">03 / 05</span>
-        <h2 class="h2" id="parallel">Any frame, any Chrome.</h2>
+        <h2 class="h2" id="redo">Cheap to render,<br />cheap to redo.</h2>
         <div class="chunks" aria-hidden="true">
           {chrome.map((k) => (
             <div class="chunk">
@@ -58,14 +50,47 @@ const chrome = [0, 1, 2];
             </div>
           ))}
         </div>
-        <p class="lead">A frame depends only on its time, so the reel is cut into chunks and every chunk goes to its own headless Chrome. ffmpeg puts the stills, the sound and the subtitles together.</p>
+        <div class="chunk" aria-hidden="true">
+          <span class="mono">{FRAMES} frames</span>
+          <div class="lane wide">
+            {frames.map((f) => <span class={f.copy ? "copy" : "captured"}></span>)}
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="captured"></i>captured</span>
+          <span><i class="copy"></i>copied from the frame before</span>
+          <span class="mono">renders {captured} of {FRAMES} frames</span>
+        </div>
+        <p class="lead">A frame depends only on its time, so the reel is cut into chunks, one headless Chrome each. A frame that doesn't change is copied, not captured, and with <code class="mono">--incremental</code> an edit re-captures only the frames it changed.</p>
       </section>
 
-      <section class="sheet split" data-sheet="1" aria-labelledby="contract">
+      <section class="sheet" data-sheet="2" aria-labelledby="how">
+        <span class="no mono">03 / 05</span>
+        <h2 class="h2" id="how">Write. Watch. Render.</h2>
+        <ol class="steps">
+          <li>
+            <b>Write a page</b>
+            <p>It draws the state at time <code class="mono">ms</code>. Plain DOM, React, canvas or WebGL.</p>
+            <pre class="code">reel.tsx</pre>
+          </li>
+          <li>
+            <b>Watch it</b>
+            <p>A player drives the page through seek alone: scrub, step frames, hear the sound, read the subtitles.</p>
+            <pre class="code">npx kamishibai dev reel.tsx</pre>
+          </li>
+          <li>
+            <b>Render it</b>
+            <p>Chrome captures each moment, and ffmpeg puts the stills, the sound and the subtitles into out.mp4.</p>
+            <pre class="code">npx kamishibai render reel.tsx</pre>
+          </li>
+        </ol>
+      </section>
+
+      <section class="sheet split" data-sheet="1" aria-labelledby="why">
         <div class="col">
           <span class="no mono">02 / 05</span>
-          <h2 class="h2" id="contract">One contract.</h2>
-          <p class="lead">A page exposes one global. Inside seek, re-render React, draw on a canvas, move a WebGL camera. The renderer only seeks, waits for the page to settle, and takes the still.</p>
+          <h2 class="h2" id="why">Nothing to learn.</h2>
+          <p class="lead">The whole contract is one global with two fields. No timeline, no component library, no project format. Your agent writes the page the way it writes any page, and anything a browser can draw ends up in the video.</p>
         </div>
         <pre class="code dark">{`window.kamishibai = {
   meta: { fps: 30, durationMs: 6000,
@@ -88,8 +113,8 @@ const chrome = [0, 1, 2];
         <div class="split">
           <div class="col">
             <span class="no mono">01 / 05</span>
-            <h1 class="h1" id="title">A video is<br />a stack of<br />moments.</h1>
-            <p class="lead">kamishibai seeks any web page to each moment and captures it. Every frame is a pure function of its time.</p>
+            <h1 class="h1" id="title"><span>If your agent</span> <span>can write a web page,</span> <span>it can make a video.</span></h1>
+            <p class="lead">kamishibai turns a page that draws any moment into an MP4. It seeks the page to each moment and captures it, so every frame is a pure function of its time.</p>
             <span class="hint">Scroll to pull the page</span>
           </div>
           <div class="sheet-art">
@@ -141,21 +166,31 @@ const chrome = [0, 1, 2];
   .sheet[data-sheet="1"] { z-index: 4; }
   .sheet[data-sheet="2"] { z-index: 3; }
   .sheet[data-sheet="3"] { z-index: 2; }
-  .sheet[data-sheet="4"] { z-index: 1; }
-  .split { display: flex; flex-wrap: wrap; align-items: center; gap: 56px; }
+  .sheet[data-sheet="4"] { z-index: 1; gap: 20px; }
+  .split { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 56px; }
   .sheet.split { flex-direction: row; }
   .hero > .split { flex: 1; min-height: 0; }
   .col { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; }
   .no { font-size: 12px; color: var(--ink-3); }
-  .h1 { margin: 0; font-size: clamp(40px, min(7vw, 9vh), 80px); line-height: 0.98; font-weight: 800; letter-spacing: -0.05em; }
+  .h1 { margin: 0; font-size: clamp(34px, min(5.4vw, 7.6vh), 68px); line-height: 1.02; font-weight: 800; letter-spacing: -0.05em; }
   .h2 { margin: 0; font-size: clamp(32px, 5.6vw, 64px); line-height: 1; font-weight: 800; letter-spacing: -0.045em; max-width: 900px; }
   .lead { margin: 0; max-width: 560px; font-size: 18px; line-height: 1.6; color: var(--ink-2); }
+  .h1 span { display: block; }
   .hint { font-size: 15px; font-weight: 500; color: var(--kaki-text); }
   .small { font-size: 13px; color: var(--ink-3); }
   .row { display: flex; gap: 14px; flex-wrap: wrap; }
   .codes { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
+  .ask { max-width: 640px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; background: var(--well); padding: 16px 18px; border: 1px solid var(--rule); }
+  .ask > span { font-size: 13px; font-weight: 500; color: var(--ink-3); }
+  .ask p { margin: 0 0 auto; color: var(--ink); font-size: 18px; line-height: 1.5; font-weight: 500; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: clamp(16px, 3vw, 40px); max-width: 1200px; counter-reset: step; }
+  .steps li { display: flex; flex-direction: column; gap: 10px; counter-increment: step; }
+  .steps b { font-size: 20px; letter-spacing: -0.01em; }
+  .steps b::before { content: counter(step); display: inline-block; width: 1.5em; color: var(--kaki-text); font-family: var(--mono); font-weight: 500; }
+  .steps p { margin: 0; flex: 1; font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+  .steps .code { white-space: pre-wrap; overflow-wrap: anywhere; }
   .code.dark { flex: 1 1 520px; min-width: 0; background: var(--ink); color: var(--paper); border: 0; padding: clamp(18px, 3vw, 36px); line-height: 1.75; }
 
   .sheet-art { flex: 0 1 auto; width: min(520px, 64vh); max-width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -168,13 +203,14 @@ const chrome = [0, 1, 2];
   .cell { position: relative; aspect-ratio: 4 / 3; background: var(--frame-bg); outline: 1px solid var(--rule); overflow: hidden; cursor: crosshair; }
   .cell.now { box-shadow: 0 0 0 2px var(--kaki); }
   .lane { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 2px; height: 8px; margin-top: 4px; }
-  .lane.wide { height: 18px; gap: 3px; max-width: 1100px; }
+  .lane.wide { flex: 1; height: 18px; gap: 3px; margin: 0; }
   .lane .captured, .legend .captured { background: var(--kaki); }
   .lane .copy, .legend .copy { background: var(--copy); }
-  .legend { display: flex; flex-wrap: wrap; gap: 24px; font-size: 13px; color: var(--ink-2); align-items: center; }
+  .legend { display: flex; flex-wrap: wrap; gap: 24px; padding-left: 112px; font-size: 13px; color: var(--ink-2); align-items: center; }
   .legend span { display: flex; gap: 8px; align-items: center; }
   .legend i { width: 14px; height: 8px; }
   .chunks { display: flex; flex-direction: column; gap: 10px; max-width: 1100px; }
+  .sheet > .chunk { max-width: 1100px; }
   .chunk { display: flex; align-items: center; gap: 16px; }
   .chunk > span { width: 96px; flex: none; font-size: 13px; color: var(--ink-2); }
   .cells { flex: 1; display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 3px; height: 26px; }
@@ -190,8 +226,61 @@ const chrome = [0, 1, 2];
 
   /* The contact sheet needs room: wide and tall screens only. */
   @media (max-width: 1179px), (max-height: 719px) { .wide-only { display: none !important; } }
-  @media (max-width: 1179px) { .preview { height: min(240px, 26vh); } }
-  @media (max-width: 760px) { .hud { left: 24px; bottom: 24px; } }
+  @media (max-width: 1179px) { .preview { height: min(240px, 26vh); } .sheet-art { width: auto; } }
+  /* Phones: tighter sheets, room kept at the bottom for the HUD. */
+  @media (max-width: 760px) {
+    .sheet { inset: 10px; padding: 22px 20px 64px; gap: 18px; }
+    .sheet[data-sheet="0"] { padding-top: 20px; }
+    .top { flex-wrap: nowrap; }
+    .logo { font-size: 18px; }
+    .site-nav { gap: 16px; font-size: 14px; }
+    .h1 { font-size: clamp(30px, 8.6vw, 40px); }
+    .h1 span { display: inline; }
+    .h2 { font-size: clamp(28px, 8.4vw, 38px); }
+    .lead { font-size: 15px; line-height: 1.55; }
+    .col { gap: 14px; }
+    .hint, .meta { display: none; }
+    .hero .split { gap: 20px; }
+    .preview { height: min(170px, 22vh); }
+    .steps { gap: 18px; }
+    .steps li { gap: 6px; }
+    .steps b { font-size: 17px; }
+    .steps p { font-size: 14px; }
+    .code { font-size: 12px; padding: 10px 12px; white-space: pre-wrap; }
+    .chunk > span { width: 64px; font-size: 11px; }
+    .legend { padding-left: 0; gap: 8px 14px; font-size: 12px; }
+    .ask { padding: 12px 14px; }
+    .ask p { font-size: 16px; }
+    .hud { left: 24px; bottom: 22px; padding: 8px 10px; }
+    .hud > span:first-child { display: none; }
+  }
+  /* Short screens (a phone on its side): the sheet must fit the height. */
+  @media (max-height: 500px) {
+    .stage { min-height: 0; }
+    .sheet { inset: 8px; padding: 14px 28px 48px; gap: 12px; }
+    .sheet[data-sheet="0"] { padding-top: 14px; }
+    .sheet-art, .hint { display: none; }
+    .h1 { font-size: 32px; }
+    .h2 { font-size: 30px; }
+    .lead { font-size: 14px; line-height: 1.5; }
+    .col { gap: 10px; }
+    .split, .sheet.split { gap: 20px; }
+    .code.dark { padding: 14px 18px; font-size: 12px; line-height: 1.6; }
+    .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .steps p { display: none; }
+    .steps li { gap: 6px; }
+    .code { font-size: 12px; padding: 8px 12px; }
+    .chunks { gap: 6px; }
+    .cells { height: 16px; }
+    .lane.wide { height: 12px; }
+    .ask { flex-direction: row; align-items: center; justify-content: space-between; padding: 8px 8px 8px 14px; gap: 12px; }
+    .ask > span { display: none; }
+    .ask p { margin: 0; font-size: 15px; }
+    .codes { gap: 6px; }
+    .codes .small, .sheet[data-sheet="4"] > .small { display: none; }
+    .hud { left: 20px; bottom: 14px; padding: 6px 10px; }
+    .hud > span:first-child { display: none; }
+  }
 </style>
 
 <script>
@@ -249,6 +338,15 @@ const chrome = [0, 1, 2];
     seekMode.textContent = held != null ? "seeking" : "playing";
     show(f);
   }
+  document.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach((b) =>
+    b.addEventListener("click", () => {
+      void navigator.clipboard?.writeText(b.dataset.copy!).then(() => {
+        b.textContent = "Copied";
+        setTimeout(() => (b.textContent = "Copy"), 1800);
+      });
+    }),
+  );
+
   cells.forEach((c) => c.addEventListener("mouseenter", () => (held = Number(c.dataset.frame))));
   document.getElementById("contact")?.addEventListener("mouseleave", () => (held = null));
 
