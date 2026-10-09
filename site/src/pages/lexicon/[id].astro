@@ -12,6 +12,6 @@ const { card } = Astro.props;
 const title = card.kind === "term" ? `${card.en} (${card.ja})` : `${card.cat} (${card.ja})`;
 const description = card.kind === "term" ? card.desc : `${card.count} ${card.cat.toLowerCase()} terms in the Lexicon of motion.`;
 ---
-<Base title={`${title} — Lexicon of motion`} description={description}>
+<Base title={`${title} — Lexicon of motion`} description={description} image="og.png">
   <Lexicon initial={card.id} />
 </Base>

@@ -290,4 +290,83 @@ export const PAINT: Record<string, Paint> = {
       g.restore();
     });
   },
+
+  // The old shot overexposes to white on the beat, the cut hides at the
+  // peak, and the new shot comes up out of the white with a small punch.
+  "flash-transition": (g, t) => {
+    const half = t < 0.5 ? 0 : 1;
+    const u = (t - half * 0.5) / 0.5;
+    const from = half ? SHOT_B : SHOT_A, to = half ? SHOT_A : SHOT_B;
+    const PEAK = 0.4;
+    const rise = inCubic(span(u, PEAK - 0.115, PEAK));
+    const fall = 1 - out(span(u, PEAK, PEAK + 0.26));
+    const after = u >= PEAK;
+    const s = after ? 1 + 0.06 * fall : 1 + 0.025 * rise;
+    g.save();
+    g.translate(200, 150);
+    g.scale(s, s);
+    g.translate(-200, -150);
+    shot(g, after ? to : from);
+    g.restore();
+    const white = after ? fall : rise;
+    if (white > 0) {
+      g.globalAlpha = white;
+      fill(g, PAPER);
+      g.globalAlpha = 1;
+    }
+  },
+
+  // Down to black, a held beat of black, then up on the next scene.
+  "fade-to-black": (g, t) => {
+    const half = t < 0.5 ? 0 : 1;
+    const u = (t - half * 0.5) / 0.5;
+    const after = u >= 0.5;
+    shot(g, half ? (after ? SHOT_A : SHOT_B) : after ? SHOT_B : SHOT_A);
+    const dark = smooth(span(u, 0.14, 0.42)) - smooth(span(u, 0.58, 0.86));
+    if (dark > 0) {
+      g.globalAlpha = dark;
+      fill(g, "#000000");
+      g.globalAlpha = 1;
+    }
+  },
+
+  // A bright seam opens down the middle, then the two halves swing apart
+  // like doors to show the next shot behind them.
+  "barn-door": (g, t) => {
+    const { from, to, p } = phase(t);
+    const seam = smooth(span(p, 0, 0.2));
+    const d = (W / 2 + 24) * inOut(span(p, 0.12, 1));
+    if (p <= 0) return shot(g, from);
+    if (p >= 1) return shot(g, to);
+    shot(g, to);
+    // the doors, each with a soft shadow on its open edge
+    for (const side of [-1, 1]) {
+      g.save();
+      g.translate(side * d, 0);
+      g.shadowColor = `rgba(0,0,0,${(0.3 * clamp(d / 12)).toFixed(3)})`;
+      g.shadowBlur = 18;
+      g.shadowOffsetX = side * 6;
+      g.fillStyle = from.bg;
+      g.fillRect(side < 0 ? 0 : W / 2, 0, W / 2, H);
+      g.shadowColor = "transparent";
+      g.beginPath();
+      g.rect(side < 0 ? 0 : W / 2, 0, W / 2, H);
+      g.clip();
+      from.art(g);
+      g.restore();
+    }
+    // light spilling through the gap, strongest while it is still narrow
+    const glow = seam * (1 - smooth(span(p, 0.3, 0.75)));
+    if (glow > 0) {
+      const gw = Math.min(2 * d, 10) + 3 * seam;
+      g.save();
+      g.globalAlpha = glow;
+      g.shadowColor = KAKI_2;
+      g.shadowBlur = 26;
+      g.fillStyle = PAPER;
+      const h = H * seam;
+      g.fillRect(W / 2 - gw / 2, H / 2 - h / 2, gw, h);
+      g.restore();
+    }
+  },
 };

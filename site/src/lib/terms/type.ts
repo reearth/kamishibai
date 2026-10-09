@@ -31,4 +31,7 @@ export const TERMS: Term[] = [
   { id: "count-up", cat: "Type", en: "Count-up", ja: "カウントアップ",
     desc: "A number rolls up to its value, digit by digit like an odometer, then holds.",
     ask: "Roll the number from 0 up to 1,280 over 1.5 seconds with an ease-out, then hold it." },
+  { id: "fly-through", cat: "Type", en: "Fly-through", ja: "フライスルー",
+    desc: "A word rushes toward the viewer from far away and passes the camera, its letters growing past the edges of the frame. The next word follows right behind.",
+    ask: "Fly each word in from far back and through the camera over 1.6 seconds, speeding up as it nears, with the next word 0.9 seconds behind." },
 ];

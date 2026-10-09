@@ -289,6 +289,74 @@ function beatShot(g: G, k: number, f: number, h: number): void {
   }
 }
 
+
+// The badges of the flash cut, 1st to 9th, each on its own ground.
+const FLASH_GROUNDS = [INK, KAKI, PAPER, INK_2, PALE, MIST, KAKI_2, INK, KAKI] as const;
+const FLASH_BADGES = [KAKI, PAPER, INK, KAKI, INK, KAKI, INK, PALE, PAPER] as const;
+
+function ordinal(n: number): string {
+  return n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th";
+}
+
+/** A rosette badge: a scalloped disc with a ring and the place in the middle. */
+function badge(g: G, k: number, punch: number): void {
+  const bg = FLASH_GROUNDS[k] ?? INK, col = FLASH_BADGES[k] ?? KAKI;
+  box(g, 0, 0, W, H, bg);
+  // a few speed lines behind, a different angle each shot
+  g.save();
+  g.translate(200, 150);
+  g.rotate(rand(k, 4) * Math.PI);
+  g.strokeStyle = col;
+  g.globalAlpha = 0.18;
+  g.lineWidth = 10;
+  for (let i = -5; i <= 5; i++) {
+    g.beginPath();
+    g.moveTo(-320, i * 34);
+    g.lineTo(320, i * 34);
+    g.stroke();
+  }
+  g.restore();
+  const x = 200 + (rand(k, 1) - 0.5) * 70, y = 146 + (rand(k, 2) - 0.5) * 30;
+  const r = 92 * punch;
+  g.save();
+  g.translate(x, y);
+  g.rotate((rand(k, 3) - 0.5) * 0.5);
+  // the ribbons
+  const dark = bg === INK || bg === INK_2;
+  const ribbon = dark ? (col === KAKI ? PALE : KAKI) : col === KAKI || bg === KAKI || bg === KAKI_2 ? INK : KAKI;
+  for (const side of [-1, 1]) poly(g, [side * 18, 40, side * 62, 40 + r * 0.9, side * 46, 44 + r * 0.75, side * 30, 52 + r * 0.95, side * 2, 60], ribbon);
+  // the scalloped edge
+  g.fillStyle = col;
+  g.beginPath();
+  const n = 20;
+  for (let i = 0; i <= n * 2; i++) {
+    const a = (i / (n * 2)) * TAU, rr = i % 2 ? r : r * 0.9;
+    g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  g.closePath();
+  g.fill();
+  g.strokeStyle = bg;
+  g.lineWidth = 4;
+  g.beginPath();
+  g.arc(0, 0, r * 0.74, 0, TAU);
+  g.stroke();
+  // the place
+  const num = String(k + 1), suf = ordinal(k + 1);
+  g.fillStyle = bg;
+  g.textBaseline = "alphabetic";
+  font(g, 74 * punch, 800);
+  const nw = g.measureText(num).width;
+  font(g, 26 * punch, 800);
+  const sw = g.measureText(suf).width;
+  const x0 = -(nw + sw + 2) / 2;
+  font(g, 74 * punch, 800);
+  g.textAlign = "left";
+  g.fillText(num, x0, 26 * punch);
+  font(g, 26 * punch, 800);
+  g.fillText(suf, x0 + nw + 2, -6 * punch);
+  g.restore();
+}
+
 export const PAINT: Record<string, Paint> = {
   // A ball tossed up to the middle of the frame cuts to a sun in the same
   // place, the same size; the sun sets, and it cuts back.
@@ -591,6 +659,27 @@ export const PAINT: Record<string, Paint> = {
       g.fillText("THE RUNNER", cx + 10, 221.5);
       font(g, 26, 800);
       g.fillText("Taro", cx + 14, 252);
+    }
+  },
+
+  // Nine badges, 1st to 9th, a fifth of a second each; the last one holds.
+  // The ticks below count the shots off.
+  "flash-cut": (g, t) => {
+    const D = 0.2 / 2.6;
+    const k = Math.min(8, Math.floor(t / D));
+    const since = t - k * D;
+    const punch = 1 + 0.12 * (1 - out(span(since, 0, k < 8 ? D : 0.12)));
+    // the last badge holds, pushing in slowly
+    const hold = k < 8 ? 1 : 1 + 0.06 * smooth(span(since, 0.1, 1 - 8 * D));
+    badge(g, k, punch * hold);
+    for (let i = 0; i < 9; i++) {
+      const x = 200 + (i - 4) * 18, y = 278;
+      const on = i <= k;
+      const bg = FLASH_GROUNDS[k] ?? INK;
+      const light = bg === INK || bg === INK_2 || bg === KAKI;
+      g.globalAlpha = on ? 1 : 0.35;
+      rrect(g, x - 5, y - 5, 10, 10, 2, light ? PAPER : INK);
+      g.globalAlpha = 1;
     }
   },
 };

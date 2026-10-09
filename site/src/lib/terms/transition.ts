@@ -37,4 +37,13 @@ export const TERMS: Term[] = [
   { id: "liquid-transition", cat: "Transition", en: "Liquid transition", ja: "リキッドトランジション",
     desc: "The next shot floods in like a liquid, with a wavy, gooey edge. It feels playful and soft.",
     ask: "Flood the next shot up from the bottom with a wavy liquid edge over 0.8 seconds, an orange layer leading by 0.15 seconds." },
+  { id: "flash-transition", cat: "Transition", en: "Flash transition", ja: "白フラ",
+    desc: "The picture blows out to white on the beat, and the next shot comes up out of the white. A bright, punchy way to cut.",
+    ask: "On the beat, flash to white over 0.15 seconds, cut at the peak, and bring the next shot up out of the white over 0.3 seconds." },
+  { id: "fade-to-black", cat: "Transition", en: "Fade to black", ja: "暗転",
+    desc: "The picture fades down to black, stays dark for a moment, and the next scene fades up. It closes one scene before the next begins.",
+    ask: "Fade to black over 0.4 seconds, hold black for 0.4 seconds, then fade up on the next scene over 0.4 seconds." },
+  { id: "barn-door", cat: "Transition", en: "Barn door", ja: "観音開き",
+    desc: "The picture splits down the middle and the two halves open outward like doors, with the next shot behind them.",
+    ask: "Open the shot from the centre like two doors over 0.6 seconds, with a thin bright line in the gap as it opens." },
 ];

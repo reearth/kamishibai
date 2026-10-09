@@ -31,4 +31,7 @@ export const TERMS: Term[] = [
   { id: "metaballs", cat: "Shape", en: "Metaballs", ja: "メタボール",
     desc: "Round blobs that melt together when they come close and stretch apart like goo when they leave.",
     ask: "Let two blobs drift together and merge like liquid, then pull apart, over 2.5 seconds." },
+  { id: "extrude", cat: "Shape", en: "Extrude", ja: "押し出し",
+    desc: "A flat shape is pushed back into depth, so it gains side walls and turns into a solid you can tilt.",
+    ask: "Extrude the flat star 40 px deep over 0.6 seconds while tilting it 30 degrees so its sides show, then flatten it back." },
 ];

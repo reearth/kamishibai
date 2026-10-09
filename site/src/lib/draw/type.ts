@@ -1,7 +1,7 @@
 // Type: how each term's loop is drawn. See kit.ts.
 import {
   INK, INK_2, KAKI, PALE, GREY, GREY_2, MIST, TAU,
-  clamp, lerp, span, inOut, out, inCubic, rand, dot, font,
+  clamp, lerp, span, inOut, out, inCubic, wrap, rand, dot, font,
   type Paint, type Shapes,
 } from "./kit.ts";
 
@@ -403,5 +403,47 @@ export const PAINT: Record<string, Paint> = {
     font(g, 15, 500);
     g.fillStyle = GREY_2;
     g.fillText("frames", x0, bot + 34);
+  },
+
+  "fly-through": (g, t) => {
+    // Each word travels from far back to past the lens; its size goes as 1 / distance,
+    // so it creeps at first and rushes by at the end. A new word sets off every third of the loop.
+    const words = [{ s: "READY", c: INK }, { s: "SET", c: INK }, { s: "GO!", c: KAKI }];
+    const LIFE = 0.46, Z0 = 4, Z1 = 0.1;
+    // speed lines: points on a tunnel wall, coming at the camera twice a loop
+    g.lineCap = "round";
+    for (let k = 0; k < 28; k++) {
+      const a = rand(k, 1) * TAU, r = 150 + rand(k, 2) * 110;
+      const z = 0.25 + 5 * wrap(rand(k, 3) - 2 * t, 1);
+      const s0 = 1 / (z + 0.6), s1 = 1 / z;
+      g.strokeStyle = GREY;
+      g.globalAlpha = clamp((5.25 - z) / 2) * 0.7;
+      g.lineWidth = 1 + 1.6 * s1;
+      g.beginPath();
+      g.moveTo(200 + r * Math.cos(a) * s0, 150 + r * Math.sin(a) * s0 * 0.75);
+      g.lineTo(200 + r * Math.cos(a) * s1, 150 + r * Math.sin(a) * s1 * 0.75);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+    const live = words
+      .map((w, i) => ({ ...w, p: wrap(t - i / 3, 1) / LIFE }))
+      .filter((w) => w.p < 1)
+      .map((w) => ({ ...w, z: lerp(Z0, Z1, w.p) }))
+      .sort((a, b) => b.z - a.z);
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    font(g, 96, 800);
+    for (const w of live) {
+      const s = 1 / w.z;
+      g.save();
+      g.globalAlpha = clamp(w.p / 0.1) * span(w.z, Z1, 0.3);
+      g.translate(200, 150);
+      g.scale(s, s);
+      g.fillStyle = w.c;
+      g.fillText(w.s, 0, 0);
+      g.restore();
+    }
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
   },
 };

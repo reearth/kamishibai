@@ -1,7 +1,7 @@
 // Motion: how each term's loop is drawn. See kit.ts.
 import {
-  INK, PAPER, KAKI, PALE, GREY, GREY_2, MIST, W, H, TAU,
-  clamp, span, inOut, out, inCubic, pingPong, wrap, loopNoise, rect, circle, ground, dot, font,
+  INK, PAPER, KAKI, KAKI_2, PALE, GREY, GREY_2, MIST, W, H, TAU,
+  clamp, span, inOut, out, inCubic, pingPong, wrap, mix, loopNoise, rect, circle, ground, dot, font,
   type Paint, type Shapes,
 } from "./kit.ts";
 
@@ -98,6 +98,25 @@ const BOUNCE = (() => {
   };
   return { total, height };
 })();
+
+/** Ease in-out that runs a little past the end and settles back. */
+function inOutBack(p: number, c = 1.1): number {
+  const c2 = c * 1.525;
+  return p < 0.5
+    ? (Math.pow(2 * p, 2) * ((c2 + 1) * 2 * p - c2)) / 2
+    : (Math.pow(2 * p - 2, 2) * ((c2 + 1) * (p * 2 - 2) + c2) + 2) / 2;
+}
+
+/** The outline of a rounded rectangle centred on 0, as points, for drawing it in perspective. */
+function roundRectPts(w: number, h: number, r: number): [number, number][] {
+  const pts: [number, number][] = [];
+  const corners: [number, number, number][] = [[w / 2 - r, -h / 2 + r, -Math.PI / 2], [w / 2 - r, h / 2 - r, 0], [-w / 2 + r, h / 2 - r, Math.PI / 2], [-w / 2 + r, -h / 2 + r, Math.PI]];
+  for (const [cx, cy, a0] of corners) for (let i = 0; i <= 5; i++) {
+    const a = a0 + (i / 5) * (Math.PI / 2);
+    pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return pts;
+}
 
 export const PAINT: Record<string, Paint> = {
   "follow-through": (g, t) => {
@@ -293,5 +312,98 @@ export const PAINT: Record<string, Paint> = {
     g.globalAlpha = a;
     for (let i = 0; i < N; i++) dot(g, x(t + S * (i / (N - 1) - 0.5)), 150, 34, KAKI);
     g.globalAlpha = 1;
+  },
+
+  flip: (g, t) => {
+    // Two half turns: over to the back, hold, over again to the front.
+    const p1 = span(t, 0.1, 0.4), p2 = span(t, 0.58, 0.88);
+    const a = Math.PI * (inOutBack(p1) + inOutBack(p2));
+    const lift = 22 * (Math.sin(Math.PI * p1) + Math.sin(Math.PI * p2));
+    const cx = 200, cy = 138 - lift, f = 300;
+    const cos = Math.cos(a), sin = Math.sin(a);
+    const front = cos > 0;
+    // a point on the card's face (u, v from its centre), turned by a about the vertical axis
+    const P = (u: number, v: number): [number, number] => {
+      const uu = front ? u : -u;
+      const s = f / (f + uu * sin);
+      return [cx + uu * cos * s, cy + v * s];
+    };
+    const poly = (pts: [number, number][]) => {
+      g.beginPath();
+      pts.forEach(([u, v], i) => {
+        const [x, y] = P(u, v);
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+      });
+      g.closePath();
+    };
+    // its shadow on the floor, smaller and fainter as it lifts
+    g.fillStyle = MIST;
+    g.beginPath();
+    g.ellipse(200, 236, Math.max(14, 92 * Math.abs(cos)) * (1 - lift / 140), 9 * (1 - lift / 120), 0, 0, TAU);
+    g.fill();
+    // the card, darker as it turns edge-on
+    const turn = 1 - Math.abs(cos);
+    poly(roundRectPts(180, 128, 14));
+    g.fillStyle = g.strokeStyle = mix(front ? KAKI : INK, front ? INK : "#000000", turn * 0.35);
+    g.fill();
+    g.lineWidth = 3;
+    g.stroke();
+    if (front) {
+      // the front: the ball
+      const ring: [number, number][] = [];
+      for (let i = 0; i < 28; i++) ring.push([30 * Math.cos((i / 28) * TAU), 30 * Math.sin((i / 28) * TAU)]);
+      poly(ring);
+      g.fillStyle = PAPER;
+      g.fill();
+    } else {
+      // the back: a tick
+      g.strokeStyle = KAKI;
+      g.lineWidth = 12 * (1 - turn * 0.5);
+      g.lineCap = "round";
+      g.lineJoin = "round";
+      g.beginPath();
+      ([[-34, 2], [-10, 26], [36, -24]] as [number, number][]).forEach(([u, v], i) => {
+        const [x, y] = P(u, v);
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+      });
+      g.stroke();
+    }
+  },
+
+  echo: (g, t) => {
+    // Across and back, turning a quarter each way; copies replay the move a moment late.
+    const at = (tt: number) => {
+      const u = wrap(tt, 1);
+      const a = inOut(span(u, 0.08, 0.36)), b = inOut(span(u, 0.56, 0.84));
+      return { x: 96 + 208 * (a - b), r: (Math.PI / 2) * (a + b) };
+    };
+    const sq = (x: number, r: number) => {
+      g.save();
+      g.translate(x, 150);
+      g.rotate(r);
+      roundRect(g, -36, -36, 72, 72, 12);
+      g.restore();
+    };
+    g.strokeStyle = GREY;
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(60, 206);
+    g.lineTo(340, 206);
+    g.stroke();
+    const tints = [KAKI, KAKI_2, PALE, GREY];
+    for (let k = 4; k >= 1; k--) {
+      const p = at(t - k * 0.035);
+      sq(p.x, p.r);
+      g.strokeStyle = tints[k - 1]!;
+      g.lineWidth = 5 - k * 0.6;
+      g.stroke();
+    }
+    const p = at(t);
+    sq(p.x, p.r);
+    g.fillStyle = KAKI;
+    g.fill();
+    g.strokeStyle = INK;
+    g.lineWidth = 4;
+    g.stroke();
   },
 };

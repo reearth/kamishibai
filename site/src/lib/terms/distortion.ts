@@ -31,4 +31,7 @@ export const TERMS: Term[] = [
   { id: "motion-tile", cat: "Distortion", en: "Motion tile", ja: "モーションタイル",
     desc: "Repeats a layer beyond its edges, so you can scroll a pattern forever without a seam.",
     ask: "Tile the pattern with motion tile and scroll it diagonally by one tile every 2.6 seconds, looping seamlessly." },
+  { id: "radial-blur", cat: "Distortion", en: "Radial blur", ja: "ズームブラー",
+    desc: "Smears the picture along lines out from the centre, as if the lens zoomed during the exposure. Peaking it on a cut makes the cut hit harder.",
+    ask: "Ramp a radial blur up over the last 0.4 seconds of the shot, cut at the peak, then ramp it back down over the first 0.3 seconds of the next shot." },
 ];

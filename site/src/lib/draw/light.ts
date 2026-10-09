@@ -360,4 +360,94 @@ export const PAINT: Record<string, Paint> = {
       g.restore();
     }
   },
+
+  bokeh: (g, t) => {
+    fill(g, NIGHT);
+    // out-of-focus lights: discs a touch brighter at the rim, drifting on
+    // small loops and breathing, added together where they overlap
+    g.globalCompositeOperation = "lighter";
+    const colors = [KAKI, KAKI_2, PALE, KAKI, "#E8553A", GREY_2];
+    for (let i = 0; i < 26; i++) {
+      const far = rand(i, 1);
+      const r = 14 + 34 * far * far + 8 * rand(i, 2);
+      const ph = rand(i, 3) * TAU, dir = i % 2 ? 1 : -1;
+      const x = -20 + rand(i, 4) * 440 + 14 * Math.cos(TAU * t * dir + ph);
+      const y = 20 + rand(i, 5) * 260 + 10 * Math.sin(TAU * t * dir + ph) - 6 * Math.sin(TAU * t + rand(i, 6) * TAU);
+      const a = (0.13 + 0.2 * rand(i, 7)) * (0.55 + 0.45 * Math.sin(TAU * t * (1 + (i % 2)) + ph));
+      const color = colors[i % colors.length]!;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, rgba(color, a * 0.7));
+      gr.addColorStop(0.82, rgba(color, a * 0.85));
+      gr.addColorStop(0.93, rgba(color, a * 1.3));
+      gr.addColorStop(1, rgba(color, 0));
+      g.fillStyle = gr;
+      g.beginPath();
+      g.arc(x, y, r, 0, TAU);
+      g.fill();
+    }
+    g.globalCompositeOperation = "source-over";
+    // the subject, in focus in front
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    font(g, 58, 800);
+    g.save();
+    g.shadowColor = "rgba(0,0,0,0.45)";
+    g.shadowBlur = 18 * px(g);
+    g.fillStyle = "#FFF6EC";
+    g.fillText("Tonight", 200, 142);
+    g.restore();
+    font(g, 13, 600);
+    g.fillStyle = PALE;
+    g.fillText("LIVE  ·  8 PM", 200, 188);
+  },
+
+  "star-glint": (g, t) => {
+    fill(g, NIGHT);
+    // the gem: a faceted outline in dim ink
+    const cx = 200, cy = 158;
+    const top = cy - 50, gird = cy - 20, tip = cy + 78;
+    g.lineJoin = "round";
+    g.fillStyle = "#2A2420";
+    g.beginPath();
+    g.moveTo(cx - 54, top); g.lineTo(cx + 54, top); g.lineTo(cx + 92, gird);
+    g.lineTo(cx, tip); g.lineTo(cx - 92, gird); g.closePath();
+    g.fill();
+    g.strokeStyle = "#5A4E45";
+    g.lineWidth = 2;
+    g.stroke();
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(cx - 92, gird); g.lineTo(cx + 92, gird);
+    for (const [a, b] of [[-54, -30], [-18, -30], [-18, 18], [54, 30], [18, 30], [18, -18]] as const) {
+      g.moveTo(cx + a, top); g.lineTo(cx + b, gird);
+    }
+    for (const x of [-92, -30, 30, 92]) { g.moveTo(cx + x * 0.98, gird); g.lineTo(cx, tip); }
+    g.stroke();
+    // a glint: flares fast, turns a little, shrinks away
+    const glint = (x: number, y: number, a: number, b: number, size: number, points: 4 | 6, seed: number) => {
+      const p = span(t, a, b);
+      if (p <= 0 || p >= 1) return;
+      const k = p < 0.25 ? out(p / 0.25) : 1 - inOut((p - 0.25) / 0.75);
+      const L = size * k, rot = -0.2 + 0.4 * p + seed;
+      halo(g, x, y, L * 0.55, KAKI, 0.45 * k);
+      halo(g, x, y, L * 0.18, PALE, 0.95 * k);
+      // each streak is two opposite points; a 4-point star gets short diagonals too
+      const n = points / 2, streaks: [number, number][] = [];
+      for (let i = 0; i < n; i++) streaks.push([rot + (i * Math.PI) / n, L]);
+      if (points === 4) streaks.push([rot + Math.PI / 4, L * 0.4], [rot - Math.PI / 4, L * 0.4]);
+      for (const [an, len] of streaks) {
+        g.save();
+        g.translate(x, y);
+        g.rotate(an);
+        g.scale(1, 0.045);
+        halo(g, 0, 0, len, PALE, 0.95 * k);
+        g.restore();
+      }
+      dot(g, x, y, 2 + 3.5 * k, "#FFF8F0");
+    };
+    g.globalCompositeOperation = "lighter";
+    glint(cx + 54, top, 0.06, 0.6, 130, 4, 0);
+    glint(cx - 66, gird + 6, 0.48, 0.86, 70, 6, 0.3);
+    glint(cx + 20, cy + 40, 0.7, 0.98, 44, 4, 0.5);
+  },
 };

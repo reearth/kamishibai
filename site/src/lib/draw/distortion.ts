@@ -4,7 +4,7 @@
 // are drawn through them, never pixel by pixel.
 import {
   W, H, TAU, INK, INK_2, PAPER, KAKI, PALE, GREY_2,
-  clamp, lerp, span, inOut, out, smooth, pingPong, wrap, noise, dot, font,
+  clamp, lerp, span, inOut, inCubic, out, smooth, pingPong, wrap, noise, dot, font,
   type Paint, type Shapes,
 } from "./kit.ts";
 
@@ -46,6 +46,15 @@ function warpedLoop(g: CanvasRenderingContext2D, n: number, at: (u: number) => P
 /** In, hold, out, hold: 0 → 1 between a and b, back to 0 between c and d. */
 const inHoldOut = (t: number, a: number, b: number, c: number, d: number) =>
   t < c ? inOut(span(t, a, b)) : 1 - inOut(span(t, c, d));
+
+/** A canvas reused as a buffer, grown when a bigger one is needed and fully redrawn by each call. */
+let buffer: HTMLCanvasElement | undefined;
+function scratch(w: number, h: number): HTMLCanvasElement {
+  buffer ??= document.createElement("canvas");
+  if (buffer.width < w) buffer.width = w;
+  if (buffer.height < h) buffer.height = h;
+  return buffer;
+}
 
 export const PAINT: Record<string, Paint> = {
   twirl: (g, t) => {
@@ -379,5 +388,52 @@ export const PAINT: Record<string, Paint> = {
     g.strokeStyle = INK;
     g.lineWidth = 2.5;
     g.strokeRect(bx, by, S, S);
+  },
+
+  "radial-blur": (g, t) => {
+    // Two shots, cut at t = 0.25 and 0.75. The blur ramps up into each cut
+    // and dies away after it. The blur is the shot drawn many times, each a
+    // little larger about the centre, averaged: copy i is drawn at alpha
+    // 1 / (i + 1) over the ones before, so all copies weigh the same.
+    const cuts = [0.25, 0.75];
+    let amt = 0;
+    for (const c of cuts) {
+      const d = wrap(t - c + 0.5, 1) - 0.5; // signed distance to the cut
+      amt = Math.max(amt, d < 0 ? inCubic(clamp(1 + d / 0.16)) : 1 - out(clamp(d / 0.13)));
+    }
+    const shotB = t >= 0.25 && t < 0.75;
+    const cx = W / 2, cy = H / 2;
+    const shot = (c: CanvasRenderingContext2D) => {
+      c.fillStyle = shotB ? KAKI : PAPER;
+      c.fillRect(-W, -H, 3 * W, 3 * H);
+      const fg = shotB ? PAPER : INK;
+      // a ring of marks: at the edge the smear is longest
+      for (let i = 0; i < 16; i++) {
+        const a = (i * TAU) / 16 + (shotB ? TAU / 32 : 0);
+        const r = i % 2 ? 128 : 112;
+        const x = cx + r * 1.25 * Math.cos(a), y = cy + r * Math.sin(a);
+        if (shotB) dot(c, x, y, i % 2 ? 6 : 9, i % 4 === 0 ? INK : fg);
+        else { c.fillStyle = i % 4 === 0 ? KAKI : fg; c.fillRect(x - 7, y - 7, 14, 14); }
+      }
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      font(c, shotB ? 92 : 66, 800);
+      c.fillStyle = fg;
+      c.fillText(shotB ? "GO!" : "READY", cx, cy + 4);
+    };
+    // draw the shot once, sharp, at the canvas's device resolution
+    const m = g.getTransform(), k = Math.hypot(m.a, m.b);
+    const sw = Math.ceil(W * k), sh = Math.ceil(H * k);
+    const buf = scratch(sw, sh);
+    const b = buf.getContext("2d")!;
+    b.setTransform(sw / W, 0, 0, sh / H, 0, 0);
+    shot(b);
+    const N = amt < 0.01 ? 1 : 16, spread = 0.42 * amt;
+    for (let i = 0; i < N; i++) {
+      const s = 1 + (spread * i) / Math.max(1, N - 1);
+      g.globalAlpha = 1 / (i + 1);
+      g.drawImage(buf, 0, 0, sw, sh, cx - (W * s) / 2, cy - (H * s) / 2, W * s, H * s);
+    }
+    g.globalAlpha = 1;
   },
 };

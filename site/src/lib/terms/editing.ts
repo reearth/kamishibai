@@ -28,4 +28,7 @@ export const TERMS: Term[] = [
   { id: "freeze-frame", cat: "Editing", en: "Freeze frame", ja: "フリーズフレーム",
     desc: "The action stops on one frame, often with a flash and a caption, to introduce someone or mark a moment.",
     ask: "Freeze the frame mid-jump with a white flash, and pop in a name card for 1.5 seconds." },
+  { id: "flash-cut", cat: "Editing", en: "Flash cut", ja: "フラッシュカット",
+    desc: "A run of shots only a few frames long each, too fast to read one by one. It gives a burst of energy or a rush of memories.",
+    ask: "Flash-cut through the nine winners' badges, 1st to 9th, at 0.2 seconds each, then hold on the last one for 1 second." },
 ];

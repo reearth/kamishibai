@@ -18,10 +18,10 @@ const start = initial ? deck.findIndex((c) => c.id === initial) : -1;
 const permalink = (id: string) => `${base}lexicon/${id}/`;
 const host = new URL(base, Astro.site).host + base;
 ---
-<div class="lexicon" data-base={base} data-start={start}>
+<div class="lexicon" data-base={base} data-start={start} data-grid-title="Lexicon of motion — kamishibai">
   <header class="top">
     <div class="crumbs">
-      <a class="logo" href={base}>kamishibai</a>
+      <a class="logo" href={base}><img class="mark" src={`${base}favicon.svg`} alt="" width="22" height="22" />kamishibai</a>
       <span>/ Lexicon</span>
     </div>
     <nav class="site-nav">
@@ -31,11 +31,11 @@ const host = new URL(base, Astro.site).host + base;
   </header>
 
   <section class="intro">
-    <span class="kicker">映像の語彙 · {TERMS.length} terms</span>
     <h1 class="h1"><span>A lexicon</span> <span>of motion.</span></h1>
     <p class="lead">From camera moves and cuts to type, texture and generative art. Each term has its name, a loop, and words you can hand to an agent. Every loop is a kamishibai reel, drawn from its time alone.</p>
     <div class="filters">
       <div class="chips" role="group" aria-label="Category">
+        <button type="button" class="chip" data-cat="Random" aria-pressed="false">Random</button>
         <button type="button" class="chip" data-cat="All" aria-pressed="true">All</button>
         {CHAPTERS.map((c) => <button type="button" class="chip" data-cat={c.cat} aria-pressed="false">{c.cat}</button>)}
       </div>
@@ -43,9 +43,13 @@ const host = new URL(base, Astro.site).host + base;
     </div>
   </section>
 
+  {/* The grid opens in a random order. The cards are built in chapter order
+       (All); the script after the grid shuffles them before they are first
+       painted, and the grid stays hidden until it has. */}
+  <script is:inline>document.currentScript.parentElement.classList.add("shuffling");</script>
   <section class="grid">
-    {TERMS.map((t) => (
-      <a class="card" href={permalink(t.id)} data-open={deck.findIndex((c) => c.id === t.id)} data-cat={t.cat}>
+    {TERMS.map((t, n) => (
+      <a class="card" href={permalink(t.id)} data-open={deck.findIndex((c) => c.id === t.id)} data-cat={t.cat} data-n={n}>
         <Frame id={t.id} dark={t.dark} />
         <span class="name"><b>{t.en}</b><span>{t.ja}</span></span>
         <span class="desc">{t.desc}</span>
@@ -53,6 +57,25 @@ const host = new URL(base, Astro.site).host + base;
       </a>
     ))}
   </section>
+  <script is:inline>
+    (() => {
+      const root = document.currentScript.parentElement;
+      try {
+        const grid = root.querySelector(".grid");
+        const cards = [...grid.children];
+        // Not a drawing, so Math.random() is fine here; every picture still
+        // depends on its time alone.
+        for (let i = cards.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [cards[i], cards[j]] = [cards[j], cards[i]];
+        }
+        grid.append(...cards);
+        root.querySelectorAll(".chip[data-cat]").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.cat === "Random")));
+      } finally {
+        root.classList.remove("shuffling");
+      }
+    })();
+  </script>
 
   <div class="deck" role="dialog" aria-modal="true" aria-label="Lexicon deck" hidden={start < 0}>
     <div class="scroller">
@@ -127,7 +150,14 @@ const host = new URL(base, Astro.site).host + base;
   .top, .intro, .grid { max-width: 1320px; margin: 0 auto; padding-left: clamp(16px, 4vw, 40px); padding-right: clamp(16px, 4vw, 40px); }
   .top { padding-top: 28px; padding-bottom: 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .crumbs { display: flex; align-items: baseline; gap: 12px; font-size: 15px; color: var(--ink-3); }
-  .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; color: var(--ink); }
+  .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; color: var(--ink); white-space: nowrap; }
+  /* The favicon's card, centred on the cap height of the name. */
+  .mark { display: inline-block; width: 1.1em; height: 1.1em; margin-right: 0.35em; vertical-align: -0.2em; }
+  /* As in TopBar: on phones the logo, the crumb and both links share one row. */
+  @media (max-width: 760px) {
+    .logo { font-size: 18px; }
+    .site-nav { gap: 16px; font-size: 14px; }
+  }
   .intro { padding-top: 40px; padding-bottom: 32px; display: flex; flex-direction: column; gap: 18px; }
   .kicker { font-size: 15px; font-weight: 500; color: var(--kaki-text); }
   .h1 { margin: 0; font-size: clamp(40px, 6.4vw, 88px); line-height: 0.98; font-weight: 800; letter-spacing: -0.05em; text-wrap: balance; }
@@ -148,6 +178,7 @@ const host = new URL(base, Astro.site).host + base;
   .card { display: flex; flex-direction: column; gap: 12px; background: var(--paper); padding: 14px 14px 18px; text-decoration: none; color: var(--ink); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06); transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.25s; }
   .card:hover { color: var(--ink); transform: translateY(-3px) rotate(-0.4deg); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14); }
   .card[hidden] { display: none; }
+  .lexicon.shuffling .grid { visibility: hidden; }
   .name { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .name b { font-size: 18px; letter-spacing: -0.02em; }
   .name span { font-size: 13px; color: var(--ink-3); }
@@ -269,20 +300,35 @@ const host = new URL(base, Astro.site).host + base;
   const nextBtn = deckEl.querySelector<HTMLButtonElement>("[data-next]")!;
   const N = cards.length;
   const host = `${location.host}${base}`;
-  const gridTitle = document.title;
+  const gridTitle = root.dataset.gridTitle!;
 
   const clamp = (v: number) => Math.max(0, Math.min(1, v));
   const smooth = (p: number) => p * p * (3 - 2 * p);
   const idAt = (i: number) => cards[i]!.dataset.id!;
   const pathOf = (i: number) => `${base}lexicon/${idAt(i)}/`;
 
-  // ---- grid filters ----
+  // ---- grid order and filters ----
+  // Random: every term, shuffled (the order the page opens in; pressing it
+  // again reshuffles). All: every term in chapter order. A chapter: its terms
+  // in chapter order. The cards are reordered in place.
+  const grid = root.querySelector<HTMLElement>(".grid")!;
+  const inOrder = [...grid.querySelectorAll<HTMLElement>(".card")].sort((a, b) => Number(a.dataset.n) - Number(b.dataset.n));
+  const shuffled = (list: HTMLElement[]): HTMLElement[] => {
+    // Not a drawing, so Math.random() is fine here.
+    const out = [...list];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j]!, out[i]!];
+    }
+    return out;
+  };
   const chips = [...root.querySelectorAll<HTMLButtonElement>(".chip[data-cat]")];
   chips.forEach((chip) =>
     chip.addEventListener("click", () => {
       const cat = chip.dataset.cat!;
       chips.forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
-      root.querySelectorAll<HTMLElement>(".card").forEach((card) => (card.hidden = cat !== "All" && card.dataset.cat !== cat));
+      grid.append(...(cat === "Random" ? shuffled(inOrder) : inOrder));
+      inOrder.forEach((card) => (card.hidden = cat !== "Random" && cat !== "All" && card.dataset.cat !== cat));
     }),
   );
 
@@ -309,7 +355,8 @@ const host = new URL(base, Astro.site).host + base;
       scripts.forEach((el, i) => (el.hidden = i !== now));
       urlEl.textContent = `${host}lexicon/${idAt(now)}/`;
       document.title = `${cards[now]!.dataset.title} — Lexicon of motion`;
-      if (!deckEl.hidden) history.replaceState({ deck: now }, "", pathOf(now));
+      // Moving through the deck rewrites the card's entry, never adds one.
+      if (!deckEl.hidden) history.replaceState({ ...history.state, deck: now }, "", pathOf(now));
       prevBtn.disabled = now <= 0;
       nextBtn.disabled = now >= N - 1;
     }
@@ -320,37 +367,59 @@ const host = new URL(base, Astro.site).host + base;
     scroller.scrollTo({ top, behavior: smoothly ? "smooth" : "auto" });
   }
 
+  // ---- history ----
+  // Opening a card from the grid adds one entry ({ deck, overGrid }) on top of
+  // the grid's; Back closes the deck onto the grid as it was left: the same
+  // chip, the same order (both live in the page) and the same scroll, which
+  // is put back by hand. Forward opens the card again.
+  history.scrollRestoration = "manual";
+  let gridY = 0;
+
   function open(i: number, push = true): void {
+    if (deckEl.hidden) gridY = scrollY;
     deckEl.hidden = false;
     document.documentElement.style.overflow = "hidden";
+    // Push before frame() rewrites the current entry, so the grid's entry
+    // keeps the grid's address.
+    if (push) history.pushState({ deck: i, overGrid: true }, "", pathOf(i));
     shown = -1;
     go(i, false);
     frame();
-    if (push) history.pushState({ deck: i }, "", pathOf(i));
   }
 
   function close(push = true): void {
+    if (deckEl.hidden) return;
     deckEl.hidden = true;
     document.documentElement.style.overflow = "";
     document.title = gridTitle;
+    scrollTo(0, gridY);
     if (push) history.pushState({}, "", `${base}lexicon/`);
+  }
+
+  // "All terms" and Escape: step back to the grid's entry when the deck was
+  // opened from it, otherwise (a permalink opened directly) push the grid.
+  function leave(): void {
+    if ((history.state as { overGrid?: boolean } | null)?.overGrid) history.back();
+    else close();
   }
 
   root.querySelectorAll<HTMLAnchorElement>("[data-open]").forEach((a) =>
     a.addEventListener("click", (e) => {
+      // Let a modified click open the permalink in a new tab or window.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
       e.preventDefault();
       open(Number(a.dataset.open));
     }),
   );
   deckEl.querySelector("[data-close]")!.addEventListener("click", (e) => {
     e.preventDefault();
-    close();
+    leave();
   });
   prevBtn.addEventListener("click", () => go(shown - 1));
   nextBtn.addEventListener("click", () => go(shown + 1));
   addEventListener("keydown", (e) => {
     if (deckEl.hidden) return;
-    if (e.key === "Escape") close();
+    if (e.key === "Escape") leave();
     else if (e.key === "ArrowRight") go(shown + 1);
     else if (e.key === "ArrowLeft") go(shown - 1);
   });
@@ -387,9 +456,18 @@ const host = new URL(base, Astro.site).host + base;
     else close(false);
   });
 
-  // A permalink page opens with the deck at its card.
+  // A permalink page opens with the deck at its card. Loaded directly, it
+  // first puts the grid's entry under the card's, so Back (and "All terms")
+  // goes to the grid rather than off the site. A reload keeps its state and
+  // isn't stacked again.
   const start = Number(root.dataset.start);
-  if (start >= 0) open(start, false);
+  if (start >= 0) {
+    if (!history.state) {
+      history.replaceState({}, "", `${base}lexicon/`);
+      history.pushState({ deck: start, overGrid: true }, "", pathOf(start));
+    }
+    open(start, false);
+  }
 
   // ---- drawing: one clock for every loop on the page ----
   // Grid frames are drawn while they're on screen; deck frames while their

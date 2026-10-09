@@ -40,4 +40,10 @@ export const TERMS: Term[] = [
   { id: "motion-blur", cat: "Motion", en: "Motion blur", ja: "モーションブラー",
     desc: "A fast object smears along its path, the way it would with a camera shutter open. Fast moves look smooth instead of jumpy.",
     ask: "Add motion blur with a 180-degree shutter to the fast whip of the logo." },
+  { id: "flip", cat: "Motion", en: "Flip", ja: "フリップ",
+    desc: "A card turns over around its vertical axis in perspective and shows what is on its back. Good for a reveal or a before and after.",
+    ask: "Flip the card over around its vertical axis in 0.6 seconds with an ease-in-out, lifting it a little as it turns and landing face-on with a small overshoot." },
+  { id: "echo", cat: "Motion", en: "Echo", ja: "エコー",
+    desc: "Copies of a moving object trail behind it, each a moment later and a shade lighter. When it stops, they catch up into one.",
+    ask: "Give the moving square an echo of 4 copies, 40 ms apart, each lighter than the last, so they snap back into one when it lands." },
 ];

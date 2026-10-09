@@ -3,7 +3,7 @@
 const base = import.meta.env.BASE_URL;
 ---
 <header class="top">
-  <a class="logo" href={base}>kamishibai</a>
+  <a class="logo" href={base}><img class="mark" src={`${base}favicon.svg`} alt="" width="22" height="22" />kamishibai</a>
   <nav class="site-nav">
     <a href={`${base}lexicon/`}>Lexicon</a>
     <a href="https://github.com/reearth/kamishibai/blob/main/docs/README.md">Docs</a>
@@ -13,9 +13,16 @@ const base = import.meta.env.BASE_URL;
 
 <style>
   .top { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; }
+  .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; white-space: nowrap; }
+  /* The favicon's card, centred on the cap height of the name. */
+  .mark { display: inline-block; width: 1.1em; height: 1.1em; margin-right: 0.35em; vertical-align: -0.2em; }
   @media (max-width: 760px) {
     .logo { font-size: 18px; }
     .site-nav { gap: 16px; font-size: 14px; }
+  }
+  /* The narrowest phones: the logo and three links still share one row. */
+  @media (max-width: 380px) {
+    .top { gap: 12px; }
+    .site-nav { gap: 12px; }
   }
 </style>

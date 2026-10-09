@@ -31,4 +31,10 @@ export const TERMS: Term[] = [
   { id: "light-sweep", cat: "Light", en: "Light sweep", ja: "ライトスイープ",
     desc: "A band of light glides across a surface, as if it caught the light. Used to make logos and cards feel glossy.",
     ask: "Sweep a diagonal highlight across the card from left to right in 0.7 seconds, once every 2.5 seconds." },
+  { id: "bokeh", cat: "Light", en: "Bokeh", ja: "玉ボケ", dark: true,
+    desc: "Points of light far out of focus turn into soft round discs. Behind sharp type they add depth and a warm, festive glow.",
+    ask: "Fill the background with soft orange bokeh, discs 30 to 90 px across that drift slowly and pulse, behind a sharp white title." },
+  { id: "star-glint", cat: "Light", en: "Star glint", ja: "クロスフィルター", dark: true,
+    desc: "A point of light flares into a four- or six-pointed star, as through a cross filter, then shrinks away. It turns a highlight into a sparkle.",
+    ask: "Flare a 4-point star glint on the gem's top corner to 120 px in 0.2 seconds, turn it 20 degrees, and shrink it away over 0.5 seconds." },
 ];

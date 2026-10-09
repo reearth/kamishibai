@@ -377,4 +377,51 @@ export const PAINT: Record<string, Paint> = {
     g.fillStyle = KAKI;
     g.fill();
   },
+
+  extrude: (g, t) => {
+    // Flat, then pushed back into depth and tilted so the walls show, then flat again.
+    const e = inOut(span(t, 0.08, 0.4)) - inOut(span(t, 0.6, 0.9));
+    const D = 72 * e;
+    const ay = e * (-0.7 + 0.25 * Math.sin(Math.PI * span(t, 0.3, 0.7)));
+    const ax = e * 0.5;
+    const f = 420;
+    const [sy, cy] = [Math.sin(ay), Math.cos(ay)], [sx, cx] = [Math.sin(ax), Math.cos(ax)];
+    /** turn a point about the solid's middle, then project it */
+    const rot = (x: number, y: number, z: number): [number, number, number] => {
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      return [x1, y * cx - z1 * sx, y * sx + z1 * cx];
+    };
+    const proj = ([x, y, z]: [number, number, number]): Pt => [CX + (x * f) / (f + z), CY + 6 + (y * f) / (f + z)];
+    const star = starPts(0, 0, 5, 96, 42);
+    const n = star.length;
+    const fr = star.map(([x, y]) => rot(x, y, -D / 2));
+    const bk = star.map(([x, y]) => rot(x, y, D / 2));
+    // walls: farthest first, lit from the upper left
+    const walls: { z: number; pts: Pt[]; c: string }[] = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const a = star[i] ?? [0, 0], b = star[j] ?? [0, 0];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const nrm = rot((b[1] - a[1]) / len, -(b[0] - a[0]) / len, 0);
+      const f0 = fr[i]!, f1 = fr[j]!, b0 = bk[i]!, b1 = bk[j]!;
+      // seen only if it faces the camera
+      const mid: [number, number, number] = [(f0[0] + f1[0]) / 2, (f0[1] + f1[1]) / 2, (f0[2] + f1[2]) / 2 + f];
+      if (nrm[0] * mid[0] + nrm[1] * mid[1] + nrm[2] * mid[2] >= 0) continue;
+      const light = clamp(0.5 - 0.5 * (nrm[0] * 0.6 + nrm[1] * 0.8));
+      walls.push({ z: (f0[2] + f1[2] + b0[2] + b1[2]) / 4, pts: [f0, f1, b1, b0].map(proj), c: mix(mix(KAKI, INK, 0.72), mix(KAKI, INK, 0.12), light) });
+    }
+    walls.sort((p, q) => q.z - p.z);
+    g.lineJoin = "round";
+    g.lineWidth = 1;
+    for (const w of walls) {
+      tracePts(g, w.pts);
+      g.fillStyle = w.c;
+      g.strokeStyle = w.c;
+      g.fill();
+      g.stroke();
+    }
+    tracePts(g, fr.map(proj));
+    g.fillStyle = KAKI;
+    g.fill();
+  },
 };

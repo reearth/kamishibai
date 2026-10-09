@@ -93,6 +93,12 @@ A Lexicon picture is drawn in the same palette, from the constants in `src/lib/d
 | `max-width: 560px` | Lexicon | Two cards a row with names only; the chips scroll sideways |
 | `max-height: 500px` | All | A phone on its side: drops the ball preview and step descriptions; the Lexicon chips scroll sideways; deck card and script side by side |
 
+## Link preview
+
+Every page passes `image="og.png"` to `Base`, which writes `og:image` and a `summary_large_image` Twitter card. `public/og.png` is a screenshot of `og/og.html`, a 1200×630 page in the site's tokens and type: the logo, the first sheet's line, and a frame with the ball on its floor. `og/` sits outside `src/` and `public/`, so it isn't deployed.
+
+After editing `og.html`, screenshot it again at exactly 1200×630 with a device scale factor of 1, once the fonts have loaded (Playwright: `page.setViewportSize`, `document.fonts.ready`, `page.screenshot`), and save over `public/og.png`. Keep the headline on three lines with no wrapping, and the ball round and resting on the floor line.
+
 ## Checking a change
 
 Build and serve the site the way Pages will:
