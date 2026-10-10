@@ -3,8 +3,8 @@
 // seek(ms) -> let the DOM settle -> screenshot -> advance. No real-time
 // playback, so a slow frame just takes longer; it never drops.
 // ------------------------------------------------------------------
-import { chromium, errors, type Browser, type Page } from "playwright";
-import { copyFile } from "node:fs/promises";
+import { chromium, errors, type Browser, type CDPSession, type Page } from "playwright";
+import { copyFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { GLOBAL_KEY, frameTimeMs, type KamishibaiMeta } from "./protocol.ts";
@@ -20,6 +20,69 @@ export interface ChunkMarkers {
 
 const frameName = (i: number): string => `f${String(i).padStart(6, "0")}.png`;
 
+/**
+ * Headless Chrome paces rendering at 60 Hz, so every requestAnimationFrame
+ * the capture waits on (in seek and before a screenshot) costs up to 16.7 ms.
+ * Nothing here plays in real time, so lift the cap: a frame then comes as soon
+ * as the previous one is drawn. It changes when frames are drawn, not what
+ * they show.
+ */
+export const CHROME_ARGS = ["--disable-frame-rate-limit", "--disable-gpu-vsync"];
+
+/** Launch the headless Chrome a capture runs in. */
+export function launchChrome(): Promise<Browser> {
+  return chromium.launch({ args: CHROME_ARGS });
+}
+
+/**
+ * Runs in the page just before a screenshot (passed to page.evaluate, so it
+ * must not refer to anything outside itself).
+ *
+ * `settle`: first wait two animation frames, for a page whose seek() may
+ * resolve before its last change is painted. A page that returns a print
+ * (kamishibai/react) only does so once its DOM is final.
+ *
+ * Then make the paint independent of what this page painted before. Chrome
+ * keeps some state for an element across frames: text animated in (its
+ * opacity and transform changing together) stays on its own compositing layer
+ * after the animation ends, and is rasterized a little differently from the
+ * same text painted fresh. A frame's pixels then depend on the frames this
+ * Chrome drew before it, so they change with the worker count (each worker
+ * starts mid-reel). Hiding the body's contents for one forced layout drops
+ * that state. It all happens within one task, so nothing on the page (a
+ * ResizeObserver, a rAF) ever sees the body hidden, and the DOM, scroll
+ * positions and paused CSS animations are left as they were.
+ */
+async function prepareShot(settle: boolean): Promise<void> {
+  if (settle) await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  const body = document.body;
+  if (!body) return;
+  // Through the attribute, restored exactly: a print hashes it, and touching
+  // body.style instead would leave an empty style="" behind.
+  const was = body.getAttribute("style");
+  body.setAttribute("style", `${was ?? ""};content-visibility:hidden`);
+  void body.offsetHeight; // apply it: a style + layout pass with the contents skipped
+  if (was === null) body.removeAttribute("style");
+  else body.setAttribute("style", was);
+}
+
+/**
+ * Screenshot the viewport into a PNG at `path`. Through CDP rather than
+ * page.screenshot, to ask for the fast PNG encoder (`optimizeForSpeed`): the
+ * pixels are the same, but compressing a busy 1080p frame takes a fraction of
+ * the time (the PNG is larger, and only lives until the encode).
+ */
+async function screenshotPng(cdp: CDPSession, path: string, clip: { width: number; height: number; scale: number }): Promise<void> {
+  const { data } = (await cdp.send("Page.captureScreenshot", {
+    format: "png",
+    optimizeForSpeed: true,
+    // CDP sizes the image as clip × scale, ignoring the page's device scale
+    // factor, so pass that as the scale.
+    clip: { x: 0, y: 0, width: clip.width, height: clip.height, scale: clip.scale },
+  })) as { data: string };
+  await writeFile(path, Buffer.from(data, "base64"));
+}
+
 /** How one frame was produced and where its time went (see `onTiming`). */
 export interface FrameTiming {
   index: number;
@@ -28,9 +91,10 @@ export interface FrameTiming {
   kind: "shot" | "copy" | "cached" | "skipped";
   /** the seek() round trip, page work included (ms) */
   seekMs: number;
-  /** the extra double-rAF settle before a screenshot (ms; 0 unless shot) */
+  /** getting the page ready for a screenshot (ms; 0 unless shot): the paint
+   *  state reset, after a double-rAF settle when seek() returned no print */
   settleMs: number;
-  /** page.screenshot, encode + write included (ms; 0 unless shot) */
+  /** the screenshot, PNG encode + write included (ms; 0 unless shot) */
   shotMs: number;
   /** copying the previous still (ms; 0 unless copy) */
   copyMs: number;
@@ -134,7 +198,7 @@ export async function waitForReel(page: Page, opts: ReelWaitOptions = {}): Promi
 
 /** Open the page just long enough to read its declared `meta`. */
 export async function probeMeta(url: string, wait: ReelWaitOptions = {}): Promise<KamishibaiMeta> {
-  const browser = await chromium.launch();
+  const browser = await launchChrome();
   try {
     const page = await browser.newPage();
     const watched = watchPage(page, wait);
@@ -204,7 +268,7 @@ export interface CaptureChunkOptions {
 export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMarkers> {
   const { url, meta, chunk, framesDir, onFrame, onFingerprint, prevFingerprints, shouldRender, onTiming } = opts;
   const now = onTiming ? () => performance.now() : () => 0;
-  const browser = opts.browser ?? (await chromium.launch());
+  const browser = opts.browser ?? (await launchChrome());
   const owns = !opts.browser;
   try {
     const page = await browser.newPage({
@@ -231,7 +295,8 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
     // Web fonts must be ready before the first capture, or text reflows.
     await page.evaluate(() => document.fonts.ready);
 
-    const clip = { x: 0, y: 0, width: meta.width, height: meta.height };
+    const cdp = await page.context().newCDPSession(page);
+    const clip = { width: meta.width, height: meta.height, scale: opts.scale ?? 1 };
     let prevPath: string | undefined;
     let prevFp: string | undefined;
     for (const i of chunkIndices(chunk)) {
@@ -279,12 +344,9 @@ export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMark
         // Static span: copy the last still — no settle, no screenshot.
         await copyFile(prevPath!, thisPath);
       } else {
-        // Guarantee a settled paint even if seek() resolved early.
-        await page.evaluate(
-          () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
-        );
+        await page.evaluate(prepareShot, fp === undefined);
         t2 = now();
-        await page.screenshot({ path: thisPath, clip });
+        await screenshotPng(cdp, thisPath, clip);
       }
       if (onTiming) {
         const t3 = now();

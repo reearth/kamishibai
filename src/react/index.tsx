@@ -666,6 +666,21 @@ function computeFingerprint(host: HTMLElement, ms: number): string {
   return fnv1a64(domSnapshot(host) + "\0" + styleSnapshot() + "\0" + tokens.join("\0"));
 }
 
+// A print hashes the DOM as serialized, and CSS serializes numbers to 6
+// significant digits, so scale(0.9999998) and scale(1) hash the same. Chrome
+// paints the parsed value, though, and an almost-identity transform or an
+// almost-opaque opacity rasterizes text a little differently from the exact
+// one. Two frames with one print could then differ by a few pixels, and which
+// of them a run of copied frames shows would depend on where a worker's chunk
+// began (or on the frames an incremental run kept). So before hashing,
+// re-apply each inline style from its own serialization: the page then paints
+// exactly what its print describes.
+function snapInlineStyles(): void {
+  for (const el of document.querySelectorAll<HTMLElement | SVGElement>("[style]")) {
+    el.style.cssText = el.style.cssText;
+  }
+}
+
 function domSnapshot(host: HTMLElement): string {
   const body = document.body;
   if (!body || !body.contains(host)) return host.innerHTML;
@@ -1093,9 +1108,11 @@ const Driver: React.FC<{
   }, []);
 
   useEffect(() => {
-    // The seek hook resolves after a settled paint (double rAF). The live
-    // `audioRegistry` array is exposed so the renderer can read markers that
-    // <Audio> components push as the tree mounts across the timeline.
+    // The seek hook resolves with the frame's fingerprint after a settled
+    // paint (double rAF), so the renderer screenshots without waiting
+    // further. The live `audioRegistry` array is exposed so the renderer can
+    // read markers that <Audio> components push as the tree mounts across the
+    // timeline.
     window.kamishibai = {
       meta,
       seek: (target: number) =>
@@ -1146,8 +1163,11 @@ const Driver: React.FC<{
               }
               requestAnimationFrame(() =>
                 // Fingerprint *after* the settled paint, so a settler's
-                // imperative DOM writes (e.g. <Subtitle> text) are included.
+                // imperative DOM writes (e.g. <Subtitle> text), and whatever
+                // reacts to them a frame later, are included. The renderer
+                // screenshots as soon as this resolves.
                 requestAnimationFrame(() => {
+                  snapInlineStyles();
                   if (!bench) {
                     resolve(computeFingerprint(host, target));
                     return;

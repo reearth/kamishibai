@@ -253,6 +253,11 @@ export interface CaptureResult {
   audio: AudioManifest;
   /** soft subtitle cues collected from the page (with `only`: as for audio) */
   subtitles: Cue[];
+  /** every frame's print, for a page that returns them (with `only`: the
+   *  unselected frames' are the prior capture's) */
+  prints: Map<number, string>;
+  /** the output pixel size and scale the prints describe, e.g. "1920x1080@1" */
+  geometry: string;
 }
 
 /** How often to report narration progress while lines are synthesizing. */
@@ -486,9 +491,9 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     // even with no prints (a page that returns none), since `encode` reads the
     // fps from it. Frames skipped by --only (no new print this run) keep their
     // old entry.
-    if (persist) {
-      await writeManifest(framesDir, buildManifest(manifestKey, new Map([...untouched, ...fingerprints])));
-    }
+    const prints = new Map([...untouched, ...fingerprints]);
+    const geometry = `${outW}x${outH}@${scale}`;
+    if (persist) await writeManifest(framesDir, buildManifest(manifestKey, prints));
 
     // Persist the mux inputs next to the frames so `encode` can rebuild the
     // full video later (audio + subtitles) without re-capturing — but only on a
@@ -507,6 +512,8 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
           workers: chunks.length,
           audio: sidecar.audio,
           subtitles: sidecar.subtitles,
+          prints,
+          geometry,
         };
       }
       log(
@@ -535,6 +542,8 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       workers: chunks.length,
       audio: audioClips,
       subtitles: collected.subtitles,
+      prints,
+      geometry,
     };
   } finally {
     await served.close();
@@ -613,6 +622,8 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       gifLoop: opts.gifLoop,
       encodeArgs: opts.encodeArgs,
       muxArgs: opts.muxArgs,
+      // Reuse also covers the encode: only the segments whose frames changed.
+      segments: reuse ? { prints: cap.prints, geometry: cap.geometry } : undefined,
       verbose: opts.verbose,
       progressEveryMs: opts.progressEveryMs,
       log,

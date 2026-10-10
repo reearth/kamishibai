@@ -164,6 +164,7 @@ kamishibai does **not** guarantee pixel-identical output across environments. It
 - **Fonts are awaited** (`document.fonts.ready`) before the first capture, so text doesn't reflow mid-reel.
 - **Pin Chromium** via your Playwright version — emoji and sub-pixel rendering depend on the Chrome build.
 - Keep `seek(ms)` a pure function of `ms` (no `Date.now()`, no un-seeded randomness) so any Chrome renders any frame identically.
+- **The worker count doesn't change the pixels.** Each worker starts partway through the reel, so a frame must not depend on what its Chrome drew before. Before each screenshot the renderer drops the paint state Chrome keeps between frames, and `kamishibai/react` makes the page paint exactly the values its fingerprint describes, so a run of copied frames starts from the same still however the reel is split.
 
 The intended workflow: pin the environment, render in CI, and let a frame/checksum check fail loudly when something drifts.
 

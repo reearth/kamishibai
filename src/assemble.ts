@@ -14,6 +14,7 @@
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { encodeFrames, encodeGif, muxAudio, muxSubtitles } from "./ffmpeg.ts";
+import { encodeSegmented } from "./segments.ts";
 import { cuesToSrt, type Cue } from "./subtitle.ts";
 import type { AudioManifest } from "./audio.ts";
 
@@ -90,6 +91,10 @@ export interface AssembleOptions {
   gifLoop?: number;
   encodeArgs?: string[];
   muxArgs?: string[];
+  /** mp4 only: encode in segments kept in the frames dir, re-encoding only
+   *  those whose frames changed since the last run (see segments.ts). Takes
+   *  the frames' prints and what else decides their pixels (the geometry). */
+  segments?: { prints: ReadonlyMap<number, string>; geometry: string };
   /** emit an "encoded X/total" heartbeat at most this often (ms; default 60s) */
   progressEveryMs?: number;
   verbose?: boolean;
@@ -149,19 +154,39 @@ export async function assemble(opts: AssembleOptions): Promise<void> {
     }, opts.progressEveryMs ?? 60_000);
     heartbeat.unref?.();
     try {
-      await encodeFrames({
-        framesDir,
-        fps,
-        out: encoded,
-        crf: opts.crf,
-        preset: opts.preset,
-        maxWidth: opts.maxWidth,
-        extraArgs: opts.encodeArgs,
-        onProgress: (f) => {
-          encFrame = f;
-        },
-        verbose: opts.verbose,
-      });
+      if (opts.segments) {
+        const { encoded: n, total } = await encodeSegmented({
+          framesDir,
+          fps,
+          totalFrames,
+          prints: opts.segments.prints,
+          geometry: opts.segments.geometry,
+          out: encoded,
+          crf: opts.crf,
+          preset: opts.preset,
+          maxWidth: opts.maxWidth,
+          encodeArgs: opts.encodeArgs,
+          onProgress: (done, all) => {
+            encFrame = Math.round((done / all) * totalFrames);
+          },
+          verbose: opts.verbose,
+        });
+        log(`  ✓ encoded ${n} of ${total} segment(s); the rest were unchanged`);
+      } else {
+        await encodeFrames({
+          framesDir,
+          fps,
+          out: encoded,
+          crf: opts.crf,
+          preset: opts.preset,
+          maxWidth: opts.maxWidth,
+          extraArgs: opts.encodeArgs,
+          onProgress: (f) => {
+            encFrame = f;
+          },
+          verbose: opts.verbose,
+        });
+      }
     } finally {
       clearInterval(heartbeat);
     }

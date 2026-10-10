@@ -12,11 +12,21 @@ can contain breaking changes, and they are called out under **Changed**.
 - **TTS cache-only mode:** `createTTSEngine({ cacheOnly: true })` never calls a provider. A cached line comes back as usual; an uncached one comes back with `src: ""` and an estimated duration. `dev` uses this, so editing narration costs nothing. `TTSStats` gains `estimated`.
 - **Placeholder clips and labels:** an `AudioClip` with `src: ""` is a placeholder for a sound with no file yet. A render skips it and logs that it did. `AudioClip.label` (and `<Audio label>`) names a clip for the dev player and is never muxed. `<Narration>` now always declares its clip, labeled with the caption, including before the line has audio.
 - **TTS base URL:** every network adapter takes a `baseUrl`, so requests can go through a proxy or a compatible server. Without it, the adapter reads `OPENAI_BASE_URL`, `GOOGLE_TTS_BASE_URL`, `GEMINI_BASE_URL`, `ELEVENLABS_BASE_URL` or `AWS_ENDPOINT_URL_POLLY`. The base URL is not part of the cache key.
+- **Incremental encode:** with `-i` or `--only`, the mp4 is encoded in 2-second segments kept in the frames dir (`.kamishibai-segments/`), each keyed by its frames' fingerprints and the encode settings. A re-render encodes only the segments whose frames changed and joins them with the rest without re-encoding, so an edit to the sound alone re-encodes no video. Each segment starts with a keyframe, so the file is somewhat larger than a full render's.
 - **Capture timings:** `captureChunk` takes `onTiming`, called after each frame with how it was produced (`shot`, `copy`, `cached` or `skipped`) and how long its seek, settle, screenshot and copy took. With `onPageTimings`, it also receives what the page recorded inside each seek; kamishibai/react records its commit, settler, paint and fingerprint phases. Both are for benchmarking and cost nothing when unset. `FrameTiming` is exported.
 
 ### Changed
 
+- **Faster capture.** Chrome runs without its 60 Hz frame cap, so each animation frame the capture waits for comes as soon as the previous one is drawn. Screenshots use Chrome's fast PNG encoder: the same pixels, in larger intermediate PNGs. A frame whose `seek` returned a fingerprint is screenshotted as soon as `seek` resolves, without two more animation frames first, so a raw page that returns a fingerprint must return it only once the frame is drawn (`kamishibai/react` already does).
 - **Docs:** the README is now a short overview (the idea, the contract, a quick start). The details moved to [`docs/`](https://github.com/reearth/kamishibai/blob/main/docs/README.md), one page per topic.
+
+### Fixed
+
+- **The worker count changed the pixels.** A reel rendered with `-w 1` and `-w 6` could differ in runs of frames that start where a worker's chunk began, for two reasons:
+  - A fingerprint hashes the DOM as serialized, which writes numbers to 6 significant digits, so the last frames of an animation (`scale(0.9999998)`, an opacity of 0.9999999) shared a print with the exact values but painted a little differently. Which of them a run of copied frames showed depended on where the chunk began. `kamishibai/react` now re-applies each inline style from its serialization before hashing, so the page paints exactly what its print describes.
+  - Chrome kept compositing state for text animated in (opacity and transform changing together), so a worker that hadn't drawn the animation painted the text differently. The renderer now drops that state before each screenshot.
+
+  The last frames of such animations can differ slightly from earlier versions. A `-i` cache keeps its old frames for them, so render once without `-i` to refresh it.
 
 ## 0.5.0
 

@@ -5,6 +5,7 @@
 // audio manifest by delaying each clip to its start time and mixing.
 // ------------------------------------------------------------------
 import { execFile, spawn } from "node:child_process";
+import { rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import type { AudioManifest } from "./audio.ts";
@@ -107,6 +108,8 @@ export interface EncodeOptions {
   /** extra raw ffmpeg args appended just before the output, so they add to or
    *  override the fixed encode settings (e.g. ["-tune","animation"]) */
   extraArgs?: string[];
+  /** encode only frames [from, from + count) instead of the whole sequence */
+  range?: { from: number; count: number };
   /** called with the latest encoded frame number as ffmpeg reports it */
   onProgress?: (frame: number) => void;
   verbose?: boolean;
@@ -114,7 +117,7 @@ export interface EncodeOptions {
 
 /** Encode the f000000.png … sequence into a silent H.264 mp4. */
 export async function encodeFrames(opts: EncodeOptions): Promise<void> {
-  const { framesDir, fps, out, crf = 18, preset, maxWidth, extraArgs = [], onProgress, verbose = false } = opts;
+  const { framesDir, fps, out, crf = 18, preset, maxWidth, extraArgs = [], range, onProgress, verbose = false } = opts;
   // yuv420p needs even dimensions: cap width to an even number, height -2.
   const vf = maxWidth
     ? ["-vf", `scale='min(${Math.floor(maxWidth / 2) * 2},iw)':-2:flags=lanczos`]
@@ -123,7 +126,9 @@ export async function encodeFrames(opts: EncodeOptions): Promise<void> {
     [
       "-y",
       "-framerate", String(fps),
+      ...(range ? ["-start_number", String(range.from)] : []),
       "-i", join(framesDir, "f%06d.png"),
+      ...(range ? ["-frames:v", String(range.count)] : []),
       ...vf,
       "-c:v", "libx264",
       ...(preset ? ["-preset", preset] : []),
@@ -135,6 +140,19 @@ export async function encodeFrames(opts: EncodeOptions): Promise<void> {
     verbose,
     onProgress,
   );
+}
+
+/** Join mp4s encoded with the same settings into one, without re-encoding. */
+export async function concatVideos(parts: string[], out: string, verbose = false): Promise<void> {
+  const list = `${out}.txt`;
+  // The concat demuxer's list format: one `file '<path>'` per line, with any
+  // single quote in a path written as '\''.
+  await writeFile(list, parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n") + "\n");
+  try {
+    await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out], verbose);
+  } finally {
+    await rm(list, { force: true });
+  }
 }
 
 export interface EncodeGifOptions {
