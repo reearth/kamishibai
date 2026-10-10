@@ -18,6 +18,7 @@ can contain breaking changes, and they are called out under **Changed**.
 ### Changed
 
 - **Faster capture.** Chrome runs without its 60 Hz frame cap, so each animation frame the capture waits for comes as soon as the previous one is drawn. Screenshots use Chrome's fast PNG encoder: the same pixels, in larger intermediate PNGs. A frame whose `seek` returned a fingerprint is screenshotted as soon as `seek` resolves, without two more animation frames first, so a raw page that returns a fingerprint must return it only once the frame is drawn (`kamishibai/react` already does).
+- **WebGL on the GPU (macOS).** Headless Chrome draws WebGL with SwiftShader, on the CPU. When the probe sees the page create a WebGL context, the capture's Chrome draws it with ANGLE over Metal instead: a three.js reel of 500 spheres renders about 4 times faster. A page without WebGL is captured as before. `probeReel()` returns the meta and whether the page uses WebGL.
 - **Docs:** the README is now a short overview (the idea, the contract, a quick start). The details moved to [`docs/`](https://github.com/reearth/kamishibai/blob/main/docs/README.md), one page per topic.
 
 ### Fixed

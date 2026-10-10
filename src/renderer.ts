@@ -29,9 +29,17 @@ const frameName = (i: number): string => `f${String(i).padStart(6, "0")}.png`;
  */
 export const CHROME_ARGS = ["--disable-frame-rate-limit", "--disable-gpu-vsync"];
 
-/** Launch the headless Chrome a capture runs in. */
-export function launchChrome(): Promise<Browser> {
-  return chromium.launch({ args: CHROME_ARGS });
+/**
+ * Headless Chrome draws WebGL with SwiftShader, on the CPU. On macOS, ANGLE
+ * over Metal puts it on the GPU, several times faster for a 3D scene. It also
+ * moves the page's own painting to the GPU, which is slower for a page without
+ * WebGL, so it's only used for a page that creates a WebGL context.
+ */
+export const GPU_CHROME_ARGS = process.platform === "darwin" ? ["--use-angle=metal"] : [];
+
+/** Launch the headless Chrome a capture runs in; `gpu` for a WebGL page. */
+export function launchChrome(gpu = false): Promise<Browser> {
+  return chromium.launch({ args: gpu ? [...CHROME_ARGS, ...GPU_CHROME_ARGS] : CHROME_ARGS });
 }
 
 /**
@@ -198,20 +206,51 @@ export async function waitForReel(page: Page, opts: ReelWaitOptions = {}): Promi
 
 /** Open the page just long enough to read its declared `meta`. */
 export async function probeMeta(url: string, wait: ReelWaitOptions = {}): Promise<KamishibaiMeta> {
+  return (await probeReel(url, wait)).meta;
+}
+
+/** What a probe learns about a reel: its meta, and whether it uses WebGL. */
+export interface ReelProbe {
+  meta: KamishibaiMeta;
+  /** the page created a WebGL context by the time it exposed the reel */
+  webgl: boolean;
+}
+
+/** Load the reel once, as `probeMeta` does, and also see whether it uses WebGL. */
+export async function probeReel(url: string, wait: ReelWaitOptions = {}): Promise<ReelProbe> {
   const browser = await launchChrome();
   try {
     const page = await browser.newPage();
+    await page.addInitScript(watchWebGL);
     const watched = watchPage(page, wait);
     await page.goto(url, { waitUntil: "load" });
     await waitForReel(page, watched);
-    const meta = await page.evaluate(
-      (key) => (window as any)[key].meta as KamishibaiMeta,
+    const { meta, webgl } = await page.evaluate(
+      (key) => ({
+        meta: (window as any)[key].meta as KamishibaiMeta,
+        webgl: !!(window as { __KAMISHIBAI_WEBGL__?: boolean }).__KAMISHIBAI_WEBGL__,
+      }),
       GLOBAL_KEY,
     );
     assertMeta(meta);
-    return meta;
+    return { meta, webgl };
   } finally {
     await browser.close();
+  }
+}
+
+/** Runs in the page before its own scripts: flag any WebGL context it creates. */
+function watchWebGL(): void {
+  for (const proto of [globalThis.HTMLCanvasElement?.prototype, globalThis.OffscreenCanvas?.prototype]) {
+    if (!proto) continue;
+    const getContext = proto.getContext as (this: unknown, type: string, ...rest: unknown[]) => unknown;
+    (proto as { getContext: unknown }).getContext = function (this: unknown, type: string, ...rest: unknown[]) {
+      const ctx = getContext.call(this, type, ...rest);
+      if (ctx && /^(experimental-)?webgl/.test(type)) {
+        (window as { __KAMISHIBAI_WEBGL__?: boolean }).__KAMISHIBAI_WEBGL__ = true;
+      }
+      return ctx;
+    };
   }
 }
 
@@ -249,6 +288,8 @@ export interface CaptureChunkOptions {
   shouldRender?: (index: number) => boolean;
   /** reuse an existing browser instead of launching one */
   browser?: Browser;
+  /** launch Chrome with WebGL on the GPU (see `probeReel`); ignored with `browser` */
+  gpu?: boolean;
   /** how long to wait for the page to expose window.kamishibai */
   wait?: ReelWaitOptions;
   /** called after each frame with where its time went — for benchmarking;
@@ -268,7 +309,7 @@ export interface CaptureChunkOptions {
 export async function captureChunk(opts: CaptureChunkOptions): Promise<ChunkMarkers> {
   const { url, meta, chunk, framesDir, onFrame, onFingerprint, prevFingerprints, shouldRender, onTiming } = opts;
   const now = onTiming ? () => performance.now() : () => 0;
-  const browser = opts.browser ?? (await launchChrome());
+  const browser = opts.browser ?? (await launchChrome(opts.gpu));
   const owns = !opts.browser;
   try {
     const page = await browser.newPage({

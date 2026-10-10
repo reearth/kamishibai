@@ -60,8 +60,8 @@ export {
 export type { FrameManifest, ManifestKey } from "./incremental.ts";
 
 // Lower-level building blocks, in case you want to assemble your own pipeline.
-export { probeMeta, captureChunk, waitForReel } from "./renderer.ts";
-export type { ChunkMarkers, ReelWaitOptions, FrameTiming } from "./renderer.ts";
+export { probeMeta, probeReel, captureChunk, waitForReel } from "./renderer.ts";
+export type { ChunkMarkers, ReelWaitOptions, ReelProbe, FrameTiming } from "./renderer.ts";
 export { renderPool } from "./pool.ts";
 export type { PoolMarkers } from "./pool.ts";
 export { serveEntry } from "./serve.ts";

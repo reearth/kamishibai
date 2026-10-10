@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import os from "node:os";
 import { serveEntry } from "./serve.ts";
-import { probeMeta, type ReelWaitOptions } from "./renderer.ts";
+import { GPU_CHROME_ARGS, probeMeta, probeReel, type ReelWaitOptions } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
 import { frameCount, type KamishibaiMeta } from "./protocol.ts";
@@ -374,13 +374,13 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     log(`Probing ${served.url} …`);
     let probed;
     try {
-      probed = await probeMeta(served.url, narration.wait);
+      probed = await probeReel(served.url, narration.wait);
     } finally {
       narration.stop();
     }
     narration.summarize();
     // An explicit --fps re-samples the same reel (ms-driven) at a new rate.
-    const meta = opts.fps ? { ...probed, fps: opts.fps } : probed;
+    const meta = opts.fps ? { ...probed.meta, fps: opts.fps } : probed.meta;
     const total = frameCount(meta);
     if (total < 1) {
       throw new Error(
@@ -454,7 +454,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     log(
       `Capturing ${selected ? `${selected.size} of ${total}` : `${total}`} frames (${outW}×${outH}` +
         `${scale !== 1 ? ` @${scale}x` : ""} @ ${meta.fps}fps) ` +
-        `on ${chunks.length} Chrome instance(s)…` +
+        `on ${chunks.length} Chrome instance(s)${probed.webgl && GPU_CHROME_ARGS.length ? ", WebGL on the GPU" : ""}…` +
         `${opts.incremental && prevFingerprints?.size ? ` (incremental: ${prevFingerprints.size} cached)` : ""}`,
     );
 
@@ -478,6 +478,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
         prevFingerprints,
         shouldRender,
         wait: narration.wait,
+        gpu: probed.webgl,
         onProgress: (done) => {
           doneFrames = done;
         },

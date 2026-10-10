@@ -35,6 +35,8 @@ export interface RenderPoolOptions {
   shouldRender?: (index: number) => boolean;
   /** how long each worker waits for the page to expose window.kamishibai */
   wait?: ReelWaitOptions;
+  /** capture with WebGL on the GPU (a reel that uses WebGL) */
+  gpu?: boolean;
 }
 
 /**
@@ -60,6 +62,7 @@ export async function renderPool(opts: RenderPoolOptions): Promise<PoolMarkers> 
         prevFingerprints,
         shouldRender,
         wait: opts.wait,
+        gpu: opts.gpu,
         onFrame: () => {
           done += 1;
           onProgress?.(done, total);
