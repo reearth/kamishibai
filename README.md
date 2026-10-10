@@ -7,7 +7,7 @@
 
 <sub>The [`examples/basics`](examples/basics/index.tsx) reel — spring entrances, staggered bars, multi-stop tracks, color tweens. ([full mp4](examples/basics/out.mp4))</sub>
 
-`kamishibai` turns any web page (DOM, canvas, anything) into a video by **seeking to each moment and capturing a still**, then assembling the stills with `ffmpeg`. Because every frame is a pure function of its time, capture is reproducible — in a pinned environment, any order of frames gives the same video — and **trivially parallelisable** across several headless Chrome instances.
+`kamishibai` turns any web page (DOM, canvas, anything) into a video by **seeking to each moment and capturing a still**, then assembling the stills with `ffmpeg`. Because every frame is a pure function of its time, capture is reproducible — in a pinned environment, any order of frames gives the same video — and **trivially parallelisable** across several pages of a headless Chrome.
 
 It deliberately does *not* try to be a frame-accurate compositing engine or ship an editor. It gives you the renderer and one tiny contract; the rest is yours.
 
@@ -113,12 +113,12 @@ Whatever happens inside `seek` — a React re-render, `ctx.clearRect` + hand-dra
 
 ### Parallel capture
 
-A reel of N frames is cut into contiguous chunks of frame indices, and each chunk is captured by its own Chrome. Since frame *i* depends only on its time, it doesn't matter which Chrome renders which chunk:
+A reel of N frames is cut into contiguous chunks of frame indices, and each chunk is captured by its own page in one headless Chrome. Since frame *i* depends only on its time, it doesn't matter which page renders which chunk:
 
 ```
-frames 0–684     → Chrome #1 ┐
-frames 685–1369  → Chrome #2 ├ run at once → PNG sequence → ffmpeg → mp4
-frames 1370–…    → Chrome #3 ┘
+frames 0–684     → page #1 ┐
+frames 685–1369  → page #2 ├ run at once → PNG sequence → ffmpeg → mp4
+frames 1370–…    → page #3 ┘
 ```
 
 `seek` can also say a frame is **the same as the one before**, by returning `false` or a fingerprint of its content. The renderer then copies the previous still instead of capturing it, and with `--incremental` it reuses frames from the last run whose fingerprint didn't change, so after an edit only the changed frames are captured again. `kamishibai/react` returns the fingerprint for you. See [Skipping frames & incremental builds](https://github.com/reearth/kamishibai/blob/main/docs/performance.md).

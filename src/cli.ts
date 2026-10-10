@@ -34,7 +34,7 @@ Arguments:
                         narration (TTS) need a script or .html entry.
 
 Capture options (render, capture):
-  -w, --workers <n>     parallel Chrome instances (default: ~cpus-2, max 8)
+  -w, --workers <n>     parallel capture pages (default: ~cpus-2, max 8)
       --fps <n>         override the page's fps (re-samples the same reel)
   -s, --scale <n>       device scale factor; output px = meta size × scale (default: 1)
   -p, --public <dir>    static assets dir served at the root (staticFile paths);

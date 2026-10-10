@@ -1,9 +1,9 @@
 // Splitting work into parallel-capturable units.
 // ------------------------------------------------------------------
 // A reel of N frames is cut into contiguous chunks of frame indices.
-// Each chunk is captured independently by its own Chrome, then the
+// Each chunk is captured independently by its own page, then the
 // stills are reassembled in index order. Because frame i depends only
-// on its time, it doesn't matter which Chrome rendered which chunk.
+// on its time, it doesn't matter which page rendered which chunk.
 // ------------------------------------------------------------------
 
 /** A contiguous, half-open range of frame indices: [start, end). */

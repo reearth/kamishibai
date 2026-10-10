@@ -32,7 +32,7 @@ export interface RenderOptions {
   out: string;
   /** override the page's meta.fps (re-samples the same reel at this rate) */
   fps?: number;
-  /** number of parallel Chrome instances; defaults to ~cpus-2 (max 8) */
+  /** number of parallel capture pages; defaults to ~cpus-2 (max 8) */
   workers?: number;
   /** device scale factor — output pixels = meta size × scale (default 1) */
   scale?: number;
@@ -210,7 +210,7 @@ export interface CaptureOptions {
   framesDir: string;
   /** override the page's meta.fps (re-samples the same reel at this rate) */
   fps?: number;
-  /** number of parallel Chrome instances; defaults to ~cpus-2 (max 8) */
+  /** number of parallel capture pages; defaults to ~cpus-2 (max 8) */
   workers?: number;
   /** device scale factor — output pixels = meta size × scale (default 1) */
   scale?: number;
@@ -341,7 +341,7 @@ function narrationEngine(
 
 /**
  * Capture an entry's frames into `framesDir` — serve, probe, split, and run the
- * parallel Chrome pool — WITHOUT encoding. Returns the geometry and the mux
+ * parallel capture pool — WITHOUT encoding. Returns the geometry and the mux
  * inputs (resolved audio + subtitle cues); with `persist` (default), also writes
  * the manifest and mux sidecar so a later `encode` can rebuild the full video.
  */
@@ -454,7 +454,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     log(
       `Capturing ${selected ? `${selected.size} of ${total}` : `${total}`} frames (${outW}×${outH}` +
         `${scale !== 1 ? ` @${scale}x` : ""} @ ${meta.fps}fps) ` +
-        `on ${chunks.length} Chrome instance(s)${probed.webgl && GPU_CHROME_ARGS.length ? ", WebGL on the GPU" : ""}…` +
+        `on ${chunks.length} page(s)${probed.webgl && GPU_CHROME_ARGS.length ? ", WebGL on the GPU" : ""}…` +
         `${opts.incremental && prevFingerprints?.size ? ` (incremental: ${prevFingerprints.size} cached)` : ""}`,
     );
 

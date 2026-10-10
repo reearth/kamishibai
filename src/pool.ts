@@ -1,10 +1,10 @@
-// Running chunks across several Chrome instances at once.
+// Running chunks across several pages of one Chrome at once.
 // ------------------------------------------------------------------
-// The whole point: independent chunks => embarrassingly parallel. We
-// launch one Chrome per chunk and let them race; completion order is
+// The whole point: independent chunks => embarrassingly parallel. One
+// Chrome runs a page per chunk and they race; completion order is
 // irrelevant because each writes its own frame files by index.
 // ------------------------------------------------------------------
-import { captureChunk, type ReelWaitOptions } from "./renderer.ts";
+import { captureChunk, launchChrome, type ChunkMarkers, type ReelWaitOptions } from "./renderer.ts";
 import type { Chunk } from "./segment.ts";
 import type { KamishibaiMeta } from "./protocol.ts";
 import { clipKey, type AudioClip } from "./audio.ts";
@@ -50,29 +50,39 @@ export async function renderPool(opts: RenderPoolOptions): Promise<PoolMarkers> 
   const total = chunks.reduce((n, c) => n + (c.end - c.start), 0);
   let done = 0;
 
-  const perChunk = await Promise.all(
-    chunks.map((chunk) =>
-      captureChunk({
-        url,
-        meta,
-        chunk,
-        framesDir,
-        scale,
-        onFingerprint,
-        prevFingerprints,
-        shouldRender,
-        wait: opts.wait,
-        gpu: opts.gpu,
-        onFrame: () => {
-          done += 1;
-          onProgress?.(done, total);
-        },
-      }).then((markers) => {
-        onChunkDone?.(chunk);
-        return markers;
-      }),
-    ),
-  );
+  // One browser for every chunk, each in its own page (and so its own
+  // renderer process). Launching a Chrome per chunk started each one's GPU
+  // process and loaded the reel in all of them at once, which cost seconds
+  // before the first frame.
+  const browser = await launchChrome(opts.gpu);
+  let perChunk: ChunkMarkers[];
+  try {
+    perChunk = await Promise.all(
+      chunks.map((chunk) =>
+        captureChunk({
+          url,
+          meta,
+          chunk,
+          framesDir,
+          scale,
+          onFingerprint,
+          prevFingerprints,
+          shouldRender,
+          wait: opts.wait,
+          browser,
+          onFrame: () => {
+            done += 1;
+            onProgress?.(done, total);
+          },
+        }).then((markers) => {
+          onChunkDone?.(chunk);
+          return markers;
+        }),
+      ),
+    );
+  } finally {
+    await browser.close();
+  }
 
   // Merge + dedup (a scene spanning a chunk boundary reports in both).
   const seen = new Set<string>();
