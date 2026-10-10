@@ -75,6 +75,8 @@ A Lexicon picture is drawn in the same palette, from the constants in `src/lib/d
 ## Layout
 
 - Every sheet of the top page starts with the same header (`src/components/TopBar.astro`): the logo, then Lexicon, Docs and GitHub. The sheet's content sits in `.body` below it.
+- The Lexicon grid has a search field above the chips. It narrows whichever chip is chosen, matching every word of the query against a term's name, reading, chapter and description, ignoring case, width and hiragana vs katakana.
+- The chips always wrap. A strip that scrolls sideways looks cut off at the edge of a phone.
 - The deck is the card and its script panel, nothing else. There is no strip of thumbnails; scroll, the ‹ › buttons and the arrow keys move through it.
 - **A sheet never scrolls inside.** Everything on it must fit its height. When it doesn't, cut or shrink content at that breakpoint instead of letting it overflow.
 - Keep the bottom-left HUD clear. On phones and short screens, sheets reserve padding at the bottom for it.
@@ -90,8 +92,8 @@ A Lexicon picture is drawn in the same palette, from the constants in `src/lib/d
 | `max-width: 900px` | Deck | Card above the script instead of beside it; the script fills the height below the card |
 | `max-width: 760px` | Top | Phone sheets: tighter padding, inline headline, HUD shows dots only |
 | `max-width: 760px` and `max-height: 700px` | Top | Short phones: the Start sheet drops its side notes |
-| `max-width: 560px` | Lexicon | Two cards a row with names only; the chips scroll sideways |
-| `max-height: 500px` | All | A phone on its side: drops the ball preview and step descriptions; the Lexicon chips scroll sideways; deck card and script side by side |
+| `max-width: 560px` | Lexicon | Two cards a row with names only; the search field takes the full width and the chips wrap, a little narrower |
+| `max-height: 500px` | All | A phone on its side: drops the ball preview and step descriptions; deck card and script side by side |
 
 ## Link preview
 

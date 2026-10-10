@@ -33,6 +33,13 @@ const host = new URL(base, Astro.site).host + base;
   <section class="intro">
     <h1 class="h1"><span>A lexicon</span> <span>of motion.</span></h1>
     <p class="lead">From camera moves and cuts to type, texture and generative art. Each term has its name, a loop, and words you can hand to an agent. Every loop is a kamishibai reel, drawn from its time alone.</p>
+    <div class="search">
+      <label class="field">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7.5" cy="7.5" r="5.5"></circle><path d="M11.5 11.5L16 16"></path></svg>
+        <input type="search" placeholder={`Search ${TERMS.length} terms`} aria-label="Search the terms" autocomplete="off" spellcheck="false" />
+      </label>
+      <span class="found" aria-live="polite"></span>
+    </div>
     <div class="filters">
       <div class="chips" role="group" aria-label="Category">
         <button type="button" class="chip" data-cat="Random" aria-pressed="false">Random</button>
@@ -47,9 +54,10 @@ const host = new URL(base, Astro.site).host + base;
        (All); the script after the grid shuffles them before they are first
        painted, and the grid stays hidden until it has. */}
   <script is:inline>document.currentScript.parentElement.classList.add("shuffling");</script>
+  <p class="empty" hidden>No term matches. <button type="button" class="linkish" data-clear>Clear the search</button></p>
   <section class="grid">
     {TERMS.map((t, n) => (
-      <a class="card" href={permalink(t.id)} data-open={deck.findIndex((c) => c.id === t.id)} data-cat={t.cat} data-n={n}>
+      <a class="card" href={permalink(t.id)} data-open={deck.findIndex((c) => c.id === t.id)} data-cat={t.cat} data-n={n} data-search={`${t.en} ${t.ja} ${t.cat} ${CHAPTERS.find((c) => c.cat === t.cat)!.ja} ${t.desc}`}>
         <Frame id={t.id} dark={t.dark} />
         <span class="name"><b>{t.en}</b><span>{t.ja}</span></span>
         <span class="desc">{t.desc}</span>
@@ -163,7 +171,17 @@ const host = new URL(base, Astro.site).host + base;
   .h1 { margin: 0; font-size: clamp(40px, 6.4vw, 88px); line-height: 0.98; font-weight: 800; letter-spacing: -0.05em; text-wrap: balance; }
   .h1 span { display: block; }
   .lead { margin: 0; max-width: 620px; font-size: 18px; line-height: 1.6; color: var(--ink-2); }
-  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  .search { margin-top: 10px; display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+  .field { position: relative; flex: 0 1 420px; min-width: 0; display: flex; align-items: center; }
+  .field svg { position: absolute; left: 14px; color: var(--ink-3); pointer-events: none; }
+  /* 16px, so iOS doesn't zoom in on focus. */
+  .field input { width: 100%; min-height: 44px; appearance: none; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); padding: 10px 14px 10px 42px; font: inherit; font-size: 16px; }
+  .field input::placeholder { color: var(--ink-3); }
+  .found { font-size: 14px; color: var(--ink-3); }
+  .empty { max-width: 1320px; margin: 0 auto; padding: 8px clamp(16px, 4vw, 40px) 0; font-size: 16px; color: var(--ink-2); }
+  .empty[hidden] { display: none; }
+  .linkish { appearance: none; background: none; border: 0; padding: 0; color: var(--kaki-text); text-decoration: underline; cursor: pointer; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { appearance: none; background: transparent; border: 1px solid var(--ink); padding: 10px 14px; font-size: 14px; font-weight: 500; cursor: pointer; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
   .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
@@ -229,13 +247,14 @@ const host = new URL(base, Astro.site).host + base;
     .note, .url { display: none; }
     .holder { height: auto; width: calc(100% - 96px); max-width: none; }
   }
-  /* Phones: two cards a row, names only; the chips scroll sideways. */
+  /* Phones: two cards a row, names only; the chips wrap, a little narrower. */
   @media (max-width: 560px) {
     .intro { padding-top: 16px; gap: 14px; }
     .h1 span { display: inline; }
     .lead { font-size: 16px; line-height: 1.55; }
-    .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 calc(-1 * clamp(16px, 4vw, 40px)); padding: 0 clamp(16px, 4vw, 40px); scrollbar-width: none; }
-    .chip { flex: none; }
+    .field { flex-basis: 100%; }
+    .chips { gap: 6px; }
+    .chip { padding: 8px 11px; }
     .chip.accent { margin-left: 0; }
     .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .card { padding: 8px 8px 10px; gap: 8px; }
@@ -261,9 +280,6 @@ const host = new URL(base, Astro.site).host + base;
   /* Short screens (a phone on its side): card and script side by side. */
   @media (max-height: 500px) {
     .intro { padding-top: 12px; gap: 14px; }
-    .filters { flex-wrap: nowrap; }
-    .chips { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-    .chip { flex: none; }
     .deck-stage { min-height: 0; padding: 8px 16px; }
     .deck-top { padding: 0 0 6px; }
     .deck-body { flex-direction: row; gap: 16px; }
@@ -310,7 +326,8 @@ const host = new URL(base, Astro.site).host + base;
   // ---- grid order and filters ----
   // Random: every term, shuffled (the order the page opens in; pressing it
   // again reshuffles). All: every term in chapter order. A chapter: its terms
-  // in chapter order. The cards are reordered in place.
+  // in chapter order. The cards are reordered in place. The search narrows
+  // whichever of these is chosen.
   const grid = root.querySelector<HTMLElement>(".grid")!;
   const inOrder = [...grid.querySelectorAll<HTMLElement>(".card")].sort((a, b) => Number(a.dataset.n) - Number(b.dataset.n));
   const shuffled = (list: HTMLElement[]): HTMLElement[] => {
@@ -323,14 +340,44 @@ const host = new URL(base, Astro.site).host + base;
     return out;
   };
   const chips = [...root.querySelectorAll<HTMLButtonElement>(".chip[data-cat]")];
+  const search = root.querySelector<HTMLInputElement>(".search input")!;
+  const found = root.querySelector<HTMLElement>(".found")!;
+  const empty = root.querySelector<HTMLElement>(".empty")!;
+  // Case, width (ｚｏｏｍ, ﾊﾟﾝ) and hiragana vs katakana (ぱん, パン) don't matter.
+  const fold = (s: string) =>
+    s.normalize("NFKC").toLowerCase().replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+  const haystack = new Map(inOrder.map((card) => [card, fold(card.dataset.search!)]));
+  let cat = "Random";
+
+  // Every word of the query must appear in the term's name, reading,
+  // chapter or description.
+  function filter(): void {
+    const words = fold(search.value).split(/\s+/).filter(Boolean);
+    let n = 0;
+    for (const card of inOrder) {
+      const show = (cat === "Random" || cat === "All" || card.dataset.cat === cat) && words.every((w) => haystack.get(card)!.includes(w));
+      card.hidden = !show;
+      if (show) n++;
+    }
+    found.textContent = words.length ? `${n} ${n === 1 ? "term" : "terms"}` : "";
+    empty.hidden = n > 0;
+  }
   chips.forEach((chip) =>
     chip.addEventListener("click", () => {
-      const cat = chip.dataset.cat!;
+      cat = chip.dataset.cat!;
       chips.forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
       grid.append(...(cat === "Random" ? shuffled(inOrder) : inOrder));
-      inOrder.forEach((card) => (card.hidden = cat !== "Random" && cat !== "All" && card.dataset.cat !== cat));
+      filter();
     }),
   );
+  search.addEventListener("input", filter);
+  root.querySelector("[data-clear]")!.addEventListener("click", () => {
+    search.value = "";
+    filter();
+    search.focus();
+  });
+  // A query the browser kept across a reload or Back still applies.
+  if (search.value) filter();
 
   // ---- the deck ----
   let shown = -1;
