@@ -6,7 +6,7 @@ The harness behind [docs/benchmarks.md](../docs/benchmarks.md): kamishibai next 
 |---|---|
 | `run-edit.ts` | Render again after an edit: an 86-second reel, five edits in a row, each tool rendering after every edit |
 | `run-speed.ts` | Render speed: a reference implementation of each brief per tool, with each tool's defaults and with one capture worker |
-| `run-agents.ts` | Agents: tokens, cost, turns and time for a headless Claude Code session to turn a brief into a passing `out.mp4`, with and without each tool's skills |
+| `run-agents.ts` | Agents: tokens, cost, turns and time for a headless Claude Code session to turn a brief into a passing `out.mp4`, with and without each tool's skills, and with no video tool at all (`bare`) |
 
 ## Files
 
