@@ -10,6 +10,8 @@ can contain breaking changes, and they are called out under **Changed**.
 
 - **Burned captions keep their style.** With `--burn-subtitles`, a `<Subtitle>` with `src` or `cues` (and so `<Narration subtitle>`) set its box to `rgba(0,0,0,0.62)` and `8px 22px` on every frame, over any `background` or `padding` in `style`. The box now takes `style` as static captions do, and is hidden between cues.
 
+- **Burned captions are the same whatever the worker count.** A page that started capturing in the middle of a caption drew the box's rounded corners one level different from a page that had captured the frames before, so the worker count changed a pixel per frame. The caption box now has its own compositor layer (`will-change: transform`).
+
 ### Docs
 
 - The guide gives `<Subtitle>`'s props, the shape of `cues`, and the burned caption's default look. In the agent benchmark, every trial that needed captions searched the package for these.

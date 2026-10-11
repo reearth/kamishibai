@@ -972,6 +972,11 @@ export const Subtitle: React.FC<{
     textShadow: "0 2px 8px rgba(0,0,0,0.55)",
     background: "rgba(0,0,0,0.62)",
     padding: "8px 22px",
+    // Its own compositor layer. Painted into a shared one, the box's rounded
+    // corners came out a level different on a page that started capturing
+    // mid-caption than on one that had painted the frames before, so the
+    // worker count changed the pixels.
+    willChange: "transform",
     ...style,
     // static text shows its box immediately; dynamic shows it per cue.
     ...(dynamic ? { visibility: "hidden" } : null),

@@ -584,7 +584,10 @@ visuals** (those are free) — text and voice changes cost money.
   is frame 123, at `123 / fps` seconds. A blank tail means `meta.durationMs` is
   longer than the content.
 - A glitch that moves when `--workers` changes means `seek` depends on the
-  previous seek. Fix that; don't pin `--workers 1`.
+  previous seek. Fix that; don't pin `--workers 1`. A difference of a level or
+  two on an element's antialiased edge, from the first frame a page captured,
+  comes from Chrome repainting only part of the page: give that element
+  `will-change: transform`.
 - The log is about a dozen lines, whatever the length. Read all of it; don't
   pipe it through `tail` or `head`, which hides `Done → <path>` and errors.
 - When done, show the video to whoever asked (on macOS, `open out.mp4`), unless
