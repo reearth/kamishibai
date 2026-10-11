@@ -3,6 +3,10 @@
 > **Turn any web page into a video. kamishibai only seeks the page to each moment and captures it.**
 > A *mechanism*, not a framework. How you draw — React, plain DOM, canvas, WebGL — is up to you.
 
+![A reel rendered with kamishibai](examples/basics/demo.gif)
+
+<sub>The [`examples/basics`](examples/basics/index.tsx) reel — spring entrances, staggered bars, multi-stop tracks, color tweens. ([full mp4](examples/basics/out.mp4))</sub>
+
 - 🧩 **Minimal.** One contract: the page exposes `window.kamishibai = { meta, seek }`. No framework to adopt, no editor.
 - 🎨 **Draw it any way.** React, plain DOM, canvas, three.js: anything a browser can show. The React helpers are optional.
 - ⚡ **Edit, then render only what changed.** `--incremental` captures again only the frames an edit touched. After one heading edit in an 86-second reel, it rendered again in 25 s, where Remotion took 48 s and HyperFrames 51 s ([benchmarks](docs/benchmarks.md)).
@@ -10,10 +14,6 @@
 - 🔊 **Sound included.** Audio clips, background music with ducking, TTS narration and frame-accurate video clips.
 - 🤖 **Made for agents.** The usage guide ships in the package (`npx kamishibai skill`), with agent skills to point to it.
 - 🆓 **MIT.** Free for any use, by anyone, companies of any size included.
-
-![A reel rendered with kamishibai](examples/basics/demo.gif)
-
-<sub>The [`examples/basics`](examples/basics/index.tsx) reel — spring entrances, staggered bars, multi-stop tracks, color tweens. ([full mp4](examples/basics/out.mp4))</sub>
 
 `kamishibai` turns any web page (DOM, canvas, anything) into a video by **seeking to each moment and capturing a still**, then assembling the stills with `ffmpeg`. Because every frame is a pure function of its time, capture is reproducible — in a pinned environment, any order of frames gives the same video — and **trivially parallelisable** across several pages of a headless Chrome.
 
