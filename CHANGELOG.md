@@ -4,16 +4,16 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
-## Unreleased
+## 0.6.1
 
 ### Fixed
 
 - **Burned captions keep their style.** With `--burn-subtitles`, a `<Subtitle>` with `src` or `cues` (and so `<Narration subtitle>`) set its box to `rgba(0,0,0,0.62)` and `8px 22px` on every frame, over any `background` or `padding` in `style`. The box now takes `style` as static captions do, and is hidden between cues.
-
 - **Burned captions are the same whatever the worker count.** A page that started capturing in the middle of a caption drew the box's rounded corners one level different from a page that had captured the frames before, so the worker count changed a pixel per frame. The caption box now has its own compositor layer (`will-change: transform`).
 
 ### Docs
 
+- `docs/benchmarks.md` leads its agent section with a same-day comparison: kamishibai 0.6.0 and 0.6.1, Remotion, and no tool.
 - The guide gives `<Subtitle>`'s props, the shape of `cues`, and the burned caption's default look. In the agent benchmark, every trial that needed captions searched the package for these.
 - The core guide that `kamishibai skill` prints is half as long (about 10,700 characters, from 20,500). It keeps every API, says each thing once, and leaves the rarer CLI options to `kamishibai render --help`.
 - The guide says to leave captions as the soft track and the `.srt` unless the person asks for them in the picture (or the output is a gif).
