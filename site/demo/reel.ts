@@ -1,7 +1,8 @@
 // The README's reel: a stack of kamishibai cards pulled one by one, faster and
-// faster, each with a Lexicon loop; then every Lexicon term at once; then the
-// line. Plain DOM and the one contract (window.kamishibai = { meta, seek }),
-// drawn with the site's own Lexicon code.
+// faster, each with a Lexicon loop; then every Lexicon term at once, under
+// "Anything a page can draw."; then the end card. Plain DOM and the one
+// contract (window.kamishibai = { meta, seek }), drawn with the site's own
+// Lexicon code.
 //
 //   node dist/cli.js render site/demo/reel.ts -o site/demo/demo.mp4
 //   node dist/cli.js render site/demo/reel.ts -o site/demo/demo.gif --fps 20 --max-width 640
@@ -128,8 +129,8 @@ function build() {
 
   // The line over the grid, and the end card.
   const band = el("div", `position:absolute;left:0;right:0;top:${meta.height / 2 - 70}px;height:140px;background:${PAPER};box-shadow:0 2px 10px rgba(0,0,0,.12);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px`, root);
-  el("div", "font-size:52px;font-weight:800;letter-spacing:-0.045em;line-height:1", band, `${TERMS.length} motions.`);
-  el("div", `font-size:22px;color:${INK_3}`, band, "Each one is a kamishibai reel, drawn from its time alone.");
+  el("div", "font-size:52px;font-weight:800;letter-spacing:-0.045em;line-height:1", band, "Anything a page can draw.");
+  el("div", `font-size:22px;color:${INK_3}`, band, "kamishibai seeks it to each moment and captures it.");
 
   const end = el("div", `position:absolute;left:${CX}px;top:${CY}px;width:${CW}px;height:${CH}px;background:${PAPER};box-shadow:0 2px 10px rgba(0,0,0,.14);padding:48px 44px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between`, root);
   el("div", `font-size:15px;font-weight:500;color:${KAKI_TEXT}`, end, "紙芝居 · kamishibai");
