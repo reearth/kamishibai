@@ -82,6 +82,10 @@ mkdir -p .claude/skills
 src="$HOME/.claude/skills"; [ -d "$src" ] || src="$HOME/.agents/skills"
 cp -RL "$src"/. .claude/skills/
 
+# The baseline with no video tool: an empty project. The agent installs
+# whatever it decides to use.
+mkdir -p "$OUT/bare/noskill" && (cd "$OUT/bare/noskill" && npm init -y >/dev/null && npm pkg set type=module)
+
 for tool in kamishibai remotion hyperframes; do
   rm -rf "$OUT/$tool/noskill"
   clone "$OUT/$tool/skill" "$OUT/$tool/noskill"
@@ -103,7 +107,10 @@ warm() { # tool, command...
   local tool="$1"; shift
   local w; w="$(mktemp -d)/$tool"
   clone "$OUT/$tool/noskill" "$w"
-  (cd "$w" && HOME="$SEED" "$@") >/dev/null 2>&1 || { echo "warm-up failed: $tool" >&2; exit 1; }
+  # Twice at most: the first launch of a freshly downloaded browser
+  # sometimes times out (HyperFrames' `chrome --version` check).
+  (cd "$w" && HOME="$SEED" "$@") >/dev/null 2>&1 ||
+    (cd "$w" && HOME="$SEED" "$@") >/dev/null 2>&1 || { echo "warm-up failed: $tool" >&2; exit 1; }
   rm -rf "$w"
 }
 cat > "$OUT/.warm-reel.tsx" <<'TSX'

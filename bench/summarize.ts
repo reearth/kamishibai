@@ -86,6 +86,13 @@ if (trials.length) {
   const outside = trials.filter((t) => t.outside?.length);
   console.log(`\n## Access outside the trial — ${outside.length ? `${outside.length} trial(s)` : "none"}\n`);
   for (const t of outside) for (const h of t.outside) console.log(`${t.id}: ${h.tool} ${h.path}\n    ${h.input}`);
+  // The bare baseline may not use a video tool: list any trial that did.
+  const bare = trials.filter((t) => t.tool === "bare");
+  if (bare.length) {
+    const used = bare.filter((t) => t.videoTools?.length);
+    console.log(`\n## Video tools in bare trials — ${used.length ? `${used.length} trial(s)` : "none"}\n`);
+    for (const t of used) console.log(`${t.id}: ${t.videoTools.join(", ")}`);
+  }
   const failures = trials.filter((t) => !t.check?.pass);
   if (failures.length) {
     console.log("\n## Failed checks\n");

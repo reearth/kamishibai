@@ -3,8 +3,9 @@
 // ------------------------------------------------------------------
 // One trial = one headless Claude Code run that turns a brief's BRIEF.md
 // (briefs/<task>/) into out.mp4, starting from a clone of the tool's
-// ready-made template (setup.sh). Conditions: tool × task × skill/noskill, each repeated `reps`
-// times. Within each repetition the order of conditions is shuffled with a
+// ready-made template (setup.sh). Conditions: tool × task × skill/noskill,
+// each repeated `reps` times. `--tools bare` adds a baseline with no video
+// tool at all: an empty project, noskill only. Within each repetition the order of conditions is shuffled with a
 // fixed seed, so drift over the day (API latency, machine load) spreads
 // evenly.
 //
@@ -40,7 +41,7 @@
 // ------------------------------------------------------------------
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, writeFile, appendFile, readFile, cp, rm, readdir } from "node:fs/promises";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -75,12 +76,26 @@ const { values: args } = parseArgs({
 });
 
 const TOOL_NAMES: Record<string, string> = { kamishibai: "kamishibai", remotion: "Remotion", hyperframes: "HyperFrames" };
-/** The same words for every tool; only the tool's name changes. */
+/** Made for producing video from code: the bare baseline may not use these,
+ *  and each bare trial records any it finds in the project afterwards. */
+const VIDEO_TOOLS = ["Remotion", "HyperFrames", "kamishibai", "Motion Canvas", "Revideo", "Manim", "editly", "Etro"];
+/** npm / pip names to look for in a bare project. */
+const VIDEO_PACKAGES = /^(remotion|@remotion\/.*|hyperframes|@hyperframes\/.*|kamishibai|@motion-canvas\/.*|@revideo\/.*|manim|manimgl|editly|etro)$/i;
+
+/** The same words for every tool; only the tool's name changes. "bare" is the
+ *  baseline with no video tool: an empty project, where the agent picks its own way. */
 const prompt = (tool: string) =>
-  `This project is already set up for ${TOOL_NAMES[tool]}, with its dependencies installed. ` +
-  `Make the video described in BRIEF.md with ${TOOL_NAMES[tool]} and render it to ./out.mp4. ` +
-  `The brief is final: do not ask questions, make any remaining choices yourself. ` +
-  `Check your result against the brief, fix what doesn't match, and stop when out.mp4 matches it.`;
+  tool === "bare"
+    ? `This is an empty project, and ffmpeg is on PATH. ` +
+      `Make the video described in BRIEF.md and render it to ./out.mp4, writing the rendering yourself: ` +
+      `do not use a tool or framework made for producing video from code (${VIDEO_TOOLS.join(", ")} or the like). ` +
+      `Any other library is fine. ` +
+      `The brief is final: do not ask questions, make any remaining choices yourself. ` +
+      `Check your result against the brief, fix what doesn't match, and stop when out.mp4 matches it.`
+    : `This project is already set up for ${TOOL_NAMES[tool]}, with its dependencies installed. ` +
+      `Make the video described in BRIEF.md with ${TOOL_NAMES[tool]} and render it to ./out.mp4. ` +
+      `The brief is final: do not ask questions, make any remaining choices yourself. ` +
+      `Check your result against the brief, fix what doesn't match, and stop when out.mp4 matches it.`;
 
 interface Trial { id: string; tool: string; task: string; skill: boolean; rep: number }
 
@@ -102,6 +117,7 @@ function plan(): Trial[] {
       for (const task of list(args.tasks!))
         for (const s of list(args.skills!)) {
           const skill = s === "skill";
+          if (tool === "bare" && skill) continue; // no tool, so no skills
           block.push({ id: `${tool}-${task}-${s}-r${rep}`, tool, task, skill, rep });
         }
     for (let i = block.length - 1; i > 0; i--) {
@@ -169,6 +185,7 @@ function digest(lines: any[]) {
     notLoggedIn: /not logged in|please run \/login|invalid api key|oauth/i.test(resultText) && !result?.num_turns,
     frameExtracts: bash.filter((c) => /ffmpeg[^|;&]*(-frames:v|select=|fps=|-ss )/.test(c)).length,
     outside: outsideAccess(uses),
+    bashCommands: bash,
   };
 }
 
@@ -190,6 +207,28 @@ function outsideAccess(uses: Array<{ name: string; input: any }>) {
     }
   }
   return hits;
+}
+
+/** Video tools a bare trial used anyway: dependencies in package.json or
+ *  node_modules, and install or run commands naming one. */
+function videoToolsIn(project: string, commands: string[]) {
+  const found = new Set<string>();
+  try {
+    const pkg = JSON.parse(readFileSync(join(project, "package.json"), "utf8"));
+    for (const name of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })) if (VIDEO_PACKAGES.test(name)) found.add(name);
+  } catch {}
+  try {
+    for (const name of readdirSync(join(project, "node_modules"))) {
+      const names = name.startsWith("@") ? readdirSync(join(project, "node_modules", name)).map((n) => `${name}/${n}`) : [name];
+      for (const n of names) if (VIDEO_PACKAGES.test(n)) found.add(n);
+    }
+  } catch {}
+  for (const c of commands)
+    for (const word of c.split(/[\s;&|()]+/)) {
+      const name = word.replace(/@[\d.^~]+$/, "");
+      if (VIDEO_PACKAGES.test(name)) found.add(name);
+    }
+  return [...found];
 }
 
 async function runTrial(t: Trial, file: string, blindDir: string) {
@@ -263,6 +302,7 @@ async function runTrial(t: Trial, file: string, blindDir: string) {
     wallMs,
     ...digested,
     check: check(project, t.task),
+    videoTools: t.tool === "bare" ? videoToolsIn(project, digested.bashCommands) : undefined,
     sheet: contactSheet(project, t.task, blindDir),
   };
   await appendFile(file, JSON.stringify(rec) + "\n");
@@ -280,7 +320,7 @@ const trials = plan();
 console.log(`${trials.length} trials · model ${args.model} · budget $${args["budget-usd"]}/trial · timeout ${args["timeout-min"]} min`);
 if (args["dry-run"]) {
   for (const t of trials) console.log(t.id);
-  console.log(`\nprompt (kamishibai): ${prompt("kamishibai")}`);
+  for (const tool of new Set(trials.map((t) => t.tool))) console.log(`\nprompt (${tool}): ${prompt(tool)}`);
   process.exit(0);
 }
 const token =
@@ -294,7 +334,7 @@ if (!token && !args["agent-cmd"]) {
   process.exit(1);
 }
 for (const tool of list(args.tools!))
-  for (const s of ["skill", "noskill"])
+  for (const s of tool === "bare" ? ["noskill"] : ["skill", "noskill"])
     if (!existsSync(join(WORK, "templates", tool, s))) throw new Error(`missing template ${tool}/${s}: run setup.sh first`);
 
 const blindDir = join(RESULTS, `${args.label}-blind`);
@@ -317,7 +357,7 @@ await appendFile(
     date: new Date().toISOString(),
     claude: args["agent-cmd"] ? `agent-cmd: ${args["agent-cmd"]}` : execFileSync("claude", ["--version"], { encoding: "utf8" }).trim(),
     inventory: await readFile(join(WORK, "templates", "INVENTORY.md"), "utf8"),
-    prompt: prompt("<tool>"),
+    prompts: Object.fromEntries(list(args.tools!).map((tool) => [tool, prompt(tool)])),
     args,
   }) + "\n",
 );
