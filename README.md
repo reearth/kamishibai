@@ -1,6 +1,6 @@
 # kamishibai
 
-> **Turn any web page into a video — by making every frame a pure function of its time.**
+> **Turn any web page into a video. kamishibai only seeks the page to each moment and captures it.**
 > A *mechanism*, not a framework. How you draw — React, plain DOM, canvas, WebGL — is up to you.
 
 ![A reel rendered with kamishibai](examples/basics/demo.gif)
