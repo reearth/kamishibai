@@ -99,9 +99,16 @@ A Lexicon picture is drawn in the same palette, from the constants in `src/lib/d
 
 ## Link preview
 
-Every page passes `image="og.png"` to `Base`, which writes `og:image` and a `summary_large_image` Twitter card. `public/og.png` is a screenshot of `og/og.html`, a 1200×630 page in the site's tokens and type: the logo, the first sheet's line, and a frame with the ball on its floor. `og/` sits outside `src/` and `public/`, so it isn't deployed.
+Every page passes an `image` to `Base`, which writes `og:image` and a `summary_large_image` Twitter card. Each image is a screenshot of a 1200×630 page in `og/`, in the site's tokens and type. `og/` sits outside `src/` and `public/`, so it isn't deployed.
 
-After editing `og.html`, screenshot it again at exactly 1200×630 with a device scale factor of 1, once the fonts have loaded (Playwright: `page.setViewportSize`, `document.fonts.ready`, `page.screenshot`), and save over `public/og.png`. Keep the headline on three lines with no wrapping, and the ball round and resting on the floor line.
+| Image | Page | Used by | Shows |
+|---|---|---|---|
+| `public/og.png` | `og/og.html` | The top page | The logo, the first sheet's line, and a frame with the ball on its floor |
+| `public/og-lexicon.png` | `og/lexicon.html` | The Lexicon and every term's page | The logo with "/ Lexicon", "A lexicon of motion.", and six terms as on the grid |
+
+The six pictures in `og/stills/` are stills of Lexicon loops at 336×252: the term's frame on its `?card` page, seeked to a moment that reads well. To change a term, take a new still the same way. The card gives no term count, so it doesn't go stale as terms are added.
+
+After editing a page in `og/`, screenshot it again at exactly 1200×630 with a device scale factor of 1, once the fonts have loaded (Playwright: `page.setViewportSize`, `document.fonts.ready`, `page.screenshot`), and save over its image in `public/`. In `og.html`, keep the headline on three lines with no wrapping, and the ball round and resting on the floor line. In `lexicon.html`, keep the headline on two lines, and the URL clear of the frames.
 
 ## Checking a change
 
