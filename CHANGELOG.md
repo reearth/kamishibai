@@ -4,6 +4,16 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Fixed
+
+- **Burned captions keep their style.** With `--burn-subtitles`, a `<Subtitle>` with `src` or `cues` (and so `<Narration subtitle>`) set its box to `rgba(0,0,0,0.62)` and `8px 22px` on every frame, over any `background` or `padding` in `style`. The box now takes `style` as static captions do, and is hidden between cues.
+
+### Docs
+
+- The guide gives `<Subtitle>`'s props, the shape of `cues`, and the burned caption's default look. In the agent benchmark, every trial that needed captions searched the package for these.
+
 ## 0.6.0
 
 ### Added

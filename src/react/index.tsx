@@ -908,9 +908,9 @@ export const Subtitle: React.FC<{
         if (!el) return;
         const cue = cueAt(cs, globalMs - epochRef.current - delayMs);
         el.textContent = cue ? cue.text : "";
-        // Only show the box when there's a cue (so gaps are invisible).
-        el.style.background = cue ? "rgba(0,0,0,0.62)" : "transparent";
-        el.style.padding = cue ? "8px 22px" : "0";
+        // Only show the box when there's a cue (so gaps are invisible). The
+        // box keeps its style, the caller's included.
+        el.style.visibility = cue ? "visible" : "hidden";
       };
       return registerSettler(settler);
     }
@@ -970,9 +970,11 @@ export const Subtitle: React.FC<{
     lineHeight: 1.35,
     color: "#fff",
     textShadow: "0 2px 8px rgba(0,0,0,0.55)",
-    // static text shows its box immediately; dynamic toggles bg per cue.
-    ...(dynamic ? null : { background: "rgba(0,0,0,0.62)", padding: "8px 22px" }),
+    background: "rgba(0,0,0,0.62)",
+    padding: "8px 22px",
     ...style,
+    // static text shows its box immediately; dynamic shows it per cue.
+    ...(dynamic ? { visibility: "hidden" } : null),
   };
 
   return (

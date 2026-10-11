@@ -244,12 +244,15 @@ Sugar API:
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
   video via WebCodecs (`kamishibai skill video`); draws the clip frame for the current
   scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
-- `<Subtitle src | cues | children>` — captions from an SRT/VTT file (`src`),
-  inline `cues`, or direct text (`children`, timed via the enclosing `<Cue>`).
-  Cue times count from the enclosing scene. By DEFAULT a soft track (like
+- `<Subtitle src | cues | children delayMs bottom style>` — captions from an
+  SRT/VTT file (`src`), inline `cues` (`{ start, end, text }[]`, in ms), or
+  direct text (`children`, timed via the enclosing `<Cue>`). Cue times count
+  from the enclosing scene, plus `delayMs`. By DEFAULT a soft track (like
   `<Audio>`: declared, then muxed into an mp4 mov_text track + a sidecar .srt;
   no pixels, no effect on frame fingerprints). Render with `--burn-subtitles` to
-  draw them as pixels instead (full CSS via `bottom`/`style`; required for gif).
+  draw them as pixels instead (required for gif): centred, `bottom` px (80) up,
+  white 40 px text on a `rgba(0,0,0,0.62)` box; `style` overrides any of it, e.g.
+  `<Subtitle cues={cues} style={{ background: "rgba(0,0,0,0.6)" }} />`.
   A cue whose end is not after its start is dropped with a warning in both
   modes (page `kamishibai:` warnings show in the render log), and a `src` that
   fails to load fails the capture. Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
