@@ -187,8 +187,9 @@ Components and hooks (times in ms):
 - `<Subtitle src | cues | children delayMs bottom style>`: captions from an
   SRT/VTT file, `cues` (`{ start, end, text }[]`), or text timed by the
   enclosing `<Cue>`. Times count from the scene. By default a soft track (an
-  mp4 text track and a sidecar `.srt`). With `--burn-subtitles` they are drawn
-  into the frames: centred, `bottom` px (80) up, white 40 px text on a
+  mp4 text track and a sidecar `.srt`), and that is enough: burn captions into
+  the picture only when asked to, or for a gif. With `--burn-subtitles` they are
+  drawn into the frames: centred, `bottom` px (80) up, white 40 px text on a
   `rgba(0,0,0,0.62)` box; `style` overrides any of it, e.g.
   `style={{ background: "rgba(0,0,0,0.6)" }}`.
 - `<Video src startMs muted gain fadeInMs fadeOutMs style>`: a frame-accurate
@@ -293,7 +294,7 @@ directory is served), or a URL you serve.
 | `--frames-dir` | `-f` | keep the PNG frames here |
 | `--incremental` | `-i` | capture only frames that changed (needs `-f`) |
 | `--only` | | only these frames, e.g. `0-30,90` (needs `-f`) |
-| `--burn-subtitles` | | draw captions into the frames (needed for gif) |
+| `--burn-subtitles` | | draw captions into the frames: only when asked, or for a gif |
 | `--workers` | `-w` | parallel pages (default: cores − 2, at most 8) |
 | `--scale` | `-s` | device scale: output px = meta size × scale |
 | `--fps` | | re-sample the reel at another frame rate |
