@@ -104,38 +104,62 @@ Each condition ran once as a warm-up and then 5 more times. The table shows the 
 
 Each trial is a headless Claude Code session (Opus 5.5) that gets the same brief for each tool and must produce an `out.mp4` that passes an automatic check. The check covers size, frame rate, duration to within one frame, and the audio track.
 
-- **Conditions:** each tool ran with its official agent skills installed in the project (skill) and without them (noskill).
-- **No tool:** a baseline (bare) starts from an empty npm project and may use anything except a tool made for producing video from code, such as kamishibai, Remotion or HyperFrames.
+- **Conditions:** each tool with its official agent skills installed in the project (skill) and without them (noskill).
+- **No tool:** a baseline that starts from an empty npm project and may use anything except a tool made for producing video from code, such as kamishibai, Remotion or HyperFrames.
 - **Isolation:** each session starts from a clean home directory, without the user's `CLAUDE.md`, skills, plugins or MCP servers.
-- **Repetitions:** 5 per condition, in a seeded random order.
-- **Three runs:**
-  - The first, on 9 October 2026, covered all three tools (90 trials) with kamishibai 0.5.0.
-  - The second, later the same day, ran only kamishibai (30 trials). It used the guide that `kamishibai skill` now prints: a core with a list of topics, where it used to print the whole guide at once. The full guide had overflowed the agent's shell output in 26 of 30 trials, so the agent read it a second time.
-  - The third, on 11 October 2026, ran only the baseline with no tool (15 trials), on Claude Code 2.1.296 instead of 2.1.295.
+- **Repetitions:** 5 per brief and condition, in a seeded random order.
 
-All 135 trials passed. The table pools all three briefs and shows medians, with the interquartile range in brackets. Tokens include cached input. Cost is the API-equivalent price.
+Every trial passed. The tables pool the three briefs and show medians, with the interquartile range in brackets. Tokens include cached input. Cost is the API-equivalent price.
 
-| Condition | Pass | Tokens | Cost | Turns | Minutes |
-|---|---:|---:|---:|---:|---:|
-| kamishibai · skill, core and topics (second run) | 15/15 | 351k [310k–463k] | $0.38 | 14 | 1.5 |
-| kamishibai · noskill (second run) | 15/15 | 465k [395k–612k] | $0.46 | 14 | 2.4 |
-| kamishibai · skill, whole guide (first run) | 15/15 | 472k [393k–544k] | $0.51 | 17 | 1.9 |
-| kamishibai · noskill (first run) | 15/15 | 512k [432k–615k] | $0.50 | 14 | 1.9 |
-| Remotion · skill | 15/15 | 206k [168k–222k] | $0.29 | 10 | 1.4 |
-| Remotion · noskill | 15/15 | 204k [176k–230k] | $0.26 | 10 | 1.5 |
-| HyperFrames · skill | 15/15 | 368k [353k–435k] | $0.44 | 14 | 1.8 |
-| HyperFrames · noskill | 15/15 | 328k [283k–347k] | $0.34 | 14 | 1.8 |
-| No tool (third run) | 15/15 | 239k [196k–269k] | $0.29 | 11 | 3.5 |
+### Same day: 11 October 2026
 
-- **Tokens:** with its skill, kamishibai takes about as many tokens as HyperFrames and about 1.7× as many as Remotion. Splitting the guide cut about a quarter: text went from 418k to 316k, three from 381k to 314k, and scenes stayed at 567k.
-- **Scenes:** the scenes brief, which has music, captions and crossfades, costs kamishibai the most. Without the skill in the second run, its median was 1,307k, with an interquartile range of 729k to 2,086k.
-- **Comparing runs:** Remotion and HyperFrames weren't run again, so their numbers come from the first run. With 5 trials per brief, a difference of a few tens of thousands of tokens is within the noise.
-- **Remotion:** in 13 of its 15 skill trials, Remotion didn't load a skill at all. Its numbers are close to what the model already knows about Remotion.
-- **Skills loaded:** in every kamishibai skill trial of both runs, the agent loaded the `kamishibai` skill and never loaded `video-craft`.
-- **No tool:** without a tool, the agent wrote its own renderer every time.
+Claude Code 2.1.296. Each row is 15 trials. The 0.6.1 row was measured at `22dce32`, before two later changes to burned captions (the guide now says to burn them in only when asked, and the caption box has its own compositor layer).
+
+| Condition | Tokens | Cost | Turns | Minutes |
+|---|---:|---:|---:|---:|
+| kamishibai 0.6.1 · skill | 264k [229k–364k] | $0.32 | 13 | 1.3 |
+| kamishibai 0.6.0 · skill | 285k [270k–505k] | $0.40 | 15 | 1.7 |
+| Remotion · skill | 177k [151k–203k] | $0.25 | 9 | 1.6 |
+| No tool | 239k [196k–269k] | $0.29 | 11 | 3.5 |
+
+By brief, in tokens:
+
+| Brief | kamishibai 0.6.1 | kamishibai 0.6.0 | Remotion | No tool |
+|---|---:|---:|---:|---:|
+| text | 238k | 270k | 196k | 268k |
+| three | 258k | 283k | 177k | 239k |
+| scenes | 373k | 536k | 168k | 205k |
+
+- **What changed in 0.6.1.** The transcripts of the 0.6.0 trials showed where the tokens went:
+  - In all 5 scenes trials, the agent searched the package's type definitions for `<Subtitle>`'s props, which the guide didn't give.
+  - In 2 of them it also met a bug: a burned caption from `cues` ignored the `background` in its `style`. The agent read the library's code and drew the captions itself.
+  - Loading the skill, then printing the guide, took a turn of its own, and the guide stayed in the context for every turn after.
+
+  0.6.1 fixes the caption bug, gives `<Subtitle>`'s props in the guide, halves the guide, and has the skill include the guide when it loads. Scenes fell from 536k to 373k, and turns from 15 to 13.
+- **Against Remotion.** kamishibai still takes about 1.5× Remotion's tokens. Every turn re-reads the context, so turns cost the most. In most of the earlier skill trials, Remotion didn't load a skill at all and wrote from what the model already knows.
+- **Time.** With 0.6.1, the agent finished in 1.3 minutes, against 1.6 for Remotion and 3.5 with no tool.
+- **No tool.** The agent wrote its own renderer every time.
   - For text and scenes, it drew each frame with Python and Pillow and piped the frames to ffmpeg, with no browser.
   - For three, it captured a three.js page with Puppeteer or Playwright.
-  - It took fewer tokens than kamishibai with its skill (239k against 351k), close to Remotion. By brief: text 268k, three 239k, scenes 205k, against kamishibai's 316k, 314k and 567k.
-  - It took about twice as long as kamishibai with its skill (3.5 minutes against 1.5).
+  - That took fewer tokens than kamishibai, but more than twice the time.
   - These briefs are short and simple. They don't test long videos, narration, previews or edits after the first render.
 - **Quality:** these numbers say nothing about how good the videos look, only that they pass the check.
+
+### All three tools: 9 October 2026
+
+Claude Code 2.1.295, kamishibai 0.5.0. Each row is 15 trials. A second kamishibai run later that day printed the guide as a core and topics, where it used to print the whole guide at once (the whole guide had overflowed the agent's shell output in 26 of 30 trials).
+
+| Condition | Tokens | Cost | Turns | Minutes |
+|---|---:|---:|---:|---:|
+| kamishibai · skill, core and topics | 351k [310k–463k] | $0.38 | 14 | 1.5 |
+| kamishibai · noskill, same run | 465k [395k–612k] | $0.46 | 14 | 2.4 |
+| kamishibai · skill, whole guide | 472k [393k–544k] | $0.51 | 17 | 1.9 |
+| kamishibai · noskill | 512k [432k–615k] | $0.50 | 14 | 1.9 |
+| Remotion · skill | 206k [168k–222k] | $0.29 | 10 | 1.4 |
+| Remotion · noskill | 204k [176k–230k] | $0.26 | 10 | 1.5 |
+| HyperFrames · skill | 368k [353k–435k] | $0.44 | 14 | 1.8 |
+| HyperFrames · noskill | 328k [283k–347k] | $0.34 | 14 | 1.8 |
+
+- Runs on different days differ by more than the noise within a run: Remotion with its skill took 206k on 9 October and 177k on 11 October. Compare within a day.
+- In 13 of Remotion's 15 skill trials, the agent didn't load a skill.
+- In every kamishibai skill trial, the agent loaded the `kamishibai` skill and never loaded `video-craft`.
