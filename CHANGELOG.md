@@ -13,6 +13,8 @@ can contain breaking changes, and they are called out under **Changed**.
 ### Docs
 
 - The guide gives `<Subtitle>`'s props, the shape of `cues`, and the burned caption's default look. In the agent benchmark, every trial that needed captions searched the package for these.
+- The core guide that `kamishibai skill` prints is half as long (about 10,700 characters, from 20,500). It keeps every API, says each thing once, and leaves the rarer CLI options to `kamishibai render --help`.
+- The `kamishibai` agent skill now includes the core guide when it loads: in Claude Code it runs `npx --no-install kamishibai skill` itself (allowed by the skill's `allowed-tools`), so the guide still matches the installed version. Agents that don't run the line are told to run the command.
 
 ## 0.6.0
 

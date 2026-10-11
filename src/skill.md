@@ -1,120 +1,68 @@
 # kamishibai — agent skill
 
-How to author and render videos with **kamishibai**: a mechanism that seeks a
-web page frame by frame and bakes the stills into an mp4. You write a page that
-draws "the state at time `ms`"; kamishibai captures it reproducibly and in
-parallel. This document is the usage guide — follow it as-is.
+kamishibai seeks a web page to each moment, screenshots it, and encodes the
+stills into a video. You write a page that draws "the state at time `ms`".
 
 <!-- topics -->
 
 ## Mental model
 
-- A video is a **pure function of time**. You implement "given `ms`, draw the
-  frame," and resolve once the DOM has settled.
-- kamishibai never plays in real time. It seeks to each moment, screenshots,
-  advances. So a heavy frame just takes longer — it never drops — and the
-  output is reproducible (in a pinned environment) and parallelisable.
-- You are expected to iterate in a loop: **render → look at frames → fix the
-  code → render again.** There is no GUI editor; you are the editor.
-  (`kamishibai dev` is a player for people to watch a reel while it's edited,
-  not an editor.)
+- A video is a **pure function of time**: given `ms`, draw the frame, and
+  resolve once the DOM has settled.
+- Nothing plays in real time. A heavy frame takes longer but never drops, and
+  frames are captured in parallel.
+- Work in a loop: **render → look at frames → fix → render again.**
 
-## Start here
+## Setup
 
-For anything past a one-off experiment, author reels in a **TypeScript + React
-project** — it's the recommended setup (typed `mount`, JSX, and the `<Series>` /
-`<Audio>` / `<Bgm>` / `<Narration>` sugar).
-
-**1. Check the system prerequisites first** — kamishibai shells out to these and
-they are **not** bundled, so verify them before anything else (and install
-what's missing):
+kamishibai needs Node ≥ 20, `ffmpeg` on PATH (not bundled), and Playwright's
+Chromium. Skip what the project already has:
 
 ```sh
-node --version      # need ≥ 20
-ffmpeg -version     # must be on PATH — e.g. `brew install ffmpeg` / `apt-get install ffmpeg`
-```
-
-**2. Scaffold the project and install the deps** (including the Chromium that
-Playwright drives to capture frames — installing the npm package is not enough,
-you must fetch the browser binary too):
-
-```sh
-npm init -y
-npm i kamishibai react react-dom          # react / react-dom are peer deps
+npm i kamishibai react react-dom                    # react is a peer dep
 npm i -D typescript @types/react @types/react-dom
-npx playwright install chromium           # the headless browser kamishibai captures with
-mkdir public                              # browser-fetched assets: images, video clips, fonts
+npx playwright install chromium
+mkdir -p public                                     # files the page fetches
 ```
 
-**3. Write a `reel.tsx`** that calls `mount(<Reel/>, meta)` (see **Writing a
-reel** → React), add a `tsconfig.json` and npm scripts, and **type-check before
-you render** — `tsc` catches a misused prop or API in seconds, instead of you
-waiting out a capture only to find a blank reel:
+Write `reel.tsx`, then type-check before each render. `tsc` finds a wrong prop
+in seconds; a capture takes far longer to show a blank reel.
 
 ```jsonc
-// tsconfig.json — for type-checking only (the CLI bundles with esbuild itself)
-{
-  "compilerOptions": {
-    "target": "esnext", "lib": ["dom", "esnext"],
-    "module": "esnext", "moduleResolution": "bundler", "jsx": "react-jsx",
-    "strict": true, "noEmit": true, "skipLibCheck": true
-  }
-}
-```
-
-```jsonc
-// package.json — "tsc"/"kamishibai" resolve from node_modules/.bin, no npx needed
-"scripts": {
-  "typecheck": "tsc --noEmit",
-  // -p public serves ./public at the server root, so the page can fetch
-  // /logo.png, <Video src="/clip.mp4">, fonts, etc. (the dir must exist).
-  "render": "tsc --noEmit && kamishibai render reel.tsx -o out.mp4 -p public"
-}
+// tsconfig.json (type-checking only; the CLI bundles with esbuild)
+{ "compilerOptions": { "target": "esnext", "lib": ["dom", "esnext"], "module": "esnext",
+  "moduleResolution": "bundler", "jsx": "react-jsx", "strict": true, "noEmit": true, "skipLibCheck": true } }
 ```
 
 ```sh
-npm run render        # type-checks first, then captures
+npx tsc && npx kamishibai render reel.tsx -o out.mp4 -p public
 ```
 
-You don't strictly need React or a build step — any page that sets
-`window.kamishibai` works (see **Raw**), and the CLI also bundles a plain
-`.ts`/`.js` entry or renders a live URL. But for a real narrated, multi-scene
-video, start from the React project above. Then iterate: **render → look at the
-frames → fix the code → render again.**
+React is optional: any page that sets `window.kamishibai` works (see **Raw**).
 
 ## The one contract
-
-Any capturable page exposes exactly one global:
 
 ```ts
 window.kamishibai = {
   meta: { fps: 30, durationMs: 6000, width: 1920, height: 1080 },
-  // Draw the still for `ms`; resolve once the DOM has settled.
-  // Return false to mean "identical to the previous frame", or a
-  // fingerprint string for the frame's content (see below).
+  // Draw the still for `ms`; resolve once the DOM has settled. Return false for
+  // "same as the previous frame", or a fingerprint string of the frame's content.
   seek(ms: number): Promise<boolean | string | void> | boolean | string | void;
 };
 ```
 
-- `meta` is the single source of truth for **resolution, fps, and length**.
-- `seek(ms)` may do anything: React re-render, canvas redraw, Konva, WebGL.
-- Keep `seek` a **pure function of `ms`** — no `Date.now()`, no unseeded
-  `Math.random()`, no real-time animation — or parallel workers will disagree.
+- `meta` sets the size, fps and length.
+- `seek(ms)` may do anything (React, canvas, WebGL), but must be a **pure
+  function of `ms`**: no `Date.now()`, no unseeded `Math.random()`, no real-time
+  animation. Parallel workers otherwise disagree.
 
-**Fingerprints.** When `seek` returns a fingerprint string, the renderer copies
-the previous still wherever two adjacent prints match, instead of shooting it
-again. For React reels the fingerprint is automatic: it hashes the whole `<body>` DOM
-(portals outside the stage included) and the text of every stylesheet rule.
-What it can't see — `<canvas>` / WebGL pixels, and the bytes behind a URL that
-didn't change (an image/font/video replaced under the same name) — must
-contribute a cheap token via `useFingerprint(token)` (a string, or a function
-of ms naming what you draw, e.g. a frame index — NOT a pixel hash), or carry a
-version in the URL (`/map.png?v=2`). `<Video>` already names its frame. Matching
-prints are trusted even without `-i`: a frame whose print equals the previous
-frame's is copied within the run. Determinism
-is required: a frame that isn't a pure function of its ms can be wrongly reused —
-for a clean full render, just omit `-i` (an explicit `--frames-dir` is cleared
-and rebuilt when not incremental).
+**Fingerprints.** Where two adjacent frames have the same fingerprint, the
+second is copied instead of captured, on every render, with or without `-i`.
+So a frame that isn't a pure function of `ms` can be wrongly reused. React reels get one automatically, from
+the DOM and the stylesheets. It can't see `<canvas>`/WebGL pixels or a file
+replaced under the same URL: add a cheap token for those with
+`useFingerprint(token)` (a string, or a function of ms such as a frame index,
+not a pixel hash), or put a version in the URL (`/map.png?v=2`).
 
 <!-- topic: incremental | Skipping static spans, fingerprints, and re-rendering only what changed (`-i`, `--only`, `--preview`) -->
 ### Skipping static spans
@@ -191,26 +139,23 @@ mid-encode leaves an mp4 with **no moov atom** that players reject — re-run.
 ### Raw (no framework)
 
 ```ts
-const meta = { fps: 30, durationMs: 4000, width: 1280, height: 720 };
-const box = document.createElement("div");
-document.body.appendChild(box);
+const box = document.body.appendChild(document.createElement("div"));
 window.kamishibai = {
-  meta,
+  meta: { fps: 30, durationMs: 4000, width: 1280, height: 720 },
   seek(ms) {
-    const x = Math.min(1, ms / 2000) * 400; // pure function of ms
-    box.style.transform = `translateX(${x}px)`;
+    box.style.transform = `translateX(${Math.min(1, ms / 2000) * 400}px)`;
   },
 };
 ```
 
-### React (optional sugar: `kamishibai/react`)
+### React (`kamishibai/react`)
 
 ```tsx
-import { mount, Cue, Enter, ramp, eases, useClock } from "kamishibai/react";
+import { mount, Enter, ramp, eases, useClock } from "kamishibai/react";
 
 const Reel = () => {
   const { ms } = useClock();
-  const x = ramp(ms, 0, 1000, 0, 400, eases.smooth); // map time → value
+  const x = ramp(ms, 0, 1000, 0, 400, eases.smooth); // time → value
   return (
     <Enter at={200} dur={600}>
       <div style={{ transform: `translateX(${x}px)` }}>hello</div>
@@ -218,75 +163,52 @@ const Reel = () => {
   );
 };
 
-// mount() renders the tree AND exposes window.kamishibai for you.
+// mount() renders the tree and sets window.kamishibai.
 mount(<Reel />, { fps: 30, durationMs: 6000, width: 1920, height: 1080 });
 ```
 
-Sugar API:
-- `useClock()` → `{ ms, durationMs, fps, epochMs }`
-- `ramp` / `eases` / `bezier` — re-exported from `kamishibai/easing` (see below)
-- `<Stage background style>` — root surface
-- `<Cue at hold>` — render children only during a window, with a **local clock**
-  that restarts at 0 at `at`
-- `<Enter at dur lift ease>` — fade + rise in
-- `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>` — sequence
-  scenes back-to-back, each with its own local clock, with optional crossfades.
-  Scenes **self-register**, so one wrapped in your own component works at any
-  depth. Drive it from data with `<Series scenes={[{ durationMs, crossfadeMs,
-  exitFadeMs, content }]} />`, and size the reel with `seriesDuration(scenes)`
-  (`kamishibai skill scenes`)
-- `<Audio src delayMs atMs gain fadeInMs fadeOutMs loop>` — declare audio inside
-  a scene; it starts at the scene's start (+`delayMs`) and is collected for
-  muxing automatically
-- `<Bgm src gain fadeInMs fadeOutMs duck>` — background music: a looped `<Audio>`
-  at the reel start, tiled to fill the whole video and muxed under everything
-  else; `duck` auto-dips it while narration plays
-- `<Video src startMs muted gain fadeInMs fadeOutMs style>` — frame-accurate
-  video via WebCodecs (`kamishibai skill video`); draws the clip frame for the current
-  scene-local time and auto-muxes the clip's audio (pass `muted` to drop it)
-- `<Subtitle src | cues | children delayMs bottom style>` — captions from an
-  SRT/VTT file (`src`), inline `cues` (`{ start, end, text }[]`, in ms), or
-  direct text (`children`, timed via the enclosing `<Cue>`). Cue times count
-  from the enclosing scene, plus `delayMs`. By DEFAULT a soft track (like
-  `<Audio>`: declared, then muxed into an mp4 mov_text track + a sidecar .srt;
-  no pixels, no effect on frame fingerprints). Render with `--burn-subtitles` to
-  draw them as pixels instead (required for gif): centred, `bottom` px (80) up,
-  white 40 px text on a `rgba(0,0,0,0.62)` box; `style` overrides any of it, e.g.
-  `<Subtitle cues={cues} style={{ background: "rgba(0,0,0,0.6)" }} />`.
-  A cue whose end is not after its start is dropped with a warning in both
-  modes (page `kamishibai:` warnings show in the render log), and a `src` that
-  fails to load fails the capture. Parser/serializer also at kamishibai/subtitle (parseSubtitles, cueAt,
-  cuesToSrt) for the raw API.
-- `<Narration clip delayMs atMs gain fadeInMs fadeOutMs subtitle>` — play a
-  clip from `prepareNarration` (synthesized up front, `kamishibai skill narration`);
-  with `subtitle`, also adds the line's text as a caption for the clip's window
-  (wherever the audio lands, `atMs` included; soft by default —
-  `subtitleBottom`/`subtitleStyle` only apply with `--burn-subtitles`)
-- `<NarrationSteps steps subtitle>` — one `<Narration>` per step at its `atMs`
-  (steps from `narrationScene` / `narrationSequence`)
-- `<Camera x y zoom rotate>` / `<Camera shots={[{ at, x, y, zoom, ease? }]}>` —
-  children are laid out in world px; the world point `(x, y)` sits at the frame
-  center, scaled by `zoom` (> 0, or `cameraAt` throws); positive `rotate` rolls
-  the camera clockwise, so the world turns counter-clockwise on screen. Shots are keyframes on the current clock: position
-  eases (default `eases.inOut`), zoom interpolates in log space (even push-ins).
-  `cameraAt(ms, shots)` is the same math without React.
+Components and hooks (times in ms):
+
+- `useClock()` → `{ ms, durationMs, fps, epochMs }`; `ms` is local to the
+  enclosing `<Cue>` or scene.
+- `<Stage background style>`: the root surface.
+- `<Cue at hold>`: children only from `at` for `hold`, with a clock restarting at 0.
+- `<Enter at dur lift ease>`: fade and rise in.
+- `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>`: scenes back
+  to back, each with its own clock, optionally crossfading. Or from data:
+  `<Series scenes={[{ durationMs, crossfadeMs, content }]} />`, with
+  `seriesDuration(scenes)` for `meta.durationMs`.
+- `<Audio src delayMs atMs gain fadeInMs fadeOutMs loop trimStartMs durationMs>`:
+  a sound from the scene's start (+`delayMs`). `src` is a file path read by
+  ffmpeg, not a URL. `gain` is in dB.
+- `<Bgm src gain fadeInMs fadeOutMs duck>`: background music from 0 s, looped
+  and cut to the reel's length, with `fadeOutMs` ending at the reel's end.
+  `duck` dips it under other sounds.
+- `<Subtitle src | cues | children delayMs bottom style>`: captions from an
+  SRT/VTT file, `cues` (`{ start, end, text }[]`), or text timed by the
+  enclosing `<Cue>`. Times count from the scene. By default a soft track (an
+  mp4 text track and a sidecar `.srt`). With `--burn-subtitles` they are drawn
+  into the frames: centred, `bottom` px (80) up, white 40 px text on a
+  `rgba(0,0,0,0.62)` box; `style` overrides any of it, e.g.
+  `style={{ background: "rgba(0,0,0,0.6)" }}`.
+- `<Video src startMs muted gain fadeInMs fadeOutMs style>`: a frame-accurate
+  clip, served via `--public` (`kamishibai skill video`).
+- `<Narration clip delayMs atMs gain fadeInMs fadeOutMs subtitle subtitleBottom
+  subtitleStyle>` / `<NarrationSteps steps subtitle>`: TTS voice-over
+  (`kamishibai skill narration`); `subtitle` adds the line as a caption.
+- `<Camera x y zoom rotate>` or `<Camera shots={[{ at, x, y, zoom, ease }]}>`:
+  children in world px; `(x, y)` sits at the frame centre, scaled by `zoom`
+  (> 0); a positive `rotate` turns the camera clockwise.
+  `cameraAt(ms, shots)` is the same without React.
 
 ```tsx
 import { mount, Series, Audio, seriesDuration } from "kamishibai/react";
-// Timing as data: lay out the scenes and derive meta.durationMs from the same
-// specs, so the total can't drift from what renders.
 const scenes = [
   { durationMs: 4000, content: <><Audio src="vo/a.m4a" delayMs={500} /><A /></> },
-  { durationMs: 6000, crossfadeMs: 600, content: <><Audio src="vo/b.m4a" /><B /></> },
+  { durationMs: 6000, crossfadeMs: 600, content: <B /> },
 ];
-mount(<Series scenes={scenes} />, {
-  fps: 30, durationMs: seriesDuration(scenes), width: 1920, height: 1080,
-});
+mount(<Series scenes={scenes} />, { fps: 30, durationMs: seriesDuration(scenes), width: 1920, height: 1080 });
 ```
-
-The JSX form is equivalent and composes the same way — `<Series><Series.Scene
-durationMs={4000}>…</Series.Scene>…</Series>`, including scenes returned from
-your own wrapper components.
 
 <!-- topic: scenes | `<Series>` in depth: sizing with crossfades, local clocks, exit fades against ghosting, timing errors -->
 ### Scenes (`<Series>`)
@@ -340,39 +262,20 @@ your own wrapper components.
   scene content.
 <!-- /topic -->
 
-## Positions along a path (`kamishibai/path`)
+## Easing and paths
 
-For something travelling along a line (a dot on a route, light along a wire):
-`pointAt(d, t)` → `{ x, y, angle }` at progress `t` (0..1) along SVG path `d`;
-`pointAtLength(d, len)` and `pathLength(d)` work in path units. It measures with
-the browser's `getPointAtLength` on a hidden `<path>` cached per `d` — exact and
-deterministic across workers. Browser-only (call it from the reel).
+From `kamishibai/easing` (also re-exported by `kamishibai/react`; no React needed):
 
-```tsx
-import { pointAt } from "kamishibai/path";
-const p = pointAt(ROUTE, ramp(ms, 0, 3000, 0, 1, eases.inOut));
-<div style={{ position: "absolute", left: p.x - 6, top: p.y - 6 }} />
-```
+- `ramp(ms, fromMs, toMs, fromV, toV, ease?)`: clamped time → value.
+- `eases.linear | smooth | inOut | pop`, `bezier(x1, y1, x2, y2)`,
+  `spring({ stiffness, damping, mass })` (ends at exactly 1).
+- `track(ms, [{ at, value, ease? }])`: several stops.
+- `stagger(i, { each, from })`: a delay per item.
+- `interpolateColor(a, b, t)`: between two hex colours.
 
-## Easing (framework-free)
-
-`kamishibai/easing` works without React — use it from the raw API or Node too:
-
-```ts
-import { ramp, eases, bezier } from "kamishibai/easing";
-ramp(ms, 0, 1000, 0, 400, eases.smooth);   // clamped time→value map
-const ease = bezier(0.16, 1, 0.3, 1);        // custom cubic-bezier
-```
-
-- `bezier(x1,y1,x2,y2)` — custom easing
-- `eases` — `linear` | `smooth` | `inOut` | `pop`
-- `ramp(ms, fromMs, toMs, fromV, toV, ease?)` — clamped interpolation
-- `spring({ stiffness, damping, mass })` — physical spring as an easing (deterministic);
-  `p` is one second of spring time and it ends at exactly 1 (leftover motion at
-  `p = 1` is removed linearly), so `ramp` lands on its target
-- `track(ms, [{ at, value, ease? }])` — multi-stop interpolation
-- `stagger(i, { each, from })` — cascade delay (ms)
-- `interpolateColor(a, b, t)` — hex color tween
+`kamishibai/path` places things along an SVG path, in the browser:
+`pointAt(d, t)` → `{ x, y, angle }` at progress `t`; `pointAtLength(d, len)`;
+`pathLength(d)`.
 
 ## Rendering (CLI)
 
@@ -380,56 +283,24 @@ const ease = bezier(0.16, 1, 0.3, 1);        // custom cubic-bezier
 kamishibai render <entry|url> [options]
 ```
 
-| Option | | Description |
+The entry is a `.tsx`/`.ts`/`.jsx`/`.js` script (bundled), an `.html` file (its
+directory is served), or a URL you serve.
+
+| Option | | |
 |---|---|---|
-| `--out` | `-o` | output file; `.mp4` (default) or `.gif` by extension |
-| `--workers` | `-w` | parallel capture pages (default ~cpus-2, max 8) |
-| `--fps` | | override the page's fps — re-samples the same reel at this rate |
-| `--scale` | `-s` | device scale factor; output px = meta size × scale (default 1) |
-| `--max-width` | | downscale the output (mp4 or gif) to at most N px wide |
-| `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
-| `--public` | `-p` | static assets dir served at root (for `staticFile`-style paths); the entry's own files win on a name clash |
-| `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
-| `--incremental` | `-i` | reuse cached frames; re-render only changed ones (needs `--frames-dir`) |
-| `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
-| `--burn-subtitles` | | burn captions into the frames instead of a soft track + sidecar `.srt` (needed for gif) |
-| `--crf` | | H.264 quality `0`–`51`, lower = better (default 18) |
-| `--preset` | | libx264 speed preset (`ultrafast`…`veryslow`); `ultrafast` speeds up the mp4 encode (mp4 only) |
-| `--preview` | | shortcut for `--preset ultrafast` — a fast confirm encode |
-| `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
-| `--mux-args` | | raw ffmpeg args for the audio/subtitle mux pass, e.g. `"-movflags +faststart"` (mp4 only) |
-| `--probe-timeout` | | idle seconds to wait for `window.kamishibai` (default 15; narration in flight doesn't count) |
-| `--keep-frames` | | keep intermediate PNGs (temp dir; path is logged) |
-| `--verbose` | | stream ffmpeg output |
+| `--out` | `-o` | `.mp4` (default) or `.gif` |
+| `--public` | `-p` | a directory served at the root, for files the page fetches |
+| `--frames-dir` | `-f` | keep the PNG frames here |
+| `--incremental` | `-i` | capture only frames that changed (needs `-f`) |
+| `--only` | | only these frames, e.g. `0-30,90` (needs `-f`) |
+| `--burn-subtitles` | | draw captions into the frames (needed for gif) |
+| `--workers` | `-w` | parallel pages (default: cores − 2, at most 8) |
+| `--scale` | `-s` | device scale: output px = meta size × scale |
+| `--fps` | | re-sample the reel at another frame rate |
+| `--preview` | | a fast, larger encode, for checking |
 
-GIF frame delays are quantized to 1/100s, so pair `.gif` output with `--fps` set
-to a divisor of 100 (e.g. 25 or 50) for exact timing; other rates drift in speed
-(60fps gif effectively plays at 100fps).
-
-`--encode-args` and `--mux-args` are raw ffmpeg escape hatches, kept separate
-because the two passes differ: the **encode** pass compresses the PNGs to H.264
-(where `-tune` / `-x264-params` / `-profile:v` belong), the **mux** pass
-stream-copies that video while adding audio/subtitles (where `-c:a` / `-movflags`
-belong). Each string is appended just before the output, so it can override the
-built-in flags. The string is split on whitespace, so wrap each in quotes and
-don't rely on spaces inside a single argument's value. Both are mp4-only.
-
-The `<entry|url>` can be:
-- a **URL** you already serve,
-- a local **`.html`** (its directory is served as-is), or
-- a local **script** `.ts/.tsx/.js/.jsx` — bundled with esbuild and served.
-
-A URL is loaded untouched, so `--public`, `--burn-subtitles` and narration (TTS)
-need an `.html` or script entry; the CLI warns when you pass them with a URL.
-
-Examples:
-```
-kamishibai render reel.tsx -o reel.mp4 -w 4
-kamishibai render reel.tsx -s 2 -o reel@2x.mp4          # 2× resolution
-kamishibai render reel.tsx -p public -o reel.mp4        # serve ./public at root
-kamishibai render http://localhost:3000 -o page.mp4
-kamishibai tts reel.tsx                                 # synthesize narration only
-```
+`kamishibai render --help` lists the rest (quality, gif, raw ffmpeg arguments).
+Resolution comes from `meta.width`/`meta.height`, not a flag.
 
 <!-- topic: dev | `kamishibai dev`, the live player for the person you work with -->
 ### Live preview for people: `kamishibai dev`
@@ -505,13 +376,6 @@ kamishibai encode -f frames --preview -o preview.mp4    # re-encode fast, audio 
 kamishibai encode -f frames --crf 28 -o smaller.mp4     # try a setting without re-capturing
 ```
 <!-- /topic -->
-
-## Resolution
-
-Resolution is **not** a CLI flag of its own — it comes from `meta.width`/
-`meta.height`. Your CSS layout is authored in those CSS pixels. `--scale`
-multiplies only the captured pixels: a 1920×1080 reel at `-s 2` outputs
-3840×2160 with the same layout (use it for crisp/retina output).
 
 <!-- topic: audio | Sound: clips, background music, gain and fades, auto-ducking, credits -->
 ## Audio
@@ -713,74 +577,31 @@ workflow is: **finalize the narration text first, then iterate on timing and
 visuals** (those are free) — text and voice changes cost money.
 <!-- /topic -->
 
-## Library (programmatic)
+## Checking a render
 
-```ts
-import { render } from "kamishibai";
-await render({
-  entry: "reel.tsx",
-  out: "reel.mp4",
-  workers: 4,
-  scale: 1,
-  audio: [{ src: "vo.m4a", atMs: 0 }],
-  publicDir: "public",
-  onLog: console.log,
-});
-```
-
-## Debugging
-
-When a frame looks wrong, **dump the frames and look.** Render with
-`--frames-dir <dir>` (`-f`) and open the PNGs — it's the fastest way to pin a
-glitch (a stray colour, a misplaced element, a blank tail) to an exact frame.
-Frames are named `f000123.png` by index, so `index ÷ fps` is the timestamp, and
-a blank run at the end almost always means `meta.durationMs` is longer than the
-content (size it with `seriesDuration`; `kamishibai skill scenes`). The worker count
-never changes a deterministic reel's pixels, so if a glitch appears or moves
-when you change `--workers` (often on a chunk's first frame), the reel depends
-on state left over from the previous seek — fix that rather than pinning
-`--workers 1`.
-
-When a render finishes, show it to whoever asked: on macOS, `open out.mp4` plays
-it straight away (QuickTime) — a small courtesy that lets them watch immediately.
-Follow any explicit instruction about the output instead, if given.
-
-### Output & logs
-
-The output is **concise and bounded — roughly a dozen lines for a whole render**,
-no matter how many frames: one line per phase (`Probing` / `Capturing` /
-`Encoding` / `Muxing` / `Done → <path>`, plus `Synthesizing narration…` when
-lines aren't cached yet) plus one `✓ chunk …` per Chrome worker
-(at most ~8). There is **no per-frame logging**, and **ffmpeg is silent unless
-`--verbose`** — its output is captured and only printed (the last lines) if it
-*fails*. `encode` prints even less.
-
-So **run it in the foreground and read all of the output — don't pipe it through
-`tail`/`head`.** There's no flood to trim, and trimming hides the very lines you
-need: the final `Done → <path>` and, on failure, the ffmpeg error tail. Reach for
-`--verbose` only when debugging an ffmpeg failure — *that* is a flood, and the one
-time `tail` earns its keep.
-
-For long jobs there's also a **heartbeat**: capture and encode each emit a
-`…captured X/total` / `…encoded X/total` line at most once a minute, so a slow
-reel shows it's advancing rather than sitting silent. Short jobs finish before the
-first tick, so nothing extra prints. So even on a long render the line rate stays
-low — still no reason to `tail`.
+- **Look at frames.** Render with `-f frames` and open a few PNGs: `f000123.png`
+  is frame 123, at `123 / fps` seconds. A blank tail means `meta.durationMs` is
+  longer than the content.
+- A glitch that moves when `--workers` changes means `seek` depends on the
+  previous seek. Fix that; don't pin `--workers 1`.
+- The log is about a dozen lines, whatever the length. Read all of it; don't
+  pipe it through `tail` or `head`, which hides `Done → <path>` and errors.
+- When done, show the video to whoever asked (on macOS, `open out.mp4`), unless
+  told otherwise.
 
 ## Determinism checklist
 
-- Await fonts before drawing text (the renderer awaits `document.fonts.ready`,
-  but custom/remote fonts should be loaded by your page).
-- Pin Chromium via your Playwright version; emoji and sub-pixel rendering are
-  Chrome-build dependent.
-- Never read wall-clock time or unseeded randomness inside `seek`.
-- Make `seek` resolve only **after** the DOM reflects the target `ms` — commit
-  the state, then settle, then resolve. (`kamishibai/react` does this for you;
-  with the raw API, don't resolve on a frame that still shows the previous `ms`,
-  or parallel workers can screenshot a stale frame.)
+- Load custom fonts before drawing text (the renderer awaits `document.fonts.ready`).
+- Pin Chromium through your Playwright version; emoji and sub-pixel rendering
+  depend on the Chrome build.
+- No wall-clock time or unseeded randomness in `seek`.
+- Resolve `seek` only once the DOM shows the target `ms`. `kamishibai/react`
+  does this; with the raw API, a frame still showing the previous `ms` lets a
+  worker capture a stale frame.
 
-## Requirements
+## Library
 
-- Node.js ≥ 20
-- `ffmpeg` on PATH (not bundled)
-- Chromium for Playwright: `npx playwright install chromium`
+```ts
+import { render } from "kamishibai";
+await render({ entry: "reel.tsx", out: "reel.mp4", publicDir: "public", onLog: console.log });
+```
