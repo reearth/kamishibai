@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #lower-third-root {
+          position: absolute;
+          inset: 0;
+          font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        }
+        #lower-third-box {
+          position: absolute;
+          left: 96px;
+          bottom: 120px;
+          padding: 24px 36px;
+          border-radius: 12px;
+          background: rgba(0, 0, 0, 0.6);
+          color: #ffffff;
+          font-size: 48px;
+          font-weight: 600;
+          line-height: 1.2;
+          white-space: nowrap;
+        }
+      </style>
+
+      <div
+        id="lower-third-root"
+        data-composition-id="lower-third"
+        data-width="1920"
+        data-height="1080"
+        data-layout-allow-caption-zone
+      >
+        <div id="lower-third-box" data-layout-allow-overflow>Re:Earth · 3D</div>
+      </div>
+
+      <script>
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          // Local time: 0–0.5 s slide in from the left edge, hold, 3.5–4.0 s slide back out.
+          // Off-screen = the box's own width plus its 96 px left offset.
+          tl.fromTo(
+            "#lower-third-box",
+            { xPercent: -100, x: -96 },
+            { xPercent: 0, x: 0, duration: 0.5, ease: "power3.out" },
+            0,
+          );
+          tl.to(
+            "#lower-third-box",
+            { xPercent: -100, x: -96, duration: 0.5, ease: "power3.in" },
+            3.5,
+          );
+          window.__timelines["lower-third"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

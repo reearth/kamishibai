@@ -1,0 +1,8 @@
+{
+  "render": {
+    "default": "npx remotion render Scenes out.mp4",
+    "single": "npx remotion render Scenes out.mp4 --concurrency=1"
+  },
+  "intermediate_format": "jpeg",
+  "deviations": "4.25 s, 3.75 s, 8.25 s and 7.75 s fall on half frames at 30 fps; TransitionSeries needs whole frames, so the scenes are 128 + 135 + 127 frames with two 15-frame crossfades (scene 1 on screen 0-4.267 s, scene 2 3.767-8.267 s, scene 3 7.767-12 s), i.e. the crossfades start half a frame late. Font is Inter loaded with @remotion/google-fonts, fetched over the network at render time. The AAC audio stream reports 12.011 s because of encoder priming/padding; the video stream and content are exactly 12.0 s."
+}

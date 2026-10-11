@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #scene-title-root {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 28px;
+          background-color: #0b0e14;
+          color: #f2f4f8;
+          font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        }
+        #scene-title-heading {
+          font-size: 110px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          line-height: 1.1;
+        }
+        #scene-title-sub {
+          font-size: 48px;
+          font-weight: 400;
+          opacity: 0.6;
+        }
+      </style>
+
+      <div id="scene-title-root" data-composition-id="scene-title" data-width="1920" data-height="1080">
+        <h1 id="scene-title-heading" data-layout-allow-overlap>kamishibai benchmark</h1>
+        <p id="scene-title-sub">T2 · scenes</p>
+      </div>
+
+      <script>
+        // First scene: on screen from frame 0; the next scene's fade-in is the exit.
+        window.__timelines["scene-title"] = gsap.timeline({ paused: true });
+      </script>
+    </template>
+  </body>
+</html>

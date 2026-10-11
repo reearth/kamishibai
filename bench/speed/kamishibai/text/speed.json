@@ -1,0 +1,8 @@
+{
+  "render": {
+    "default": "npx kamishibai render reel.tsx -o out.mp4",
+    "single": "npx kamishibai render reel.tsx -o out.mp4 -w 1"
+  },
+  "intermediate_format": "png",
+  "deviations": ""
+}

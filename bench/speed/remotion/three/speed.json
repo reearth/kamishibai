@@ -1,0 +1,12 @@
+{
+  "render": {
+    "default": "npx remotion render SphereField out.mp4 --gl=angle",
+    "single": "npx remotion render SphereField out.mp4 --gl=angle --concurrency=1",
+    "cpu": "npx remotion render SphereField out.mp4",
+    "cpu-single": "npx remotion render SphereField out.mp4 --concurrency=1"
+  },
+  "intermediate_format": "jpeg",
+  "deviations": "Lower-third font is Inter loaded with @remotion/google-fonts, so each render fetches the font from Google Fonts over the network. Uses @remotion/three's <ThreeCanvas> with @react-three/fiber 9.2.0 and three 0.170.0; WebGL runs with Remotion's default --gl setting.",
+  "webgl": "GPU via --gl=angle in default/single",
+  "gpu": "default / single draw WebGL on the GPU (--gl=angle, ANGLE over Metal), as kamishibai and HyperFrames do; cpu / cpu-single are Remotion's own default (SwiftShader)"
+}

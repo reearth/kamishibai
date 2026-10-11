@@ -1,0 +1,11 @@
+# built by setup.sh
+.work/
+node_modules/
+# kamishibai's projects depend on .work/kamishibai.tgz, so their lockfiles are local
+speed/kamishibai/*/package-lock.json
+edit/kamishibai/package-lock.json
+# music copied in by setup.sh and run-edit.ts
+speed/*/scenes/assets/
+speed/remotion/scenes/public/
+
+results/

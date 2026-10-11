@@ -8,7 +8,7 @@ kamishibai next to [Remotion](https://www.remotion.dev/) and [HyperFrames](https
 2. **Render speed:** how long does a short reel take from a cold start?
 3. **Agents:** how many tokens does a coding agent spend turning a brief into a video?
 
-These are one machine's numbers, from October 2026. They are not a guarantee. The harness isn't published yet. This page records what was run and how.
+These are one machine's numbers, from October 2026. They are not a guarantee. The harness, with the briefs and every tool's reference implementation, is in [`bench/`](../bench/README.md), so you can run it on your own machine.
 
 ## Setup
 

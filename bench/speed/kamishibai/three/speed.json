@@ -1,0 +1,8 @@
+{
+  "render": {
+    "default": "npx kamishibai render reel.tsx -o out.mp4 --probe-timeout 60",
+    "single": "npx kamishibai render reel.tsx -o out.mp4 --probe-timeout 60 -w 1"
+  },
+  "intermediate_format": "png",
+  "deviations": "--probe-timeout 60 added: with the default 15 s page-load limit, some of the 6 parallel workers time out building the WebGL scene (headless Chromium uses SwiftShader software GL here) and the default render fails. It is the CLI's documented knob for a slow-loading page and does not change any output."
+}

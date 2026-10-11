@@ -1,0 +1,22 @@
+{
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "sceneMs": 10000,
+  "crossfadeMs": 500,
+  "textColor": "#F2F4F8",
+  "font": "\"Helvetica Neue\", Helvetica, Arial, sans-serif",
+  "fadeInMs": 1000,
+  "fadeOutMs": 1500,
+  "scenes": [
+    { "bg": "#0B0E14", "accent": "#E8743B", "heading": "Why render from time", "bullets": ["Every frame is a pure function", "Seek anywhere", "Render in parallel"], "bulletStartMs": 400 },
+    { "bg": "#13233A", "accent": "#4FB3BF", "heading": "What we measure", "bullets": ["Render time", "Tokens", "Success rate"], "bulletStartMs": 400 },
+    { "bg": "#2A1630", "accent": "#F2C14E", "heading": "Three tools", "bullets": ["kamishibai", "Remotion", "HyperFrames"], "bulletStartMs": 400 },
+    { "bg": "#1D2B1F", "accent": "#9BC53D", "heading": "Same brief for each", "bullets": ["Identical prompt", "Pinned versions", "Isolated sessions"], "bulletStartMs": 400 },
+    { "bg": "#30211A", "accent": "#E55934", "heading": "Edit, then render again", "bullets": ["Change one heading", "Change one colour", "Shift one timing"], "bulletStartMs": 400 },
+    { "bg": "#1A2430", "accent": "#5BC0EB", "heading": "Frames that did not change", "bullets": ["Copied, not captured", "Kept across runs", "Keyed by fingerprint"], "bulletStartMs": 400 },
+    { "bg": "#2B1A2E", "accent": "#C879FF", "heading": "Frames that did", "bullets": ["Captured again", "Encoded again", "Muxed with the sound"], "bulletStartMs": 400 },
+    { "bg": "#22261A", "accent": "#FDE74C", "heading": "What it costs", "bullets": ["Wall time per edit", "Frames re-captured", "Pixels that differ"], "bulletStartMs": 400 },
+    { "bg": "#16161D", "accent": "#FA7921", "heading": "Thanks for watching", "bullets": ["kamishibai", "github.com/reearth/kamishibai", "MIT"], "bulletStartMs": 400 }
+  ]
+}

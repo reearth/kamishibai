@@ -1,0 +1,8 @@
+{
+  "render": {
+    "default": "npx remotion render TitleSequence out.mp4",
+    "single": "npx remotion render TitleSequence out.mp4 --concurrency=1"
+  },
+  "intermediate_format": "jpeg",
+  "deviations": "Font is Inter loaded with @remotion/google-fonts (Remotion's recommended font loading), so each render fetches the font from Google Fonts over the network. The fade-out runs from 6.5 s to the last frame (frame 239, 7.967 s) so that the last frame shows only the background."
+}

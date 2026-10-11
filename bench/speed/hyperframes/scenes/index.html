@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Three scenes</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0b0e14;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      [data-composition-id="main"] > div[data-composition-src] {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="12"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- Scenes overlap by 0.5 s; each incoming scene fades in over the outgoing one. -->
+      <div
+        id="scene-title"
+        class="clip"
+        data-composition-id="scene-title"
+        data-composition-src="compositions/scene-title.html"
+        data-start="0"
+        data-duration="4.25"
+        data-track-index="0"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+      <div
+        id="scene-list"
+        class="clip"
+        data-composition-id="scene-list"
+        data-composition-src="compositions/scene-list.html"
+        data-start="3.75"
+        data-duration="4.5"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+      <div
+        id="scene-end"
+        class="clip"
+        data-composition-id="scene-end"
+        data-composition-src="compositions/scene-end.html"
+        data-start="7.75"
+        data-duration="4.25"
+        data-track-index="0"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <div
+        id="captions"
+        class="clip"
+        data-composition-id="captions"
+        data-composition-src="compositions/captions.html"
+        data-start="0"
+        data-duration="12"
+        data-track-index="2"
+        data-track-kind="captions"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <!-- Music bed: first 12 s of the track, 1.0 s fade-in, 1.5 s fade-out ending at 12 s. -->
+      <audio
+        id="bgm"
+        src="assets/bgm.mp3"
+        data-start="0"
+        data-duration="12"
+        data-track-index="3"
+        data-volume="1"
+        data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":1,"v":1},{"t":10.5,"v":1},{"t":12,"v":0}]}]}'
+      ></audio>
+    </div>
+    <script>
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

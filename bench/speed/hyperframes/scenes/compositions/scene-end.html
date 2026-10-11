@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #scene-end-root {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background-color: #2a1630;
+          color: #f2f4f8;
+          font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        }
+        #scene-end-thanks {
+          display: block;
+          font-size: 140px;
+          font-weight: 700;
+          line-height: 1.1;
+        }
+      </style>
+
+      <div id="scene-end-root" data-composition-id="scene-end" data-width="1920" data-height="1080">
+        <h1 id="scene-end-thanks" data-layout-allow-overlap>Thanks</h1>
+      </div>
+
+      <script>
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+          // 0–0.5 s: crossfade in over the outgoing scene.
+          tl.fromTo("#scene-end-root", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "none" }, 0);
+          // 0–1 s: "Thanks" scales from 90 % to 100 %.
+          tl.fromTo("#scene-end-thanks", { scale: 0.9 }, { scale: 1, duration: 1, ease: "power2.out" }, 0);
+          window.__timelines["scene-end"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

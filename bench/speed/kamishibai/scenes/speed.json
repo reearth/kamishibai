@@ -1,0 +1,8 @@
+{
+  "render": {
+    "default": "npx kamishibai render reel.tsx -o out.mp4 --burn-subtitles",
+    "single": "npx kamishibai render reel.tsx -o out.mp4 --burn-subtitles -w 1"
+  },
+  "intermediate_format": "png",
+  "deviations": "--burn-subtitles is required because kamishibai's default for <Subtitle> is a soft mov_text track; the brief asks for burned-in captions."
+}

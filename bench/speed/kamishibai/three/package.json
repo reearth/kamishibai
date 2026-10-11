@@ -1,0 +1,20 @@
+{
+  "name": "bench-speed-three-kamishibai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "kamishibai render reel.tsx -o out.mp4 --probe-timeout 60"
+  },
+  "dependencies": {
+    "kamishibai": "file:../../../.work/kamishibai.tgz",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.170.0",
+    "typescript": "7.0.2"
+  }
+}

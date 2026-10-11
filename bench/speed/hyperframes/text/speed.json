@@ -1,0 +1,8 @@
+{
+  "render": {
+    "default": "npx -y hyperframes@0.8.143 render -o out.mp4",
+    "single": "npx -y hyperframes@0.8.143 render --workers 1 -o out.mp4"
+  },
+  "intermediate_format": "Default tries drawElement fast capture (macOS + hardware GPU); on this composition its auto-worker calibration fails (frame 0 is a near-empty 'suspect small frame') so auto workers drop to 1, then drawElement self-verify fails (frame 120, 25.2 dB < 32 dB) and the render falls back to Page.captureScreenshot JPEG (quality 80), streamed to the encoder. Render summary: 'screenshot capture · hardware gpu'.",
+  "deviations": ""
+}

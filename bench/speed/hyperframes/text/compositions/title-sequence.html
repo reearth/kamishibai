@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #title-sequence-root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+          color: #f2f4f8;
+          background-color: #0b0e14;
+        }
+        #title-sequence-stage {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding-top: 170px;
+        }
+        #title-sequence-title {
+          font-size: 96px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          line-height: 1.2;
+          text-align: center;
+        }
+        #title-sequence-bars {
+          margin-top: 90px;
+          display: flex;
+          flex-direction: column;
+          gap: 32px;
+          width: 1152px;
+        }
+        #title-sequence-bars .row {
+          display: flex;
+          align-items: center;
+          gap: 32px;
+          height: 48px;
+        }
+        #title-sequence-bars .label {
+          width: 220px;
+          font-size: 36px;
+          font-weight: 600;
+          text-align: right;
+        }
+        #title-sequence-bars .track {
+          width: 900px;
+          height: 40px;
+        }
+        #title-sequence-bars .bar {
+          display: block;
+          height: 100%;
+          background: #f2c94c;
+          border-radius: 6px;
+          transform-origin: left center;
+        }
+        #title-sequence-counter {
+          margin-top: 70px;
+          width: 600px;
+          font-size: 120px;
+          font-weight: 700;
+          line-height: 1;
+          font-variant-numeric: tabular-nums;
+          text-align: center;
+        }
+      </style>
+
+      <div
+        id="title-sequence-root"
+        data-composition-id="title-sequence"
+        data-width="1920"
+        data-height="1080"
+      >
+        <div id="title-sequence-stage">
+          <h1 id="title-sequence-title">Every frame is a function of time</h1>
+          <div id="title-sequence-bars">
+            <div class="row">
+              <div class="label" id="title-sequence-label-seek">Seek</div>
+              <div class="track"><div class="bar" id="title-sequence-bar-seek" style="width: 360px"></div></div>
+            </div>
+            <div class="row">
+              <div class="label" id="title-sequence-label-capture">Capture</div>
+              <div class="track"><div class="bar" id="title-sequence-bar-capture" style="width: 630px"></div></div>
+            </div>
+            <div class="row">
+              <div class="label" id="title-sequence-label-encode">Encode</div>
+              <div class="track"><div class="bar" id="title-sequence-bar-encode" style="width: 855px"></div></div>
+            </div>
+          </div>
+          <div id="title-sequence-counter">0</div>
+        </div>
+      </div>
+
+      <script>
+        (() => {
+          const tl = gsap.timeline({ paused: true });
+
+          // 0–8 s: background drifts linearly from #0B0E14 to #121826.
+          tl.fromTo(
+            "#title-sequence-root",
+            { backgroundColor: "#0b0e14" },
+            { backgroundColor: "#121826", duration: 8, ease: "none" },
+            0,
+          );
+
+          // 0.0–0.8 s: title rises 60 px while fading in; ease-out, no overshoot.
+          tl.fromTo(
+            "#title-sequence-title",
+            { y: 60, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" },
+            0,
+          );
+
+          // 1.0–2.5 s: bars (40 / 70 / 95 % of 900 px) grow from the left, starts 0.5 s apart.
+          ["seek", "capture", "encode"].forEach((name, i) => {
+            const at = 1 + i * 0.5;
+            tl.fromTo(
+              "#title-sequence-label-" + name,
+              { opacity: 0 },
+              { opacity: 1, duration: 0.3, ease: "power2.out" },
+              at,
+            );
+            tl.fromTo(
+              "#title-sequence-bar-" + name,
+              { scaleX: 0 },
+              { scaleX: 1, duration: 0.5, ease: "power2.out" },
+              at,
+            );
+          });
+
+          // 2.5–4.5 s: counter 0 → 2026 in whole numbers, ease-out.
+          const counter = document.getElementById("title-sequence-counter");
+          const count = { value: 0 };
+          tl.fromTo(
+            "#title-sequence-counter",
+            { opacity: 0 },
+            { opacity: 1, duration: 0.2, ease: "power2.out" },
+            2.5,
+          );
+          tl.fromTo(
+            count,
+            { value: 0 },
+            {
+              value: 2026,
+              duration: 2,
+              ease: "power2.out",
+              onUpdate: () => {
+                counter.textContent = String(Math.round(count.value));
+              },
+            },
+            2.5,
+          );
+
+          // 4.5–6.5 s hold; 6.5–8.0 s everything fades out to the background.
+          tl.to(
+            ["#title-sequence-title", "#title-sequence-bars", "#title-sequence-counter"],
+            { opacity: 0, duration: 1.5, ease: "sine.inOut" },
+            6.5,
+          );
+
+          window.__timelines["title-sequence"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>
