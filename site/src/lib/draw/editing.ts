@@ -1,5 +1,5 @@
 // Editing: how each term's loop is drawn. See kit.ts.
-import { W, H, TAU, INK, INK_2, PAPER, KAKI, KAKI_2, PALE, GREY, GREY_2, MIST, lerp, span, inOut, out, smooth, wrap, rand, noise, fill, dot, font, type Paint, type Shapes } from "./kit.ts";
+import { W, H, TAU, INK, INK_2, PAPER, KAKI, KAKI_2, PALE, GREY, GREY_2, MIST, NIGHT, clamp, lerp, span, inOut, out, smooth, pingPong, wrap, mix, rand, noise, fill, dot, font, type Paint, type Shapes } from "./kit.ts";
 
 export const SHAPES: Record<string, Shapes> = {};
 
@@ -31,7 +31,7 @@ function mono(g: G, px: number, weight = 500): void {
 }
 
 /** Limb angles in radians from straight down; positive swings toward +x. */
-interface Pose {
+export interface Pose {
   lean?: number;
   armA: number; elbowA?: number;
   armB: number; elbowB?: number;
@@ -40,7 +40,7 @@ interface Pose {
 }
 
 /** A simple person standing on (x, y): orange shirt, ink limbs and head. */
-function figure(g: G, x: number, y: number, s: number, p: Pose, outline = 0): void {
+export function figure(g: G, x: number, y: number, s: number, p: Pose, outline = 0): void {
   const hip: [number, number] = [x, y - 46 * s];
   const lean = p.lean ?? 0;
   const sh: [number, number] = [hip[0] + Math.sin(lean) * 32 * s, hip[1] - Math.cos(lean) * 32 * s];
@@ -680,6 +680,148 @@ export const PAINT: Record<string, Paint> = {
       g.globalAlpha = on ? 1 : 0.35;
       rrect(g, x - 5, y - 5, 10, 10, 2, light ? PAPER : INK);
       g.globalAlpha = 1;
+    }
+  },
+
+  // The same jump twice: above at its own speed, four times over; below at
+  // a quarter of the speed, once. The faint balls are the frames drawn.
+  "slow-motion": (g, t) => {
+    fill(g, PAPER);
+    const lane = (top: number, v: number, label: string, ghosts: number) => {
+      const GY = top + 116, R = 16, JH = 82;
+      box(g, 0, GY, W, 4, GREY);
+      const at = (u: number) => GY - R - JH * 4 * u * (1 - u);
+      const x = (u: number) => 120 + u * 200;
+      for (let k = ghosts; k >= 1; k--) {
+        const u = v - k * 0.03;
+        if (u < 0) continue;
+        g.globalAlpha = 0.25;
+        dot(g, x(u), at(u), R, KAKI);
+      }
+      g.globalAlpha = 1;
+      dot(g, x(v), at(v), R, KAKI);
+      mono(g, 22);
+      g.fillStyle = INK;
+      g.textAlign = "left";
+      g.textBaseline = "alphabetic";
+      g.fillText(label, 22, top + 44);
+    };
+    lane(10, wrap(t * 4, 1), "1×", 0);
+    box(g, 0, 148, W, 2, INK);
+    lane(156, t, "¼×", 6);
+  },
+
+  // A day in a few seconds: the sun crosses, the sky goes to dusk and night,
+  // the windows light up, the shadow swings round and the clouds race. The
+  // clock in the corner runs.
+  "time-lapse": (g, t) => {
+    const e = Math.sin(TAU * t); // the sun's height: up in the first half of the loop
+    const sky = e > 0 ? mix(PALE, PAPER, clamp(e / 0.35)) : mix(PALE, NIGHT, clamp(-e / 0.3));
+    fill(g, sky);
+    const night = clamp(-e / 0.3);
+    // the sun by day, the moon by night, on the same arc
+    const th = Math.PI * wrap(t * 2, 1);
+    const ax = 200 - 176 * Math.cos(th), ay = 226 - 170 * Math.sin(th);
+    dot(g, ax, ay, 18, t < 0.5 ? KAKI : PAPER);
+    // clouds race across
+    for (let k = 0; k < 4; k++) {
+      const x = wrap(k * 120 + t * 960, 480) - 60;
+      const y = 40 + rand(k, 1) * 50;
+      g.fillStyle = night > 0.5 ? INK_2 : GREY;
+      g.globalAlpha = 0.8;
+      g.beginPath();
+      g.ellipse(x, y, 34, 10, 0, 0, TAU);
+      g.ellipse(x + 18, y - 7, 18, 9, 0, 0, TAU);
+      g.fill();
+      g.globalAlpha = 1;
+    }
+    // the town, its windows lighting one by one at dusk
+    const blds = [[30, 70, 80], [108, 50, 112], [166, 64, 66], [240, 56, 120], [304, 76, 92]];
+    blds.forEach(([x, w, h], i) => {
+      box(g, x!, 226 - h!, w!, h!, mix(GREY_2, INK, night));
+      for (let r = 0; r < Math.floor(h! / 24); r++) {
+        for (let c = 0; c < Math.floor(w! / 20); c++) {
+          const lit = -e > 0.04 + rand(i, r, c) * 0.5;
+          box(g, x! + 6 + c * 20, 226 - h! + 8 + r * 24, 10, 12, lit ? PALE : mix(GREY, INK_2, night));
+        }
+      }
+    });
+    box(g, 0, 226, W, H - 226, mix(MIST, INK_2, night));
+    // the post and its shadow, away from the sun
+    if (t < 0.5) {
+      const len = clamp(Math.cos(th) * 1.2 / Math.max(0.25, Math.sin(th)), -3, 3) * 40;
+      g.globalAlpha = clamp(e / 0.15) * 0.6;
+      poly(g, [196, 262, 204, 262, 204 + len, 268, 196 + len, 268], GREY_2);
+      g.globalAlpha = 1;
+    }
+    box(g, 196, 206, 8, 58, INK);
+    // the clock
+    const mins = Math.floor((6 * 60 + t * 24 * 60) / 10) * 10 % (24 * 60);
+    mono(g, 22);
+    g.fillStyle = night > 0.5 ? PAPER : INK;
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
+    g.fillText(`${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`, 22, 40);
+  },
+
+  // An old, faded photo and the restored one, the same picture split by a
+  // divider that sweeps across and back.
+  "before-after": (g, t) => {
+    const D = lerp(64, 336, inOut(pingPong(t)));
+    const photo = (old: boolean) => {
+      fill(g, old ? MIST : PAPER);
+      dot(g, 300, 76, 30, old ? GREY : KAKI);
+      g.fillStyle = old ? GREY : PALE;
+      g.beginPath();
+      g.moveTo(-10, H);
+      for (let x = -10; x <= W + 10; x += 8) g.lineTo(x, 196 - 34 * Math.sin(x / 80 + 0.4));
+      g.lineTo(W + 10, H);
+      g.fill();
+      box(g, 0, 240, W, 60, old ? GREY_2 : KAKI_2);
+      box(g, 96, 150, 120, 96, old ? GREY_2 : PAPER);
+      poly(g, [84, 152, 156, 100, 228, 152], old ? INK_2 : KAKI);
+      box(g, 142, 196, 28, 50, old ? INK_2 : INK);
+      box(g, 112, 168, 22, 22, old ? MIST : PALE);
+      box(g, 180, 168, 22, 22, old ? MIST : PALE);
+      if (old) {
+        // scratches and spots
+        g.strokeStyle = "rgba(255,255,255,0.7)";
+        g.lineWidth = 1.5;
+        for (let i = 0; i < 5; i++) {
+          const x = 30 + rand(i, 1) * 340;
+          g.beginPath();
+          g.moveTo(x, 0);
+          g.lineTo(x + (rand(i, 2) - 0.5) * 30, H);
+          g.stroke();
+        }
+        g.fillStyle = "rgba(18,18,18,0.18)";
+        for (let i = 0; i < 90; i++) g.fillRect(rand(i, 3) * W, rand(i, 4) * H, 2, 2);
+      }
+    };
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, D, H);
+    g.clip();
+    photo(true);
+    g.restore();
+    g.save();
+    g.beginPath();
+    g.rect(D, 0, W - D, H);
+    g.clip();
+    photo(false);
+    g.restore();
+    box(g, D - 2, 0, 4, H, PAPER);
+    dot(g, D, 150, 18, PAPER);
+    poly(g, [D - 4, 143, D - 4, 157, D - 11, 150], INK);
+    poly(g, [D + 4, 143, D + 4, 157, D + 11, 150], INK);
+    mono(g, 13);
+    g.textBaseline = "middle";
+    for (const [label, x, align] of [["BEFORE", 14, "left"], ["AFTER", W - 14, "right"]] as const) {
+      g.textAlign = align;
+      const w = g.measureText(label).width + 14;
+      box(g, align === "left" ? x : x - w, 14, w, 24, INK);
+      g.fillStyle = PAPER;
+      g.fillText(label, align === "left" ? x + 7 : x - 7, 26.5);
     }
   },
 };

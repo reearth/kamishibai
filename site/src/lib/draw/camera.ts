@@ -1,5 +1,6 @@
 // Camera: how each term's loop is drawn. See kit.ts.
-import { W, H, TAU, INK, INK_2, PAPER, KAKI, PALE, GREY, GREY_2, MIST, clamp, lerp, span, inOut, out, inCubic, smooth, pingPong, wrap, rand, noise, rect, circle, ground, blur, fill, dot, font, type Paint, type Shapes } from "./kit.ts";
+import { W, H, TAU, INK, INK_2, PAPER, KAKI, PALE, GREY, GREY_2, MIST, clamp, lerp, span, inOut, out, inCubic, smooth, pingPong, wrap, rand, noise, loopNoise, rect, circle, ground, blur, fill, dot, font, type Paint, type Shapes } from "./kit.ts";
+import { figure, type Pose } from "./editing.ts";
 
 export const SHAPES: Record<string, Shapes> = {
   pan: (t) => [
@@ -90,6 +91,10 @@ function ridge(g: G, f: (x: number) => number, color: string, step = 8): void {
   g.lineTo(W + 10, H + 10);
   g.closePath();
   g.fill();
+}
+
+function mono(g: G, px: number, weight = 500): void {
+  g.font = `${weight} ${px}px "Geist Mono", ui-monospace, monospace`;
 }
 
 /** 0 → 1 → 0, a triangle wave of period 1 */
@@ -405,5 +410,245 @@ export const PAINT: Record<string, Paint> = {
     g.strokeStyle = KAKI;
     g.lineWidth = 2;
     g.strokeRect(tx + (fx - W / 2 / z) * (tw / W), ty + (fy - H / 2 / z) * (th / H), cw, ch);
+  },
+
+  // The lens zooms in on the doorway and back out, from where the camera
+  // stands: the house and the buildings beside it grow together. The focal
+  // length counts in the corner.
+  zoom: (g, t) => {
+    const p = inOut(span(t, 0.1, 0.48)) - inOut(span(t, 0.64, 0.94));
+    const z = lerp(1, 2.6, p);
+    g.save();
+    g.translate(200, 150);
+    g.scale(z, z);
+    g.translate(-lerp(200, 214, p), -lerp(150, 174, p));
+    fill(g, PAPER);
+    dot(g, 330, 62, 22, PALE);
+    g.fillStyle = MIST;
+    g.fillRect(-40, 214, W + 80, 120);
+    rrect(g, 18, 96, 70, 118, 2, GREY);
+    rrect(g, 96, 130, 40, 84, 2, GREY);
+    rrect(g, 306, 80, 78, 134, 2, GREY);
+    for (let k = 0; k < 6; k++) rrect(g, 30 + (k % 2) * 26, 108 + Math.floor(k / 2) * 30, 16, 18, 1, PAPER);
+    // the house and its door
+    rrect(g, 152, 126, 124, 88, 2, GREY_2);
+    poly(g, [142, 128, 214, 84, 286, 128], INK_2);
+    rrect(g, 166, 142, 24, 24, 1, PAPER);
+    rrect(g, 238, 142, 24, 24, 1, PAPER);
+    rrect(g, 200, 160, 28, 54, 2, KAKI);
+    dot(g, 222, 189, 2, INK);
+    g.restore();
+    // the viewfinder, which doesn't zoom
+    g.strokeStyle = INK;
+    g.lineWidth = 3;
+    for (const [x, y, sx, sy] of [[16, 16, 1, 1], [384, 16, -1, 1], [16, 284, 1, -1], [384, 284, -1, -1]] as const) {
+      g.beginPath();
+      g.moveTo(x, y + sy * 22);
+      g.lineTo(x, y);
+      g.lineTo(x + sx * 22, y);
+      g.stroke();
+    }
+    mono(g, 18);
+    g.fillStyle = PAPER;
+    g.fillRect(30, 30, 74, 28);
+    g.fillStyle = INK;
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
+    g.fillText(`${Math.round(lerp(24, 70, p))} mm`, 36, 50);
+  },
+
+  // The camera runs alongside the runner, who keeps the middle of the frame;
+  // the street streams past behind, the posts in front faster still.
+  "tracking-shot": (g, t) => {
+    const GY = 236;
+    fill(g, PAPER);
+    for (let k = 0; k < 6; k++) {
+      const x = wrap(k * 80 - t * 480, 480) - 40;
+      const h = 50 + rand(k, 1) * 70;
+      rrect(g, x, GY - 40 - h, 58, h + 40, 2, GREY);
+    }
+    g.fillStyle = MIST;
+    g.fillRect(0, GY, W, H - GY);
+    for (let k = 0; k < 6; k++) rrect(g, wrap(k * 80 - t * 960, 480) - 40, GY + 26, 40, 5, 0, GREY);
+    const ph = TAU * t * 4;
+    const run: Pose = {
+      lean: 0.2,
+      armA: Math.sin(ph) * 1.1, elbowA: -1.2,
+      armB: -Math.sin(ph) * 1.1, elbowB: -1.2,
+      legA: -Math.sin(ph) * 0.8, kneeA: -0.6 - 0.5 * Math.max(0, Math.sin(ph)),
+      legB: Math.sin(ph) * 0.8, kneeB: -0.6 - 0.5 * Math.max(0, -Math.sin(ph)),
+    };
+    figure(g, 196, GY - Math.abs(Math.sin(ph)) * 5, 1.25, run);
+    // posts between the camera and the runner
+    for (let k = 0; k < 3; k++) {
+      const x = wrap(k * 200 - t * 1800, 600) - 50;
+      g.fillStyle = INK;
+      g.fillRect(x, 120, 12, H - 120);
+    }
+  },
+
+  // The camera rises from behind the hedge: the hedge drops out of the
+  // bottom of the frame, the city behind comes up into view and sinks only a
+  // little. The gauge on the left shows the height.
+  crane: (g, t) => {
+    const p = inOut(span(t, 0.08, 0.56)) - inOut(span(t, 0.7, 0.96));
+    fill(g, PAPER);
+    g.save();
+    g.translate(0, p * 70);
+    dot(g, 300, 54, 22, PALE);
+    const towers = [[40, 46, 60], [92, 34, 96], [132, 50, 70], [190, 30, 128], [226, 44, 84], [276, 38, 104], [320, 56, 66]];
+    for (const [x, w, h] of towers) rrect(g, x!, 190 - h!, w!, h!, 2, GREY);
+    rrect(g, 196, 40, 18, 150, 2, KAKI);
+    g.fillStyle = GREY_2;
+    g.fillRect(-10, 190, W + 20, 8);
+    g.fillStyle = MIST;
+    g.fillRect(-10, 198, W + 20, 200);
+    g.restore();
+    // the hedge, near the camera, drops much further
+    g.save();
+    g.translate(0, p * 250);
+    g.fillStyle = INK_2;
+    g.beginPath();
+    g.moveTo(-10, H + 10);
+    for (let x = -10; x <= W + 10; x += 6) g.lineTo(x, 112 - 8 * Math.abs(Math.sin(x / 22)) - 5 * Math.sin(x / 9));
+    g.lineTo(W + 10, H + 10);
+    g.closePath();
+    g.fill();
+    g.restore();
+    // the height gauge
+    g.fillStyle = PAPER;
+    g.fillRect(14, 60, 14, 180);
+    g.fillStyle = GREY_2;
+    g.fillRect(20, 66, 2, 168);
+    rrect(g, 14, 226 - p * 156, 14, 8, 2, KAKI);
+  },
+
+  // Someone is holding the camera: the shot drifts and sways and never quite
+  // settles. The viewfinder marks stay still, to show it.
+  handheld: (g, t) => {
+    const dx = (loopNoise(t, 1, 1.4) - 0.5) * 26 + (loopNoise(t, 4, 5) - 0.5) * 3;
+    const dy = (loopNoise(t, 2, 1.4) - 0.5) * 18 + (loopNoise(t, 5, 5) - 0.5) * 3;
+    const a = (loopNoise(t, 3, 1.4) - 0.5) * 0.06;
+    g.save();
+    g.translate(200 + dx, 150 + dy);
+    g.rotate(a);
+    g.scale(1.14, 1.14);
+    g.translate(-200, -150);
+    fill(g, PAPER);
+    // a window and a table
+    rrect(g, 220, 40, 150, 120, 2, MIST);
+    g.fillStyle = GREY;
+    g.fillRect(293, 40, 4, 120);
+    g.fillRect(220, 98, 150, 4);
+    // someone across the table
+    rrect(g, 96, 128, 104, 120, 46, INK_2);
+    dot(g, 148, 102, 30, INK);
+    g.fillStyle = GREY_2;
+    g.fillRect(0, 214, W, 90);
+    // the cup and its steam
+    rrect(g, 226, 178, 40, 40, 6, KAKI);
+    g.strokeStyle = KAKI;
+    g.lineWidth = 5;
+    g.beginPath();
+    g.arc(268, 196, 10, -1.2, 1.2);
+    g.stroke();
+    g.strokeStyle = GREY;
+    g.lineWidth = 3;
+    g.lineCap = "round";
+    for (const x of [238, 254]) {
+      g.beginPath();
+      for (let y = 168; y > 128; y -= 4) g.lineTo(x + 4 * Math.sin(y / 7 + TAU * t * 2), y);
+      g.stroke();
+    }
+    g.restore();
+    g.strokeStyle = PAPER;
+    g.lineWidth = 3;
+    for (const [x, y, sx, sy] of [[16, 16, 1, 1], [384, 16, -1, 1], [16, 284, 1, -1], [384, 284, -1, -1]] as const) {
+      g.beginPath();
+      g.moveTo(x, y + sy * 22);
+      g.lineTo(x, y);
+      g.lineTo(x + sx * 22, y);
+      g.stroke();
+    }
+    dot(g, 34, 34, 6, KAKI);
+  },
+
+  // Low and fast over the field: the stripes and posts rush at the camera,
+  // which banks left and right as it weaves; the tower waits on the horizon.
+  fpv: (g, t) => {
+    const bank = Math.sin(TAU * t) * 0.3;
+    const side = Math.sin(TAU * t) * 34;
+    const HZ = 118, F = 220, CAM = 22;
+    const sy = (z: number, y: number) => HZ + (F * (CAM - y)) / z;
+    const sx = (z: number, x: number) => 200 + (F * (x - side)) / z;
+    g.save();
+    g.translate(200, 150);
+    g.rotate(bank);
+    g.translate(-200, -150);
+    g.fillStyle = PAPER;
+    g.fillRect(-200, -200, W + 400, HZ + 200);
+    g.fillStyle = MIST;
+    g.fillRect(-200, HZ, W + 400, H + 200);
+    // stripes across the field, nearest last
+    const D = 240;
+    for (let k = 11; k >= 0; k--) {
+      const z0 = wrap(k * 20 - t * 480, D) + 4;
+      const z1 = z0 + 10;
+      g.fillStyle = GREY;
+      g.fillRect(-200, sy(z1, 0), W + 400, Math.max(0.5, sy(z0, 0) - sy(z1, 0)));
+    }
+    // the tower, far off
+    rrect(g, sx(4000, 80) - 7, HZ - 70, 14, 70, 2, KAKI);
+    // the posts, left and right of the path, nearest last
+    const posts: { z: number; x: number }[] = [];
+    for (let k = 0; k < 8; k++) posts.push({ z: wrap(k * 30 - t * 480, D) + 4, x: k % 2 ? 46 : -46 });
+    posts.sort((a, b) => b.z - a.z);
+    for (const { z, x } of posts) {
+      const w = (F * 4) / z;
+      const top = sy(z, 34), bot = sy(z, 0);
+      g.globalAlpha = clamp((D - z) / 40);
+      g.fillStyle = INK;
+      g.fillRect(sx(z, x) - w / 2, top, w, bot - top);
+      g.globalAlpha = 1;
+    }
+    g.restore();
+  },
+
+  // The corridor tips over to a slant and back. The dashed line is level, to
+  // measure the tilt against.
+  "dutch-angle": (g, t) => {
+    const a = (inOut(span(t, 0.12, 0.34)) - inOut(span(t, 0.66, 0.9))) * 0.26;
+    const s = Math.cos(a) + Math.sin(Math.abs(a)) * (W / H);
+    g.save();
+    g.translate(200, 150);
+    g.rotate(a);
+    g.scale(s, s);
+    g.translate(-200, -150);
+    fill(g, MIST);
+    poly(g, [0, 0, 400, 0, 250, 96, 150, 96], GREY);
+    poly(g, [0, 300, 400, 300, 250, 196, 150, 196], GREY_2);
+    poly(g, [0, 0, 150, 96, 150, 196, 0, 300], PAPER);
+    poly(g, [400, 0, 250, 96, 250, 196, 400, 300], PAPER);
+    // doors along the walls
+    poly(g, [40, 112, 84, 116, 84, 222, 40, 244], GREY);
+    poly(g, [360, 112, 316, 116, 316, 222, 360, 244], GREY);
+    poly(g, [108, 128, 128, 129, 128, 210, 108, 220], GREY);
+    // the door at the end, and someone standing in front of it
+    rrect(g, 184, 120, 32, 76, 1, KAKI);
+    figure(g, 160, 214, 0.55, { armA: 0.12, armB: -0.12, legA: 0.08, legB: -0.08 });
+    g.restore();
+    g.strokeStyle = INK;
+    g.lineWidth = 2;
+    g.setLineDash([8, 8]);
+    g.beginPath();
+    g.moveTo(0, 150);
+    g.lineTo(W, 150);
+    g.stroke();
+    g.setLineDash([]);
+    mono(g, 18);
+    g.fillStyle = INK;
+    g.textAlign = "left";
+    g.textBaseline = "alphabetic";
+    g.fillText(`${Math.round((a * 180) / Math.PI)}°`, 22, 40);
   },
 };

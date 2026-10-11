@@ -38,13 +38,13 @@ const host = new URL(base, Astro.site).host + base;
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7.5" cy="7.5" r="5.5"></circle><path d="M11.5 11.5L16 16"></path></svg>
         <input type="search" placeholder={`Search ${TERMS.length} terms`} aria-label="Search the terms" autocomplete="off" spellcheck="false" />
       </label>
-      <span class="found" aria-live="polite"></span>
     </div>
     <div class="filters">
       <div class="chips" role="group" aria-label="Category">
         <button type="button" class="chip" data-cat="Random" aria-pressed="false">Random</button>
         <button type="button" class="chip" data-cat="All" aria-pressed="true">All</button>
         {CHAPTERS.map((c) => <button type="button" class="chip" data-cat={c.cat} aria-pressed="false">{c.cat}</button>)}
+        <span class="found" aria-live="polite">{TERMS.length} terms</span>
       </div>
       <a class="chip accent" href={permalink(deck[0]!.id)} data-open="0">Watch them all as a deck</a>
     </div>
@@ -177,21 +177,17 @@ const host = new URL(base, Astro.site).host + base;
   /* 16px, so iOS doesn't zoom in on focus. */
   .field input { width: 100%; min-height: 44px; appearance: none; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); padding: 10px 14px 10px 42px; font: inherit; font-size: 16px; }
   .field input::placeholder { color: var(--ink-3); }
-  .found { font-size: 14px; color: var(--ink-3); }
+  .found { align-self: center; padding: 0 6px; font-size: 14px; color: var(--ink-3); white-space: nowrap; }
   .empty { max-width: 1320px; margin: 0 auto; padding: 8px clamp(16px, 4vw, 40px) 0; font-size: 16px; color: var(--ink-2); }
   .empty[hidden] { display: none; }
   .linkish { appearance: none; background: none; border: 0; padding: 0; color: var(--kaki-text); text-decoration: underline; cursor: pointer; }
   .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* The chips and the count of terms shown take their own row(s); the deck
+     link sits below them on the left. */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
   .chip { appearance: none; background: transparent; border: 1px solid var(--ink); padding: 10px 14px; font-size: 14px; font-weight: 500; cursor: pointer; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
   .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-  .chip.accent { margin-left: auto; border-color: var(--kaki-text); color: var(--kaki-text); }
-  /* Narrower than one row of chips and the deck link: the chips take their
-     own row(s), and the deck link sits below them on the left. */
-  @media (min-width: 561px) and (max-width: 1279px) {
-    .chips { flex-basis: 100%; }
-    .chip.accent { margin-left: 0; }
-  }
+  .chip.accent { border-color: var(--kaki-text); color: var(--kaki-text); }
   .grid { padding-top: 8px; padding-bottom: 120px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 22px; }
   .card { display: flex; flex-direction: column; gap: 12px; background: var(--paper); padding: 14px 14px 18px; text-decoration: none; color: var(--ink); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06); transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.25s; }
   .card:hover { color: var(--ink); transform: translateY(-3px) rotate(-0.4deg); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14); }
@@ -359,7 +355,7 @@ const host = new URL(base, Astro.site).host + base;
       card.hidden = !show;
       if (show) n++;
     }
-    found.textContent = words.length ? `${n} ${n === 1 ? "term" : "terms"}` : "";
+    found.textContent = `${n} ${n === 1 ? "term" : "terms"}`;
     empty.hidden = n > 0;
   }
   chips.forEach((chip) =>

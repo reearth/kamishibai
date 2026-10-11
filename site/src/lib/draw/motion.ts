@@ -1,7 +1,7 @@
 // Motion: how each term's loop is drawn. See kit.ts.
 import {
   INK, PAPER, KAKI, KAKI_2, PALE, GREY, GREY_2, MIST, W, H, TAU,
-  clamp, span, inOut, out, inCubic, pingPong, wrap, mix, loopNoise, rect, circle, ground, dot, font,
+  clamp, lerp, span, inOut, out, inCubic, smooth, pingPong, wrap, mix, loopNoise, rect, circle, ground, blur, dot, font,
   type Paint, type Shapes,
 } from "./kit.ts";
 
@@ -39,6 +39,89 @@ export const SHAPES: Record<string, Shapes> = {
         transformOrigin: "50% 100%",
       }),
     ];
+  },
+  // A photo, then its caption, fade in from nothing; the bar below is the
+  // photo's opacity.
+  "fade-in": (t) => {
+    const gone = 1 - smooth(span(t, 0.84, 0.97));
+    const a = smooth(span(t, 0.08, 0.4)) * gone;
+    const b = smooth(span(t, 0.2, 0.52)) * gone;
+    return [
+      rect(26, 10, 48, 46, MIST, { opacity: a }),
+      circle(62, 24, 10, KAKI, { opacity: a }),
+      rect(26, 40, 48, 16, GREY, { opacity: a }),
+      rect(26, 62, 40, 5, INK, { opacity: b }),
+      rect(26, 71, 28, 4, GREY_2, { opacity: b }),
+      rect(26, 86, 48, 1.5, MIST),
+      rect(26, 86, 48 * a, 1.5, KAKI),
+    ];
+  },
+
+  // The headline's lines slide up as they fade in, one after another, then
+  // the picture slides in from the right.
+  "slide-in": (t) => {
+    const gone = 1 - smooth(span(t, 0.84, 0.97));
+    const up = (a: number) => ({ dy: (1 - out(span(t, a, a + 0.22))) * 12, o: smooth(span(t, a, a + 0.16)) * gone });
+    const h1 = up(0.06), h2 = up(0.12), h3 = up(0.18);
+    const c = (1 - out(span(t, 0.28, 0.52))) * 30, co = smooth(span(t, 0.28, 0.44)) * gone;
+    return [
+      rect(10, 30 + h1.dy, 42, 9, INK, { opacity: h1.o }),
+      rect(10, 43 + h2.dy, 32, 9, INK, { opacity: h2.o }),
+      rect(10, 58 + h3.dy, 36, 4, GREY_2, { opacity: h3.o }),
+      rect(60 + c, 22, 30, 56, KAKI, { opacity: co }),
+      circle(75 + c, 38, 10, PALE, { opacity: co }),
+    ];
+  },
+
+  // Three icons pop in one after another, each growing past its size and
+  // settling, with a few sparks.
+  "pop-in": (t) =>
+    ([[24, KAKI, "50%", 0], [50, INK, "8%", 45], [76, GREY_2, "24%", 0]] as const).flatMap(([x, col, r, rot], i) => {
+      const a = 0.08 + i * 0.08;
+      const p = span(t, a, a + 0.2);
+      const s = (p > 0 ? 1 + 2.7 * Math.pow(p - 1, 3) + 1.7 * Math.pow(p - 1, 2) : 0) * (1 - inOut(span(t, 0.82, 0.94)));
+      const q = span(t, a + 0.03, a + 0.2);
+      return [
+        rect(x - 7.5, 40, 15, 20, col, { borderRadius: r, transform: `rotate(${rot}deg) scale(${s.toFixed(3)})` }),
+        ...[-0.6, 0, 0.6].map((d) =>
+          circle(x + Math.sin(d) * 16 * out(q), 50 - Math.cos(d) * 24 * out(q), 2.4, KAKI_2, { opacity: q > 0 && q < 1 ? 1 - q : 0 }),
+        ),
+      ];
+    }),
+
+  // The bottle comes in out of focus and sharpens as it settles; the words
+  // beside it follow.
+  "blur-in": (t) => {
+    const gone = 1 - smooth(span(t, 0.84, 0.97));
+    const p = span(t, 0.06, 0.46), q = span(t, 0.22, 0.6);
+    const a = { opacity: smooth(clamp(p * 1.6)) * gone, ...blur((1 - out(p)) * 14) };
+    const b = { opacity: smooth(clamp(q * 1.6)) * gone, ...blur((1 - out(q)) * 10) };
+    return [
+      rect(22, 78, 32, 6, MIST, { borderRadius: "50%", ...a }),
+      rect(34, 32, 8, 10, KAKI_2, a),
+      rect(33, 24, 10, 9, INK, { borderRadius: "2px", ...a }),
+      rect(28, 40, 20, 42, KAKI, { borderRadius: "14% / 10%", ...a }),
+      rect(28, 54, 20, 14, PAPER, a),
+      rect(58, 40, 30, 7, INK, b),
+      rect(58, 52, 22, 4, GREY_2, b),
+      rect(58, 60, 26, 4, GREY_2, b),
+    ];
+  },
+
+  // Four cards land one on another, each a little lower and turned; then
+  // the stack slides away.
+  "card-stack": (t) => {
+    const leave = inOut(span(t, 0.84, 0.97));
+    return [GREY, GREY_2, PALE, KAKI].flatMap((col, i) => {
+      const p = out(span(t, 0.04 + i * 0.16, 0.2 + i * 0.16));
+      const top = lerp(112, 16 + i * 5, p);
+      const left = 32 + i * 1.5 - leave * 72;
+      const extra = { opacity: 1 - leave, transform: `rotate(${((i - 1.5) * 4 * p).toFixed(2)}deg)` };
+      return [
+        rect(left, top, 36, 54, col, { ...extra, boxShadow: "0 2px 8px rgba(0,0,0,0.16)" }),
+        rect(left + 5, top + 7, 20, 5, INK, { ...extra, transformOrigin: "65% 400%" }),
+      ];
+    });
   },
 };
 
@@ -405,5 +488,64 @@ export const PAINT: Record<string, Paint> = {
     g.strokeStyle = INK;
     g.lineWidth = 4;
     g.stroke();
+  },
+
+  // A button swells and shrinks, twice a loop, and a ring spreads from it.
+  pulse: (g, t) => {
+    const u = wrap(t * 2, 1);
+    const s = 1 + 0.06 * (0.5 - 0.5 * Math.cos(TAU * u));
+    g.fillStyle = PAPER;
+    g.fillRect(0, 0, W, H);
+    // the page around the button
+    g.fillStyle = INK;
+    g.fillRect(100, 58, 200, 16);
+    g.fillRect(130, 84, 140, 16);
+    g.fillStyle = GREY;
+    g.fillRect(120, 116, 160, 6);
+    const BW = 176, BH = 56, cx = 200, cy = 190;
+    const r = out(u) * 30;
+    g.globalAlpha = 1 - u;
+    g.strokeStyle = KAKI;
+    g.lineWidth = 3;
+    roundRect(g, cx - BW / 2 - r, cy - BH / 2 - r, BW + 2 * r, BH + 2 * r, BH / 2 + r);
+    g.stroke();
+    g.globalAlpha = 1;
+    g.save();
+    g.translate(cx, cy);
+    g.scale(s, s);
+    g.fillStyle = KAKI;
+    roundRect(g, -BW / 2, -BH / 2, BW, BH, BH / 2);
+    g.fill();
+    font(g, 22);
+    g.fillStyle = PAPER;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText("Get started", 0, 1);
+    g.restore();
+  },
+
+  // Two bands of the same words run across without end, one each way. Each
+  // moves on by exactly two repeats a loop, so the loop has no seam.
+  marquee: (g, t) => {
+    g.fillStyle = PAPER;
+    g.fillRect(0, 0, W, H);
+    const band = (y: number, a: number, bg: string, fg: string, dir: number) => {
+      g.save();
+      g.translate(200, y);
+      g.rotate(a);
+      g.fillStyle = bg;
+      g.fillRect(-300, -28, 600, 56);
+      font(g, 30);
+      g.fillStyle = fg;
+      g.textAlign = "left";
+      g.textBaseline = "middle";
+      const unit = "KAMISHIBAI  ·  ";
+      const w = g.measureText(unit).width;
+      const off = wrap(dir * t * w * 2, w);
+      for (let x = -300 - off; x < 300; x += w) g.fillText(unit, x, 2);
+      g.restore();
+    };
+    band(112, -0.1, INK, PAPER, 1);
+    band(194, 0.08, KAKI, INK, -1);
   },
 };
