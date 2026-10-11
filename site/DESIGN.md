@@ -50,7 +50,7 @@ A Lexicon picture is drawn in the same palette, from the constants in `src/lib/d
 - The site is in English. Japanese appears only as a term's reading in the Lexicon.
 - The first sheet says what kamishibai is and who it is for, in one line: *If your agent can write a web page, it can make a video.*
 - The sheets go: what it is → why (nothing to learn) → how (write, watch, render) → cheap to redo → start.
-- Only claim what can be checked. Put no numbers on token use or speed until a benchmark backs them.
+- Only claim what can be checked. A number on the site comes from [docs/benchmarks.md](../docs/benchmarks.md), says what was measured and on what machine, and links there. The redo sheet shows the time to render again after an edit. Token use stays off the site.
 - Prompts meant for an agent ("Ask your agent", "Ask for it") are plain sentences with a Copy button.
 
 ## Motion
@@ -91,9 +91,11 @@ A Lexicon picture is drawn in the same palette, from the constants in `src/lib/d
 | `min-width: 561px` and `max-width: 1279px` | Lexicon | The deck link drops below the chips, on the left |
 | `max-width: 900px` | Deck | Card above the script instead of beside it; the script fills the height below the card |
 | `max-width: 760px` | Top | Phone sheets: tighter padding, inline headline, HUD shows dots only |
+| `max-height: 760px` | Top | Thinner page rows on the redo sheet |
+| `max-width: 760px` and `max-height: 760px` | Top | Phones short of 760px: the redo sheet drops its page rows |
 | `max-width: 760px` and `max-height: 700px` | Top | Short phones: the Start sheet drops its side notes |
 | `max-width: 560px` | Lexicon | Two cards a row with names only; the search field takes the full width and the chips wrap, a little narrower |
-| `max-height: 500px` | All | A phone on its side: drops the ball preview and step descriptions; deck card and script side by side |
+| `max-height: 500px` | All | A phone on its side: drops the ball preview, step descriptions and the redo sheet's page rows; deck card and script side by side |
 
 ## Link preview
 

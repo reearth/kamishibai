@@ -18,3 +18,4 @@ The [README](../README.md) covers the idea, the one contract and a quick start. 
 - [CLI](cli.md): `render`, `capture`, `encode`, `tts` and their flags
 - [Skipping frames & incremental builds](performance.md): static spans, fingerprints, `--incremental`, `--only`
 - [Library](library.md): calling `render` and friends from code
+- [Benchmarks](benchmarks.md): render times and agent tokens next to Remotion and HyperFrames
