@@ -97,6 +97,17 @@ A Lexicon picture is drawn in the same palette, from the constants in `src/lib/d
 | `max-width: 560px` | Lexicon | Two cards a row with names only; the search field takes the full width and the chips wrap, a little narrower |
 | `max-height: 500px` | All | A phone on its side: drops the ball preview, step descriptions and the redo sheet's page rows; deck card and script side by side |
 
+## The README reel
+
+`site/demo/reel.ts` is the reel at the top of the README: the title card with the ball, Lexicon terms on cards pulled faster and faster, the whole Lexicon as a grid, and the end card. It is plain DOM with `window.kamishibai`, and draws the terms with `drawTerm()` from `src/lib/reel.ts`. `demo/` sits outside `src/`, so it isn't deployed. Render both files again after changing it, or after changing a term it shows:
+
+```sh
+node dist/cli.js render site/demo/reel.ts -o site/demo/demo.mp4
+node dist/cli.js render site/demo/reel.ts -o site/demo/demo.gif --fps 20 --max-width 640
+```
+
+Keep the gif around 5 MB. The grid, where every loop moves at once, is what makes it heavy.
+
 ## Link preview
 
 Every page passes an `image` to `Base`, which writes `og:image` and a `summary_large_image` Twitter card. Each image is a screenshot of a 1200×630 page in `og/`, in the site's tokens and type. `og/` sits outside `src/` and `public/`, so it isn't deployed.

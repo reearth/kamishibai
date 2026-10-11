@@ -3,9 +3,9 @@
 > **Turn any web page into a video. kamishibai only seeks the page to each moment and captures it.**
 > A *mechanism*, not a framework. How you draw — React, plain DOM, canvas, WebGL — is up to you.
 
-![A reel rendered with kamishibai](examples/basics/demo.gif)
+![kamishibai cards pulled one by one, each with a different motion, then all 137 motions of the Lexicon at once](site/demo/demo.gif)
 
-<sub>The [`examples/basics`](examples/basics/index.tsx) reel — spring entrances, staggered bars, multi-stop tracks, color tweens. ([full mp4](examples/basics/out.mp4))</sub>
+<sub>Rendered by kamishibai from [`site/demo/reel.ts`](site/demo/reel.ts): plain DOM, the one contract, and the [Lexicon](https://reearth.github.io/kamishibai/lexicon/)'s drawings. ([full mp4](site/demo/demo.mp4))</sub>
 
 - 🧩 **Minimal.** One contract: the page exposes `window.kamishibai = { meta, seek }`. No framework to adopt, no editor.
 - 🎨 **Draw it any way.** React, plain DOM, canvas, three.js: anything a browser can show. The React helpers are optional.
