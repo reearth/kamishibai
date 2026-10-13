@@ -17,7 +17,7 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ### Docs
 
-- The guide says to check a voice's terms when picking it: commercial use, a required credit, AI-voice disclosure, and a local model's weight license.
+- The guide says to check a voice's terms when picking it: commercial use, a required credit, AI-voice disclosure, and a local model's weight license. It also suggests saying the voice is AI even where nothing requires it, in the video or in its description.
 - The `kamishibai` agent skill recommends Kokoro over `say` for free voices, and tells 0.7.0 and older, which lack `kokoroAdapter`, to reach Kokoro through `openaiAdapter({ baseUrl })` with `OPENAI_API_KEY` set to any value.
 
 ## 0.7.0

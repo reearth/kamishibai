@@ -16,7 +16,9 @@ Use `kokoroAdapter()`; kamishibai 0.7.0 and older lack it, so use
 `openaiAdapter({ baseUrl: "http://localhost:8880/v1", model: "kokoro", voice: "af_heart" })`
 with `OPENAI_API_KEY` set to any value. Whatever the voice,
 check its terms when you pick it: commercial use, a required credit, AI-voice
-disclosure, and for a local model the license of its weights.
+disclosure, and for a local model the license of its weights. Even where
+nothing requires it, suggest saying the voice is AI, in the video or outside
+it (an end card, or the description).
 
 If no guide follows (your agent didn't run the line below), run
 `npx kamishibai skill` and read its output first.

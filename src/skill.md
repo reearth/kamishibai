@@ -562,7 +562,9 @@ macOS-only and its voices are for personal, non-commercial use, so never
 publish `say` output. Swap one line for a paid voice in the final render. Check a voice's
 terms when you pick it, not at ship time: commercial use (often not on a free
 tier), a required credit, AI-voice disclosure, and for a local model the
-license of its weights (some are non-commercial). Adapters: `openaiAdapter({ model, voice })`
+license of its weights (some are non-commercial). Even where nothing requires
+it, suggest saying the voice is AI ("Narration: AI voice (Kokoro)"), in the
+video or outside it, such as the description. Adapters: `openaiAdapter({ model, voice })`
 (`OPENAI_API_KEY`), `googleAdapter({ name })` (`GOOGLE_API_KEY`),
 `geminiAdapter({ voice, model, instructions })` (`GEMINI_API_KEY`, falling
 back to `GOOGLE_API_KEY`),
