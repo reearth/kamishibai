@@ -138,7 +138,7 @@ frames 1370–…    → page #3 ┘
 | [**Audio**](https://github.com/reearth/kamishibai/blob/main/docs/audio.md) | declare files and start times; they're muxed after capture, with fades, loops and auto-ducking |
 | [**Video**](https://github.com/reearth/kamishibai/blob/main/docs/video.md) | video clips decoded frame by frame with WebCodecs, so a clip is a pure function of time too |
 | [**Subtitles**](https://github.com/reearth/kamishibai/blob/main/docs/subtitles.md) | a soft track and a sidecar `.srt` by default, or burned into the pixels |
-| [**Narration**](https://github.com/reearth/kamishibai/blob/main/docs/narration.md) | text to speech once, before capture, content-hashed and cached, with scenes sized to each line. OpenAI, Google, Gemini, Polly, ElevenLabs, or macOS `say` |
+| [**Narration**](https://github.com/reearth/kamishibai/blob/main/docs/narration.md) | text to speech once, before capture, content-hashed and cached, with scenes sized to each line. Kokoro (free, local), OpenAI, Google, Gemini, Polly, ElevenLabs, or macOS `say` |
 | [**Live preview**](https://github.com/reearth/kamishibai/blob/main/docs/dev.md) | `kamishibai dev`: play, scrub, a range to loop, sound or a storyboard, and which frames a render will capture |
 | [**CLI**](https://github.com/reearth/kamishibai/blob/main/docs/cli.md) | `render`, or its halves `capture` and `encode`, plus `tts` to bake narration |
 | [**Library**](https://github.com/reearth/kamishibai/blob/main/docs/library.md) | the same from code: `render`, `capture`, `encode` and the building blocks under them |

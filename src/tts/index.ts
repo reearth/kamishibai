@@ -30,7 +30,7 @@ export interface TTSAdapterRef {
   /** cache-key component — must capture every output-affecting option, e.g.
    *  "openai:tts-1-hd:nova" (so changing the voice busts the cache) */
   id: string;
-  /** which Node-side implementation handles this: a built-in ("say" | "openai" |
+  /** which Node-side implementation handles this: a built-in ("say" | "kokoro" | "openai" |
    *  "elevenlabs" | "google" | "gemini" | "polly") or a custom adapter's provider */
   provider: string;
   /** provider-specific options, passed straight through to synthesize() */
@@ -103,16 +103,39 @@ export interface NarrationClip {
 }
 
 /**
- * macOS `say` — zero cost, offline, deterministic. The dev-loop default.
- * NOTE: macOS only (uses the `say` binary). On Linux/Windows/CI use a network
- * adapter (openai / google / gemini / polly / elevenlabs) — same reel, one line swapped.
+ * macOS `say` — zero cost, offline, deterministic, and nothing to set up.
+ * NOTE: macOS only (uses the `say` binary), and its voices are for personal,
+ * non-commercial use. `kokoroAdapter` is free on every OS and publishable.
  */
 export function sayAdapter(opts: { voice?: string; rate?: number } = {}): TTSAdapterRef {
   const id = ["say", opts.voice ?? "default", opts.rate ?? "-"].join(":");
   return { id, provider: "say", opts };
 }
 
-/** OpenAI text-to-speech. Needs OPENAI_API_KEY in the render process's env. */
+/**
+ * Kokoro (82M, Apache-2.0 weights) through a local Kokoro-FastAPI server — free,
+ * offline, any OS, and its audio may be published. Start the server first, e.g.
+ * `docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu`. Voices are named
+ * by language and gender: `af_heart` (American English, female), `jf_alpha`
+ * (Japanese, female), …
+ */
+export function kokoroAdapter(opts: {
+  voice?: string;
+  /** speaking rate, 1 = normal */
+  speed?: number;
+  /** server URL (default KOKORO_BASE_URL env, else http://localhost:8880/v1);
+   *  it stays out of the cache id */
+  baseUrl?: string;
+} = {}): TTSAdapterRef {
+  const voice = opts.voice ?? "af_heart";
+  const o: Record<string, unknown> = { voice };
+  if (opts.speed != null) o.speed = opts.speed;
+  if (opts.baseUrl) o.baseUrl = opts.baseUrl;
+  return { id: `kokoro:${voice}:${opts.speed ?? ""}`, provider: "kokoro", opts: o };
+}
+
+/** OpenAI text-to-speech. Needs OPENAI_API_KEY in the render process's env
+ *  for api.openai.com; another OpenAI-compatible server may need none. */
 export function openaiAdapter(opts: {
   model?: string;
   voice?: string;
@@ -136,7 +159,8 @@ export function openaiAdapter(opts: {
   return { id, provider: "openai", opts: o };
 }
 
-/** ElevenLabs text-to-speech. Needs ELEVENLABS_API_KEY in the render env. */
+/** ElevenLabs text-to-speech. Needs ELEVENLABS_API_KEY in the render env
+ *  for api.elevenlabs.io. */
 export function elevenLabsAdapter(opts: {
   voiceId: string;
   model?: string;
@@ -154,7 +178,8 @@ export function elevenLabsAdapter(opts: {
   };
 }
 
-/** Google Cloud Text-to-Speech. Needs GOOGLE_API_KEY in the render env. */
+/** Google Cloud Text-to-Speech. Needs GOOGLE_API_KEY in the render env for
+ *  Google's endpoint. */
 export function googleAdapter(opts: {
   languageCode?: string;
   /** a specific voice, e.g. "en-US-Neural2-F" */
@@ -178,7 +203,7 @@ export function googleAdapter(opts: {
 }
 
 /** Gemini text-to-speech (Gemini API). Needs GEMINI_API_KEY (or
- *  GOOGLE_API_KEY) in the render env. */
+ *  GOOGLE_API_KEY) in the render env for Google's endpoint. */
 export function geminiAdapter(opts: {
   /** a TTS-capable Gemini model (default "gemini-2.5-flash-preview-tts") */
   model?: string;

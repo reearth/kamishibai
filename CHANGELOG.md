@@ -4,6 +4,22 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Added
+
+- **`kokoroAdapter({ voice, speed, baseUrl })`**: free, local voices from [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) through a Kokoro-FastAPI server (`http://localhost:8880/v1`, or `KOKORO_BASE_URL`). It runs on any OS, and Kokoro's Apache-2.0 weights let the audio be published, unlike macOS `say`. The guide now recommends it for free voices, with `say` for no setup.
+- **`--tts-adapter <file>`** loads a custom TTS adapter from the CLI, on `render`, `capture` and `tts`. The module's default export is a `TTSAdapter` or an array of them; `.ts` works on every supported Node, and its imports resolve from the project. Before, a custom adapter needed a script calling `render({ ttsAdapters })`.
+
+### Changed
+
+- **A TTS adapter pointed at another server needs no key.** When `baseUrl` (or the adapter's env var) points away from the provider's own endpoint, `openaiAdapter`, `elevenLabsAdapter`, `googleAdapter` and `geminiAdapter` no longer fail a line for a missing key, and send none. A local OpenAI-compatible server such as Kokoro-FastAPI works with no key. `pollyAdapter` still needs its credentials, since every Polly endpoint checks the signature.
+
+### Docs
+
+- The guide says to check a voice's terms when picking it: commercial use, a required credit, AI-voice disclosure, and a local model's weight license.
+- The `kamishibai` agent skill recommends Kokoro over `say` for free voices, and tells 0.7.0 and older, which lack `kokoroAdapter`, to reach Kokoro through `openaiAdapter({ baseUrl })` with `OPENAI_API_KEY` set to any value.
+
 ## 0.7.0
 
 ### Removed

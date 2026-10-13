@@ -15,6 +15,7 @@ import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { render, encode, capture, synthesize } from "./render.ts";
 import { dev, CC_MODES, type CcMode } from "./dev/server.ts";
+import { loadTTSAdapters } from "./tts/load.ts";
 import SKILL from "./skill.md";
 import { skillText } from "./skill.ts";
 
@@ -52,6 +53,10 @@ Capture options (render, capture):
                         seconds to wait for the page to expose window.kamishibai
                         with nothing in progress (default: 15); narration still
                         synthesizing doesn't count against it (also: tts)
+      --tts-adapter <file>
+                        a module (.ts/.js) whose default export is a custom
+                        TTSAdapter, or an array of them; the reel picks one by
+                        its provider. Repeatable (also: tts)
 
 Encode options (render, encode):
   -o, --out <file>      output file; .mp4 (default) or .gif by extension
@@ -104,6 +109,7 @@ Examples:
   kamishibai encode -f frames -o reel.mp4                     # then encode them
   kamishibai encode -f frames --preview -o preview.mp4        # fast, no capture
   kamishibai tts reel.tsx                                     # synthesize narration first
+  kamishibai tts reel.tsx --tts-adapter kokoro.ts             # with a custom TTS adapter
   kamishibai dev reel.tsx -p public                           # preview while editing
   kamishibai skill                                            # core guide + topic list
   kamishibai skill audio narration                            # two topics
@@ -112,7 +118,7 @@ Examples:
 
 const CAPTURE_FLAGS = [
   "workers", "fps", "scale", "public", "frames-dir", "incremental", "only",
-  "burn-subtitles", "probe-timeout",
+  "burn-subtitles", "probe-timeout", "tts-adapter",
 ];
 const ENCODE_FLAGS = [
   "out", "frames-dir", "fps", "max-width", "gif-loop", "crf", "preset", "preview",
@@ -123,7 +129,7 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   render: new Set([...CAPTURE_FLAGS, ...ENCODE_FLAGS, "keep-frames"]),
   capture: new Set(CAPTURE_FLAGS),
   encode: new Set(ENCODE_FLAGS),
-  tts: new Set(["public", "probe-timeout"]),
+  tts: new Set(["public", "probe-timeout", "tts-adapter"]),
   dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
 };
 
@@ -199,6 +205,7 @@ async function main(): Promise<void> {
       "keep-frames": { type: "boolean" },
       "burn-subtitles": { type: "boolean" },
       "probe-timeout": { type: "string" },
+      "tts-adapter": { type: "string", multiple: true },
       verbose: { type: "boolean" },
       port: { type: "string" },
       mute: { type: "boolean" },
@@ -336,6 +343,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Custom TTS adapters, for the commands that synthesize (dev never does).
+  const ttsAdapters =
+    values["tts-adapter"] && FLAGS_FOR[command]!.has("tts-adapter")
+      ? await loadTTSAdapters(values["tts-adapter"])
+      : undefined;
+
   // `kamishibai tts` runs only the narration pre-pass: load the page once so
   // its prepareNarration fills the cache, then stop — no capture, no encode.
   if (command === "tts") {
@@ -347,6 +360,7 @@ async function main(): Promise<void> {
       entry,
       publicDir: values.public,
       probeTimeoutMs,
+      ttsAdapters,
       onLog: (msg) => process.stderr.write(`${msg}\n`),
     });
     process.stderr.write(`Narration cache → ${res.cacheDir}\n`);
@@ -377,6 +391,7 @@ async function main(): Promise<void> {
       only: values.only,
       burnSubtitles: values["burn-subtitles"],
       probeTimeoutMs,
+      ttsAdapters,
       onLog: (msg) => process.stderr.write(`${msg}\n`),
     });
     process.stderr.write(`Captured ${cap.frames} frame(s) → ${cap.framesDir}\n`);
@@ -431,6 +446,7 @@ async function main(): Promise<void> {
     muxArgs,
     keepFrames: values["keep-frames"],
     probeTimeoutMs,
+    ttsAdapters,
     verbose: values.verbose,
     onLog: (msg) => process.stderr.write(`${msg}\n`),
   });

@@ -120,6 +120,20 @@ function resolveBaseUrl(opts: Record<string, unknown>, envVar: string, fallback:
   return v.replace(/\/+$/, "");
 }
 
+/** The API key from the first set env var. Required only for the provider's
+ *  own endpoint: a compatible server elsewhere (a local Kokoro behind the
+ *  OpenAI API, say) may need none. */
+function apiKey(envVars: string[], base: string, publicBase: string): string | undefined {
+  for (const name of envVars) {
+    const v = process.env[name];
+    if (v) return v;
+  }
+  if (base !== publicBase) return undefined;
+  const [first, ...rest] = envVars;
+  throw new Error(`${first}${rest.length ? ` (or ${rest.join(", ")})` : ""} is not set`);
+  return undefined;
+}
+
 const sayAdapter: TTSAdapter = {
   provider: "say",
   async synthesize(text, opts) {
@@ -141,42 +155,79 @@ const sayAdapter: TTSAdapter = {
   },
 };
 
+/** POST to an OpenAI-style `/audio/speech` endpoint and return the mp3. */
+async function openaiSpeech(
+  label: string,
+  base: string,
+  key: string | undefined,
+  text: string,
+  opts: Record<string, unknown>,
+  defaults: { model: string; voice: string },
+): Promise<{ audio: Uint8Array; format: TTSFormat }> {
+  const body: Record<string, unknown> = {
+    model: opts.model ?? defaults.model,
+    voice: opts.voice ?? defaults.voice,
+    input: text,
+    response_format: "mp3",
+  };
+  // `speed` works on tts-1/tts-1-hd and Kokoro; gpt-4o-mini-tts takes
+  // `instructions` (e.g. pace/tone) instead. Both are passed straight through.
+  if (opts.speed != null) body.speed = opts.speed;
+  if (opts.instructions != null) body.instructions = opts.instructions;
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (key) headers.authorization = `Bearer ${key}`;
+  const res = await fetch(`${base}/audio/speech`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${label} TTS ${res.status}: ${await res.text().catch(() => "")}`);
+  return { audio: new Uint8Array(await res.arrayBuffer()), format: "mp3" };
+}
+
 const openaiAdapter: TTSAdapter = {
   provider: "openai",
   async synthesize(text, opts) {
-    const key = process.env.OPENAI_API_KEY;
-    if (!key) throw new Error("OPENAI_API_KEY is not set");
-    const body: Record<string, unknown> = {
-      model: opts.model ?? "tts-1",
-      voice: opts.voice ?? "alloy",
-      input: text,
-      response_format: "mp3",
-    };
-    // `speed` works on tts-1/tts-1-hd; gpt-4o-mini-tts takes `instructions`
-    // (e.g. pace/tone) instead. Both are passed straight through.
-    if (opts.speed != null) body.speed = opts.speed;
-    if (opts.instructions != null) body.instructions = opts.instructions;
-    const base = resolveBaseUrl(opts, "OPENAI_BASE_URL", "https://api.openai.com/v1");
-    const res = await fetch(`${base}/audio/speech`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${await res.text().catch(() => "")}`);
-    return { audio: new Uint8Array(await res.arrayBuffer()), format: "mp3" };
+    const publicBase = "https://api.openai.com/v1";
+    const base = resolveBaseUrl(opts, "OPENAI_BASE_URL", publicBase);
+    const key = apiKey(["OPENAI_API_KEY"], base, publicBase);
+    return openaiSpeech("OpenAI", base, key, text, opts, { model: "tts-1", voice: "alloy" });
+  },
+};
+
+/** Where Kokoro-FastAPI listens by default. */
+const KOKORO_BASE_URL = "http://localhost:8880/v1";
+
+const kokoroAdapter: TTSAdapter = {
+  provider: "kokoro",
+  async synthesize(text, opts) {
+    const base = resolveBaseUrl(opts, "KOKORO_BASE_URL", KOKORO_BASE_URL);
+    try {
+      return await openaiSpeech("Kokoro", base, undefined, text, opts, { model: "kokoro", voice: "af_heart" });
+    } catch (err) {
+      // fetch fails with a bare "fetch failed" when nothing listens there.
+      if (err instanceof TypeError) {
+        throw new Error(
+          `no Kokoro server at ${base} — start one, e.g. \`docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu\`, or set KOKORO_BASE_URL`,
+        );
+      }
+      throw err;
+    }
   },
 };
 
 const elevenLabsAdapter: TTSAdapter = {
   provider: "elevenlabs",
   async synthesize(text, opts) {
-    const key = process.env.ELEVENLABS_API_KEY;
-    if (!key) throw new Error("ELEVENLABS_API_KEY is not set");
     const voiceId = String(opts.voiceId);
-    const base = resolveBaseUrl(opts, "ELEVENLABS_BASE_URL", "https://api.elevenlabs.io");
+    const publicBase = "https://api.elevenlabs.io";
+    const base = resolveBaseUrl(opts, "ELEVENLABS_BASE_URL", publicBase);
+    const key = apiKey(["ELEVENLABS_API_KEY"], base, publicBase);
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (key) headers["xi-api-key"] = key;
     const res = await fetch(`${base}/v1/text-to-speech/${voiceId}`, {
       method: "POST",
-      headers: { "xi-api-key": key, "content-type": "application/json" },
+      headers,
       body: JSON.stringify({ text, model_id: opts.model ?? "eleven_multilingual_v2" }),
     });
     if (!res.ok)
@@ -188,14 +239,14 @@ const elevenLabsAdapter: TTSAdapter = {
 const googleAdapter: TTSAdapter = {
   provider: "google",
   async synthesize(text, opts) {
-    const key = process.env.GOOGLE_API_KEY ?? process.env.GOOGLE_TTS_API_KEY;
-    if (!key) throw new Error("GOOGLE_API_KEY is not set");
     const voice: Record<string, unknown> = { languageCode: opts.languageCode ?? "en-US" };
     if (opts.name) voice.name = opts.name;
     if (opts.ssmlGender) voice.ssmlGender = opts.ssmlGender;
-    const base = resolveBaseUrl(opts, "GOOGLE_TTS_BASE_URL", "https://texttospeech.googleapis.com");
+    const publicBase = "https://texttospeech.googleapis.com";
+    const base = resolveBaseUrl(opts, "GOOGLE_TTS_BASE_URL", publicBase);
+    const key = apiKey(["GOOGLE_API_KEY", "GOOGLE_TTS_API_KEY"], base, publicBase);
     const res = await fetch(
-      `${base}/v1/text:synthesize?key=${encodeURIComponent(key)}`,
+      `${base}/v1/text:synthesize${key ? `?key=${encodeURIComponent(key)}` : ""}`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -234,17 +285,19 @@ export function pcmToWav(pcm: Uint8Array, sampleRate: number, channels = 1): Uin
 const geminiAdapter: TTSAdapter = {
   provider: "gemini",
   async synthesize(text, opts) {
-    const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
-    if (!key) throw new Error("GEMINI_API_KEY (or GOOGLE_API_KEY) is not set");
     const model = String(opts.model ?? "gemini-2.5-flash-preview-tts");
     // Gemini TTS has no separate style field — direction is part of the prompt.
     const prompt = opts.instructions ? `${opts.instructions}: ${text}` : text;
-    const base = resolveBaseUrl(opts, "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com");
+    const publicBase = "https://generativelanguage.googleapis.com";
+    const base = resolveBaseUrl(opts, "GEMINI_BASE_URL", publicBase);
+    const key = apiKey(["GEMINI_API_KEY", "GOOGLE_API_KEY"], base, publicBase);
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (key) headers["x-goog-api-key"] = key;
     const res = await fetch(
       `${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
-        headers: { "x-goog-api-key": key, "content-type": "application/json" },
+        headers,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -379,6 +432,7 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
   // Built-ins first, then customs — so a matching provider overrides.
   const builtins = [
     sayAdapter,
+    kokoroAdapter,
     openaiAdapter,
     elevenLabsAdapter,
     googleAdapter,

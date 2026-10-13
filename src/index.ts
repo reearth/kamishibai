@@ -24,6 +24,7 @@ export type { AudioClip, AudioManifest } from "./audio.ts";
 // TTS / narration: browser-side refs + the Node-side engine (custom adapters).
 export {
   sayAdapter,
+  kokoroAdapter,
   openaiAdapter,
   elevenLabsAdapter,
   googleAdapter,

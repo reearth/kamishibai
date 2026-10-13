@@ -479,9 +479,9 @@ so scenes can fit their narration. It rides the existing `<Audio>` mux path.
 
 ```tsx
 import { mount, Series, Narration, seriesDuration } from "kamishibai/react";
-import { sayAdapter, prepareNarration, narrationLayout } from "kamishibai/tts";
+import { kokoroAdapter, prepareNarration, narrationLayout } from "kamishibai/tts";
 
-const voice = sayAdapter(); // dev default: free, offline, deterministic
+const voice = kokoroAdapter(); // free and local; needs a Kokoro-FastAPI server
 const vo = await prepareNarration(voice, { intro: "Welcome.", body: "Pure functions of time." });
 // narrationLayout sizes one scene per line to its measured duration (+ pad),
 // with a uniform crossfade; add each scene's visuals and derive the reel length
@@ -553,10 +553,16 @@ once ffprobe works. `--probe-timeout <s>`
 Show the requester the whole script before the first paid synthesis: an
 edited line is billed again and re-times its scene.
 
-Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
-for the final render (same reel). macOS system voices are licensed for
-personal, non-commercial use, so never publish `say` output; every provider's
-audio is subject to its own terms. Adapters: `openaiAdapter({ model, voice })`
+Free voices: prefer `kokoroAdapter({ voice, speed })` — Kokoro through a local
+Kokoro-FastAPI server (`docker run -p 8880:8880
+ghcr.io/remsky/kokoro-fastapi-cpu`; `KOKORO_BASE_URL` to move it), on any OS,
+with Apache-2.0 weights whose audio may be published. Voices: `af_heart`
+(English), `jf_alpha` (Japanese), …. `sayAdapter()` needs no setup but is
+macOS-only and its voices are for personal, non-commercial use, so never
+publish `say` output. Swap one line for a paid voice in the final render. Check a voice's
+terms when you pick it, not at ship time: commercial use (often not on a free
+tier), a required credit, AI-voice disclosure, and for a local model the
+license of its weights (some are non-commercial). Adapters: `openaiAdapter({ model, voice })`
 (`OPENAI_API_KEY`), `googleAdapter({ name })` (`GOOGLE_API_KEY`),
 `geminiAdapter({ voice, model, instructions })` (`GEMINI_API_KEY`, falling
 back to `GOOGLE_API_KEY`),
@@ -566,12 +572,16 @@ back to `GOOGLE_API_KEY`),
 network adapter takes a `baseUrl` (a proxy or a compatible server), else reads
 `OPENAI_BASE_URL` / `GOOGLE_TTS_BASE_URL` / `GEMINI_BASE_URL` /
 `ELEVENLABS_BASE_URL` / `AWS_ENDPOINT_URL_POLLY`; it is not part of the cache
-key. The adapter sets the batch voice; a single line can override its opts with the
+key. A key is required only for the provider's own endpoint (Polly always
+signs), so another OpenAI-compatible server works through
+`openaiAdapter({ baseUrl })`. The adapter sets the batch voice; a single line can override its opts with the
 object form `{ text, opts }` (merged over the adapter's, e.g. `{ rate: 150 }`)
 — the override folds into the cache key. Custom
-provider: implement the Node `TTSAdapter` (`{ provider, synthesize }`) and pass
-it via `render({ ttsAdapters })`; the reel references it by a matching
-`provider`. (Browser/Node split: the reel's adapter is a serializable ref;
+provider: a module whose default export is a Node `TTSAdapter`
+(`{ provider, synthesize(text, opts) → { audio, format } }`), passed with
+`--tts-adapter <file>` (render, capture, tts) or `render({ ttsAdapters })`; the
+reel uses the ref `{ id, provider, opts }`, with every output-affecting option
+in `id`. (Browser/Node split: the reel's adapter is a serializable ref;
 synthesis runs in Node, served to the page over `POST /__tts`.)
 
 The cache key folds in the adapter id + text + per-line opts. Change one

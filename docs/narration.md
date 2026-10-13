@@ -8,9 +8,9 @@ Because the durations come back before `mount()`, you can size each scene to the
 
 ```tsx
 import { mount, Series, Narration, seriesDuration } from "kamishibai/react";
-import { sayAdapter, prepareNarration, narrationLayout } from "kamishibai/tts";
+import { kokoroAdapter, prepareNarration, narrationLayout } from "kamishibai/tts";
 
-const voice = sayAdapter();                    // dev default: free, offline, deterministic
+const voice = kokoroAdapter();                 // free and local (a Kokoro-FastAPI server)
 const vo = await prepareNarration(voice, {
   intro: "Welcome to kamishibai.",
   body:  "Every frame is a pure function of time.",
@@ -42,7 +42,20 @@ const scene = {
 };
 ```
 
-Adapters are deliberately dumb (`text → bytes`) — no SSML layer, no voice UI. `say` is **macOS-only** (it shells out to the `say` binary), so it's the free local dev default; on Linux/Windows/CI use a network adapter. **Run the dev loop on `say`, then swap one line for the final render** — same reel. macOS system voices are licensed for personal, non-commercial use, so don't publish `say` output; and synthesized audio from any provider is subject to that provider's terms (e.g. AI-voice disclosure, plan-dependent commercial use).
+Adapters are deliberately dumb (`text → bytes`) — no SSML layer, no voice UI.
+
+**Free voices.** Prefer `kokoroAdapter`: [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) (82M parameters, Apache-2.0 weights) served by a local [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI). It runs on any OS (on Windows, through Docker Desktop), costs nothing, and its audio may be published. Start the server, then use the adapter:
+
+```sh
+docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu   # or kokoro-fastapi-gpu
+```
+
+```ts
+const voice = kokoroAdapter({ voice: "af_heart" });          // American English, female
+const voice = kokoroAdapter({ voice: "jf_alpha", speed: 1.1 }); // Japanese, female
+```
+
+`KOKORO_BASE_URL` (default `http://localhost:8880/v1`) or `baseUrl` points it at another machine. `sayAdapter()` needs no setup at all, but it is **macOS-only** (it shells out to the `say` binary) and macOS system voices are licensed for personal, non-commercial use, so don't publish `say` output. Either way, **run the dev loop on a free voice, then swap one line for the final render** — same reel. Synthesized audio from any provider is subject to that provider's terms (e.g. AI-voice disclosure, plan-dependent commercial use).
 
 ```ts
 import { openaiAdapter, googleAdapter, geminiAdapter, pollyAdapter, elevenLabsAdapter } from "kamishibai/tts";
@@ -55,7 +68,7 @@ const voice = elevenLabsAdapter({ voiceId: "…" });                    // ELEVE
 
 (Polly is signed with a minimal built-in SigV4 — no AWS SDK dependency. Google returns base64 audio, decoded for you; Gemini returns raw PCM, wrapped as WAV.)
 
-To send requests through a proxy or a compatible server, give any network adapter a `baseUrl`, or set its env var in the render process: `OPENAI_BASE_URL` (default `https://api.openai.com/v1`), `GOOGLE_TTS_BASE_URL`, `GEMINI_BASE_URL`, `ELEVENLABS_BASE_URL`, `AWS_ENDPOINT_URL_POLLY`. The base URL stays out of the cache key, so switching it never re-synthesizes.
+To send requests through a proxy or a compatible server, give any network adapter a `baseUrl`, or set its env var in the render process: `OPENAI_BASE_URL` (default `https://api.openai.com/v1`), `GOOGLE_TTS_BASE_URL`, `GEMINI_BASE_URL`, `ELEVENLABS_BASE_URL`, `AWS_ENDPOINT_URL_POLLY`. The base URL stays out of the cache key, so switching it never re-synthesizes. An adapter's key is required only for the provider's own endpoint; Polly always signs, so it always needs its credentials.
 
 The adapter sets the voice for the whole batch; a single line can override its options (merged over the adapter's) with the object form. The override folds into the cache key, so only that line re-synthesizes — and changing `voice`/`model` busts *every* line. **Finalize the narration text first, then iterate on timing/visuals** (those are free); text and voice changes cost money.
 
@@ -77,4 +90,4 @@ const vo = await prepareNarration(voice, {
 
 **Long narration.** The first synthesis of many lines can take minutes. The page-load wait only counts *idle* time — while lines are still synthesizing it keeps waiting, and `Synthesizing narration…` / `…narration 12/72 line(s)` show progress. To pay for (and check) every line up front, run `kamishibai tts reel.tsx` — it loads the page once to fill the cache and stops, so the render that follows reads every line from cache. If a line fails, the run stops as soon as nothing else is in flight, with the provider's error and how many lines finished; finished lines are cached, so re-running resumes. Durations are measured with ffprobe (it ships with ffmpeg), so it must be on PATH — a clip it can't read fails its line rather than coming back as 0 ms. A clip ffprobe reports as invalid data is never kept in the cache (a cached one is deleted), so re-running synthesizes that line again. If ffprobe fails for any other reason (missing from PATH, failing to start, permission denied, a crash), the line fails too but the clip is kept — a freshly synthesized one included, so the paid audio isn't lost — and the next run measures it once ffprobe works.
 
-A custom provider implements the Node `TTSAdapter` (`{ provider, synthesize }`) and registers it via `render({ ttsAdapters: [myAdapter] })`; the reel references it with an adapter whose `provider` matches. (Why the split: the reel is bundled for the browser, so its adapter is a serializable ref — `{ id, provider, opts }` — while the actual synthesis runs in Node, served to the page over `POST /__tts`.)
+A custom provider implements the Node `TTSAdapter` (`{ provider, synthesize }`) in a module whose default export is the adapter (or an array of them), and is registered with `--tts-adapter <file>` on `render`, `capture` and `tts` (repeatable; `.ts` works), or via `render({ ttsAdapters: [myAdapter] })`. The reel references it with a ref whose `provider` matches, such as `{ id: "kokoro:af_heart", provider: "kokoro", opts: { voice: "af_heart" } }`; put every option that changes the audio in `id`, since it is the cache key. `kamishibai dev` never synthesizes, so it needs no adapter. (Why the split: the reel is bundled for the browser, so its adapter is a serializable ref — `{ id, provider, opts }` — while the actual synthesis runs in Node, served to the page over `POST /__tts`.)
