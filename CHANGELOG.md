@@ -4,6 +4,16 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Removed
+
+- **The `video-craft` agent skill.** Agents never loaded it in the benchmark, and current models (Claude Opus 5.5 as of October 2026) already know the directing and motion craft it taught. Its kamishibai-specific advice stays in the guide: credit third-party assets and TTS voices as their licenses require, and show the requester the script before paid synthesis.
+
+### Docs
+
+- The README shows a new demo reel, drawn with the Lexicon's pictures, before the feature list, and recommends Claude Opus 5.5 for making videos (as of October 2026).
+
 ## 0.6.1
 
 ### Fixed

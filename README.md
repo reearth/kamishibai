@@ -65,21 +65,21 @@ There's no GUI editor; you're the editor. The loop is **edit → look → render
 
 ## Agent skills
 
-Building videos with an AI coding agent? Two installable skills teach it kamishibai — install one or both by name.
+Building videos with an AI coding agent? An installable skill teaches it kamishibai.
+
+As of October 2026, we recommend Claude Opus 5.5 for making videos: it brings its own directing and motion design, so the skill only covers kamishibai itself.
 
 Using the [`skills`](https://github.com/vercel-labs/skills) CLI:
 
 ```sh
-npx skills add reearth/kamishibai --skill kamishibai    # the API / engine
-npx skills add reearth/kamishibai --skill video-craft   # the directing / editing craft
-npx skills add reearth/kamishibai --all                 # both, all agents, no prompts
+npx skills add reearth/kamishibai --skill kamishibai
+npx skills add reearth/kamishibai --all     # all agents, no prompts
 ```
 
 Or with [`gh skills`](https://cli.github.com/manual/gh_skill) — the GitHub CLI's built-in skill manager (`gh skill`, alias `gh skills`):
 
 ```sh
-gh skills install reearth/kamishibai kamishibai    # the API / engine
-gh skills install reearth/kamishibai video-craft   # the directing / editing craft
+gh skills install reearth/kamishibai kamishibai
 
 # pick the target agent and scope (default: project scope, github-copilot)
 gh skills install reearth/kamishibai kamishibai --agent claude-code --scope user
@@ -88,8 +88,7 @@ gh skills search kamishibai     # find skills across GitHub
 gh skills update --all          # update installed skills
 ```
 
-- **`kamishibai`** — points the agent at `kamishibai skill`, which prints the authoring guide (the contract, the React sugar, the render CLI, determinism) with a list of topics, such as audio and TTS narration, to print as needed. It always matches the installed version.
-- **`video-craft`** — the *taste* layer, not the API: narration as the spine, pacing & silence, audio-synced reveals, transitions, mix & ducking, and the outline → script sign-off → pilot → render loop.
+The skill points the agent at `kamishibai skill`, which prints the authoring guide (the contract, the React sugar, the render CLI, determinism) with a list of topics, such as audio and TTS narration, to print as needed. It always matches the installed version.
 
 Or pipe the guide straight into your agent's context yourself:
 

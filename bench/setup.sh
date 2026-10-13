@@ -58,9 +58,9 @@ mkdir -p "$d" && cd "$d"
 npm init -y >/dev/null
 npm pkg set type=module
 npm i --no-audit --no-fund "$TARBALL" react@19 react-dom@19 >/dev/null
-# Both published skills (`--all` in the README), from this checkout.
+# The published skill, from this checkout.
 mkdir -p .claude/skills
-cp -R "$REPO/skills/kamishibai" "$REPO/skills/video-craft" .claude/skills/
+cp -R "$REPO/skills/kamishibai" .claude/skills/
 
 cd "$OUT" && mkdir -p remotion
 npx -y "create-video@$REMOTION_VERSION" --yes --blank remotion/skill >/dev/null

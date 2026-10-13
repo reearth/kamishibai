@@ -440,7 +440,7 @@ attribution terms — and the required *form* varies (an on-screen line, the
 video description, or a **spoken** credit: incompetech requires the credit to
 be voiced in audio-only works). Check each asset's license when you add it,
 keep a credits list, and tell the requester what must be credited and where
-before the final render. The `video-craft` skill has the details.
+before the final render.
 <!-- /topic -->
 
 <!-- topic: video | Frame-accurate video clips (`kamishibai/video`, `<Video>`) -->
@@ -549,6 +549,9 @@ so re-running synthesizes it again. If ffprobe fails for any other reason
 clip — even a freshly synthesized one — is kept, and the next run measures it
 once ffprobe works. `--probe-timeout <s>`
 (default 15) raises the idle limit for a page that is slow for other reasons.
+
+Show the requester the whole script before the first paid synthesis: an
+edited line is billed again and re-times its scene.
 
 Dev on `say` for free (macOS only — it shells out to `say`), then swap one line
 for the final render (same reel). macOS system voices are licensed for
