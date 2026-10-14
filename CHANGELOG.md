@@ -4,6 +4,12 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Docs
+
+- The guide again has the agent outline a requested video and render a pilot of its first scenes for the requester, before building the whole video, unless the brief is final. This step went with the `video-craft` skill in 0.7.0, so agents had gone straight to the full build.
+
 ## 0.8.0
 
 ### Added

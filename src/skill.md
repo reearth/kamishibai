@@ -40,6 +40,20 @@ npx tsc && npx kamishibai render reel.tsx -o out.mp4 -p public
 
 React is optional: any page that sets `window.kamishibai` works (see **Raw**).
 
+## Before the full build
+
+When someone asks you for a video, agree on its direction before building all
+of it, unless they say the brief is final or to just make it:
+
+1. **Outline.** For each scene, a few lines: what is said, what is shown, the
+   motion or transition, the tone. Show it and fold in their changes; a wrong
+   direction is cheapest to fix here.
+2. **Pilot.** Build the first scene or two as they will ship, render them, show
+   the video, and settle the look, voice and pacing. Then build the rest.
+
+With narration, also get the whole script approved before the first paid
+synthesis (see **narration**).
+
 ## The one contract
 
 ```ts
