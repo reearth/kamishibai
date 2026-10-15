@@ -6,6 +6,10 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ## Unreleased
 
+### Fixed
+
+- **Long ducked reels no longer fail at the audio mix.** A `duck` clip, or any clip with `gainKeyframes`, got an ffmpeg volume expression that nested one `if()` per keyframe, and ffmpeg rejects an expression nested about 100 deep. A reel with more than about 100 keyframes failed after every frame had been captured. The expression is now a flat sum, so its depth no longer grows with the keyframes.
+
 ### Docs
 
 - The guide again has the agent outline a requested video and render a pilot of its first scenes for the requester, before building the whole video, unless the brief is final. This step went with the `video-craft` skill in 0.7.0, so agents had gone straight to the full build.

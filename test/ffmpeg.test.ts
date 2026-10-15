@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, it, expect } from "vitest";
 import { audio } from "../src/audio.ts";
 import { buildAudioGraph, volumeExpr } from "../src/ffmpeg.ts";
@@ -97,13 +98,45 @@ describe("volumeExpr", () => {
       { atMs: 1000, gain: 0 },
       { atMs: 2000, gain: -20 },
     ]);
-    // before t=1: hold 0dB; after t=2: hold -20dB
-    expect(e).toContain("if(lt(t,1.000000),0,");
-    expect(e).toContain("if(lt(t,2.000000),");
-    expect(e.startsWith("pow(10,(")).toBe(true);
+    // 0dB until t=1, a linear ramp to -20dB at t=2, then -20dB
+    const at = sampleExpr(e, 3);
+    expect(at(0.5)).toBeCloseTo(1, 4);
+    expect(at(1.5)).toBeCloseTo(10 ** (-10 / 20), 4);
+    expect(at(2.5)).toBeCloseTo(10 ** (-20 / 20), 4);
+  });
+
+  it("steps at coincident keyframes", () => {
+    const e = volumeExpr([
+      { atMs: 0, gain: 0 },
+      { atMs: 1000, gain: 0 },
+      { atMs: 1000, gain: -20 },
+      { atMs: 2000, gain: -20 },
+    ]);
+    const at = sampleExpr(e, 2);
+    expect(at(0.9)).toBeCloseTo(1, 4);
+    expect(at(1.1)).toBeCloseTo(0.1, 4);
+  });
+
+  it("stays parseable by ffmpeg with hundreds of keyframes", () => {
+    // ffmpeg rejects expressions nested ~100 deep; a long ducked reel has more keyframes.
+    const kf = Array.from({ length: 300 }, (_, i) => ({ atMs: i * 100, gain: i % 2 === 0 ? 0 : -20 }));
+    const at = sampleExpr(volumeExpr(kf), 30);
+    expect(at(0.05)).toBeCloseTo(10 ** (-10 / 20), 4); // halfway down the first ramp
+    expect(at(29.95)).toBeCloseTo(0.1, 4); // after the last keyframe (-20dB)
   });
 
   it("adds the base gain to every keyframe", () => {
     expect(volumeExpr([{ atMs: 0, gain: -3 }], -6)).toBe("pow(10,(-9)/20)");
   });
 });
+
+/** Evaluate a volume expression with ffmpeg itself, sampled at 1kHz over `durSec`. */
+function sampleExpr(expr: string, durSec: number): (sec: number) => number {
+  const raw = execFileSync(
+    "ffmpeg",
+    ["-v", "error", "-f", "lavfi", "-i", `aevalsrc=exprs='${expr}':s=1000:d=${durSec}`, "-f", "f64le", "-"],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  const samples = new Float64Array(raw.buffer, raw.byteOffset, raw.byteLength / 8);
+  return (sec) => samples[Math.round(sec * 1000)]!;
+}

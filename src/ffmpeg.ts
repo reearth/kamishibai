@@ -223,6 +223,11 @@ const ms2s = (ms: number) => (ms / 1000).toFixed(6);
  * Build an ffmpeg `volume` expression (a linear-amplitude function of `t` in
  * seconds) that interpolates dB keyframes linearly and holds flat outside the
  * range. `baseGainDb` is added to every keyframe.
+ *
+ * The dB curve is a flat sum with one gated term per segment, where exactly
+ * one gate is 1 at any `t`. Nesting an `if()` per keyframe would be simpler,
+ * but ffmpeg rejects an expression nested about 100 levels deep, and a long
+ * ducked reel has hundreds of keyframes.
  */
 export function volumeExpr(
   keyframes: Array<{ atMs: number; gain: number }>,
@@ -232,19 +237,18 @@ export function volumeExpr(
   const t = (i: number) => (kf[i]!.atMs / 1000).toFixed(6);
   const db = (i: number) => kf[i]!.gain + baseGainDb;
   const n = kf.length - 1;
+  if (n < 1) return `pow(10,(${db(0)})/20)`;
 
-  let inner = `${db(n)}`; // t >= last keyframe
-  for (let i = n - 1; i >= 0; i--) {
+  const terms = [`lt(t,${t(0)})*(${db(0)})`]; // t < first keyframe -> hold the first level
+  for (let i = 0; i < n; i++) {
     const dt = kf[i + 1]!.atMs - kf[i]!.atMs;
-    const seg =
-      dt <= 0
-        ? `${db(i + 1)}` // coincident keyframes -> step
-        : `(${db(i)}+(${db(i + 1) - db(i)})*(t-${t(i)})/${(dt / 1000).toFixed(6)})`;
-    inner = `if(lt(t,${t(i + 1)}),${seg},${inner})`;
+    // Coincident keyframes have an empty segment: the level steps there.
+    if (dt <= 0) continue;
+    const seg = `(${db(i)}+(${db(i + 1) - db(i)})*(t-${t(i)})/${(dt / 1000).toFixed(6)})`;
+    terms.push(`gte(t,${t(i)})*lt(t,${t(i + 1)})*${seg}`);
   }
-  // t < first keyframe -> hold the first level
-  const dbExpr = n >= 1 ? `if(lt(t,${t(0)}),${db(0)},${inner})` : `${db(0)}`;
-  return `pow(10,(${dbExpr})/20)`;
+  terms.push(`gte(t,${t(n)})*(${db(n)})`); // t >= last keyframe
+  return `pow(10,(${terms.join("+")})/20)`;
 }
 
 /**
