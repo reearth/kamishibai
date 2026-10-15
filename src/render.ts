@@ -108,10 +108,11 @@ export interface RenderOptions {
    *  in progress (ms; default 15s). Narration synthesis in flight doesn't
    *  count against it. */
   probeTimeoutMs?: number;
-  /** how to draw the frames: a canvas reel on the CPU, or a page in Chrome.
-   *  "auto" (default) paints a script entry whose default export is a canvas
-   *  reel on the CPU, and captures everything else in Chrome. */
-  renderer?: "auto" | "canvas" | "chrome";
+  /** where the frames are drawn: "node" paints a canvas reel with Skia, on
+   *  the CPU; "chrome" captures a page (a canvas reel mounted in one).
+   *  "auto" (default) is node for a script entry whose default export is a
+   *  canvas reel, and chrome for everything else. */
+  renderer?: "auto" | "node" | "chrome";
   /** a canvas reel's view size in layout units (default: its meta size) */
   size?: { width: number; height: number };
   /** a canvas reel's view shape, e.g. "9:16"; the long side keeps meta's */
@@ -254,7 +255,7 @@ export interface CaptureOptions {
    *  count against it. */
   probeTimeoutMs?: number;
   /** see RenderOptions.renderer */
-  renderer?: "auto" | "canvas" | "chrome";
+  renderer?: "auto" | "node" | "chrome";
   /** see RenderOptions.size */
   size?: { width: number; height: number };
   /** see RenderOptions.aspect */
@@ -406,8 +407,8 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       canvas = null;
     }
   }
-  if (opts.renderer === "canvas" && !canvas) {
-    throw new Error(`--renderer canvas: "${opts.entry}" is not a canvas reel (a script whose default export has meta and setup)`);
+  if (opts.renderer === "node" && !canvas) {
+    throw new Error(`--renderer node: "${opts.entry}" is not a canvas reel (a script whose default export has meta and setup)`);
   }
   if (!canvas && (opts.size || opts.aspect !== undefined || opts.insets)) {
     throw new Error(

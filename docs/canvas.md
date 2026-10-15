@@ -71,7 +71,7 @@ kamishibai render reel.ts --aspect 9:16 --inset 160,140,360,40 -o app.mp4
 
 The frames go through the same pipeline as a page's: a frames directory, `-i`/`--incremental`, `--only`, `encode`, audio and subtitles. A cache is kept per view, so rendering another shape doesn't reuse the frames of the last one.
 
-`kamishibai render` paints a script entry on the CPU when its default export is a canvas reel, and treats anything else as a page. The entry is bundled and looked at first, and run only when it has a default export, so a page's code never runs in Node. `--renderer canvas` requires a canvas reel; `--renderer chrome` mounts one in a page and captures it in Chrome, at its meta size.
+`kamishibai render` paints a script entry on the CPU when its default export is a canvas reel, and treats anything else as a page. The entry is bundled and looked at first, and run only when it has a default export, so a page's code never runs in Node. `--renderer node` requires a canvas reel; `--renderer chrome` mounts one in a page and captures it in Chrome, at its meta size.
 
 Narration works as in a page: `await prepareNarration(...)` at the top of the module. Each line is synthesized once, before any frame is painted.
 
@@ -79,44 +79,13 @@ Narration works as in a page: `await prepareNarration(...)` at the top of the mo
 
 `kamishibai dev reel.ts` previews a canvas reel in the player, as it does a page. The reel's folder is served too, so its fonts and files load by their relative paths.
 
-### One HTML file: `kamishibai export`
+### One HTML file
 
-```sh
-npm i -D subset-font                          # export cuts fonts with it
-kamishibai export reel.ts -o reel.html        # a player with controls
-kamishibai export reel.ts --bare -o reel.html # no controls: a canvas that autoplays, to embed
-kamishibai export reel.ts --bare --loop 0 -o loop.html  # …and plays forever
-kamishibai export reel.ts --bare --no-autoplay -o scroll.html  # waits for the page to start it
-```
-
-The flags set the file's defaults, and the query string of its URL can change them, so one file can be embedded in several ways:
-
-| Query | |
-|---|---|
-| `controls=0` / `1` | hide or show the controls |
-| `autoplay=0` / `1` | wait, or start at once |
-| `loop=<n>` | as `--loop`: `0` forever, `-1` once, `n` that many more times |
-| `t=<seconds>` | start there, e.g. `t=12.5` |
-| `muted=1` | start with the sound off |
-
-```html
-<iframe src="reel.html?controls=0&loop=0&muted=1" width="640" height="360"></iframe>
-```
-
-The file plays from anywhere, offline included, without a server. It lays the reel out for the window's shape, within `meta.aspect`, and again when the window changes, so a phone held upright plays it tall. Where a video file is needed (to post it, or to play it where scripts don't run), render an mp4 from the same reel.
-
-`export` paints every frame once on the CPU, for the default view and both ends of `meta.aspect`, and puts in the file what the reel reads at run time:
-
-- each font in `fonts`, cut to the characters drawn in it, as WOFF2 (a variable font keeps its weight axis);
-- the files `setup` read with `env.readText` and `env.loadImage`, under the paths it asked for, so no local paths end up in the file;
-- what `prepareNarration` returned, so the page lays out to the voice-over's real length with no TTS server;
-- the soundtrack, mixed into one AAC track by the same pass that mixes an mp4's (gains, fades and ducking included). The player follows its clock while it plays. Browsers start sound only after the viewer has interacted with the page, so an autoplaying file starts muted.
-
-The example reel exports to 12 KB. A soundtrack adds about 16 KB a second of audio (96 kbps AAC, as base64).
+`kamishibai export reel.ts -o reel.html` writes the reel and its player as one HTML file that plays with no server, laid out for the window's shape. See [One HTML file: `kamishibai export`](export.md).
 
 ### In your own page: `play`
 
-`play(reel, el, options)` from `kamishibai/canvas` is the player `export` uses. It lays the reel out for the element's shape and returns a handle the page can drive, from scroll for example:
+`play(reel, el, options)` from `kamishibai/canvas` is the player `export` uses for a canvas reel. It lays the reel out for the element's shape and returns a handle the page can drive, from scroll for example:
 
 ```ts
 import { play } from "kamishibai/canvas";

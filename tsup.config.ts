@@ -16,6 +16,10 @@ export default defineConfig({
     // the worker thread that paints them on the CPU.
     canvas: "src/canvas/browser.ts",
     "canvas-worker": "src/canvas/worker.ts",
+    // What `kamishibai export` bundles into a page's file: the player, and
+    // the module that serves the page its recorded files.
+    player: "src/player.ts",
+    "export-prelude": "src/export-prelude.ts",
   },
   format: ["esm"],
   target: "node20",

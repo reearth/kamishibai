@@ -214,9 +214,10 @@ export default canvasReel({
     expect(await loopOf(2)).toBe(2);
   });
 
-  it("refuses a page", async () => {
-    await writeFile(join(dir, "page.ts"), `(window as any).kamishibai = {};`);
-    await expect(exportHtml({ entry: join(dir, "page.ts"), out: join(dir, "p.html") })).rejects.toThrow(/canvas reel/);
+  it("takes a page through Chrome, but only from a script entry", async () => {
+    await writeFile(join(dir, "page.html"), `<!doctype html>`);
+    await expect(exportHtml({ entry: join(dir, "page.html"), out: join(dir, "p.html") })).rejects.toThrow(/script entry/);
+    await expect(exportHtml({ entry: "http://localhost:1/", out: join(dir, "p.html") })).rejects.toThrow(/script entry/);
   });
 });
 

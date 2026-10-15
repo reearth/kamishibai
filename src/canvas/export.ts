@@ -1,5 +1,6 @@
-// `kamishibai export`: a canvas reel and its player as one HTML file, which
-// plays from anywhere, offline included, at the shape of the window.
+// `kamishibai export`: a reel and its player as one HTML file, which plays
+// from anywhere, offline included. This file exports a canvas reel, laid out
+// at the shape of the window; a page goes to ../export-page.ts.
 // ------------------------------------------------------------------
 // Everything the reel reads at run time goes in the file: what its module asks
 // for is recorded while every frame is painted once on the CPU, for the default
@@ -7,7 +8,8 @@
 // (each font is cut to those, as WOFF2), the files setup reads, the narration
 // prepareNarration returns, and the soundtrack, mixed into one track.
 // ------------------------------------------------------------------
-import { mkdtemp, readFile, rm, writeFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { writeExportHtml } from "../export-html.ts";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
@@ -15,7 +17,7 @@ import { build, type Plugin } from "esbuild";
 import { frameCount, frameTimeMs } from "../protocol.ts";
 import { assertFfmpeg, mixAudio } from "../ffmpeg.ts";
 import { prepareAudio } from "../render.ts";
-import { bundleOptions, canvasModule } from "../serve.ts";
+import { SCRIPT_EXT, bundleOptions, canvasModule } from "../serve.ts";
 import { createTTSEngine, type TTSAdapter } from "../tts/engine.ts";
 import { loadCanvasEntry, loadSkia, nodeEnv, patchContext, recordText, registerFonts, setTTSHook, type EnvReads } from "./node.ts";
 import { resolveView, splitFontWeight, viewKey, type Context2D, type View } from "./types.ts";
@@ -31,6 +33,10 @@ export interface ExportOptions {
   loop?: number;
   /** false: wait for the viewer, or the page, to start it (default: autoplay) */
   autoplay?: boolean;
+  /** a page's static assets dir, as for render (a canvas reel reads files next to it) */
+  publicDir?: string;
+  /** how long to wait for a page to expose window.kamishibai (ms) */
+  probeTimeoutMs?: number;
   /** the soundtrack's AAC bitrate (default "96k") */
   audioBitrate?: string;
   ttsAdapters?: TTSAdapter[];
@@ -60,6 +66,10 @@ const dataUrl = (mime: string, bytes: Uint8Array) => `data:${mime};base64,${Buff
 
 export async function exportHtml(opts: ExportOptions): Promise<ExportResult> {
   const log = opts.onLog ?? (() => {});
+  // Only a script entry can be a canvas reel; the page path says what it takes.
+  if (/^https?:\/\//i.test(opts.entry) || !SCRIPT_EXT.has(extname(opts.entry).toLowerCase())) {
+    return (await import("../export-page.ts")).exportPage(opts);
+  }
   const tts = createTTSEngine({ adapters: opts.ttsAdapters, cacheDir: opts.ttsCacheDir });
   // What prepareNarration returned, by its request, for the page to answer
   // with: it has no TTS server, and an estimate would put the timing off.
@@ -78,7 +88,8 @@ export async function exportHtml(opts: ExportOptions): Promise<ExportResult> {
   } finally {
     setTTSHook(undefined);
   }
-  if (!entry) throw new Error(`export needs a canvas reel: "${opts.entry}" has no default export with meta and setup`);
+  // Not a canvas reel: a page, exported with Chrome.
+  if (!entry) return (await import("../export-page.ts")).exportPage(opts);
   const { reel, dir } = entry;
   const tmp = await mkdtemp(join(tmpdir(), "kamishibai-export-"));
   try {
@@ -215,29 +226,10 @@ window.kamishibaiPlayer = await play(reel, document.getElementById("kamishibai")
       plugins: [prelude],
     });
     const js = built.outputFiles[0]!.text;
-
     const loop = opts.loop === undefined || opts.loop === -1 ? false : opts.loop === 0 ? true : opts.loop;
+
     const data = { bare: !!opts.bare, loop, autoplay: opts.autoplay === false ? false : undefined, texts, images, fonts, soundtrack, narration: [...narration] };
-    // In a <script> element, "</" must not appear: escape "<" in the data and "</script" in the code.
-    const json = JSON.stringify(data).replace(/</g, "\\u003c");
-    const title = (reel.meta.title ?? basename(opts.entry)).replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"));
-    const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title>
-<style>html,body{margin:0;height:100%;background:${opts.bare ? "transparent" : "#e7e5df"}}#kamishibai{position:fixed;inset:${opts.bare ? "0" : "16px"}}</style>
-</head>
-<body>
-<div id="kamishibai"></div>
-<script type="application/json" id="kamishibai-data">${json}</script>
-<script type="module">${js.replace(/<\/script/gi, "<\\/script")}</script>
-</body>
-</html>
-`;
-    await writeFile(resolve(opts.out), html);
-    const bytes = (await stat(resolve(opts.out))).size;
+    const bytes = await writeExportHtml({ out: opts.out, title: reel.meta.title ?? basename(opts.entry), bare: !!opts.bare, data, js });
     return { out: resolve(opts.out), bytes, parts: { script: js.length, fonts: fontBytes, files: fileBytes, soundtrack: audioBytes }, frames };
   } finally {
     await entry.close();

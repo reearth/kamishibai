@@ -29,8 +29,8 @@ Usage:
   kamishibai encode -f <frames-dir> [options]    re-encode kept frames, no capture
   kamishibai tts <entry> [options]               bake narration into the TTS cache only
   kamishibai dev <entry> [options]               live preview in the browser
-  kamishibai export <entry> -o reel.html         a canvas reel and its player as one
-                                                 HTML file, at any window shape
+  kamishibai export <entry> -o reel.html         a reel and its player as one HTML
+                                                 file that plays with no server
   kamishibai skill [topic…|all]                  print the usage guide: the core and a
                                                  topic list, the named topics, or all
 
@@ -71,8 +71,10 @@ Canvas reel options (render, capture):
                         (within the reel's meta.aspect)
       --inset <t,r,b,l> space to keep clear of, in layout units (one number
                         for all sides), e.g. for an app's controls over the video
-      --renderer <r>    auto (default), canvas (require a canvas reel), or
-                        chrome (mount a canvas reel in a page and capture it)
+      --renderer <r>    where frames are drawn: auto (default: a canvas reel in
+                        Node, anything else in Chrome), node (Skia, no browser;
+                        needs a canvas reel), or chrome (a canvas reel is
+                        mounted in a page)
 
 Encode options (render, encode):
   -o, --out <file>      output file; .mp4 (default) or .gif by extension
@@ -101,8 +103,8 @@ Export options (export):
       --no-autoplay     wait for the viewer (or the page) to start it
                         These set the file's defaults; its URL can change them:
                         ?controls=0|1 &autoplay=0|1 &loop=<n> &t=<s> &muted=1
-      --tts-adapter <file>
-                        as for render
+  -p, --public <dir>, --probe-timeout <s>, --tts-adapter <file>
+                        as for render (a page reel is recorded in Chrome)
 
 Dev options (dev):
   -p, --public <dir>    static assets dir served at the root, as in render
@@ -159,7 +161,7 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   encode: new Set(ENCODE_FLAGS),
   tts: new Set(["public", "probe-timeout", "tts-adapter"]),
   dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
-  export: new Set(["out", "bare", "loop", "no-autoplay", "tts-adapter"]),
+  export: new Set(["out", "bare", "loop", "no-autoplay", "public", "probe-timeout", "tts-adapter"]),
 };
 
 // libx264's speed presets, slowest-compressing last. Validated so a typo fails
@@ -343,9 +345,9 @@ async function main(): Promise<void> {
   if (values.aspect !== undefined) parseAspect(values.aspect);
   if (size && values.aspect !== undefined) throw new Error(`pass --size or --aspect, not both`);
   const insets = values.inset !== undefined ? parseInsets(values.inset) : undefined;
-  const renderer = values.renderer as "auto" | "canvas" | "chrome" | undefined;
-  if (renderer !== undefined && !["auto", "canvas", "chrome"].includes(renderer)) {
-    throw new Error(`--renderer must be auto, canvas or chrome, got "${values.renderer}"`);
+  const renderer = values.renderer as "auto" | "node" | "chrome" | undefined;
+  if (renderer !== undefined && !["auto", "node", "chrome"].includes(renderer)) {
+    throw new Error(`--renderer must be auto, node or chrome, got "${values.renderer}"`);
   }
   const view = { size, aspect: values.aspect, insets, renderer };
 
@@ -438,6 +440,8 @@ async function main(): Promise<void> {
       bare: values.bare,
       loop: htmlLoops,
       autoplay: values["no-autoplay"] ? false : undefined,
+      publicDir: values.public,
+      probeTimeoutMs,
       ttsAdapters,
       onLog: (msg) => process.stderr.write(`${msg}\n`),
     });

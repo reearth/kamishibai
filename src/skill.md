@@ -332,13 +332,33 @@ kamishibai render reel.ts --aspect 9:16 -o tall.mp4   # the long side keeps meta
 kamishibai render reel.ts --aspect 9:16 --inset 160,140,360,40 -o app.mp4
 kamishibai dev reel.ts                                # the same player as a page
 kamishibai export reel.ts -o reel.html                # one HTML file, any window shape (npm i -D subset-font)
-kamishibai export reel.ts --bare --loop 0 -o embed.html  # no controls, autoplays; --loop as --gif-loop
-# the file's URL can change those: reel.html?controls=0&autoplay=0&loop=0&t=10&muted=1
 ```
+
+`kamishibai export` works for a page reel too: see `kamishibai skill export`.
 
 Frames, `-i`, `--only`, `encode`, audio and narration work as for a page. Look
 at the frames of every shape you render: a layout that fits 16:9 may not fit
 9:16.
+<!-- /topic -->
+
+<!-- topic: export | One HTML file that plays the reel with no server: `kamishibai export`, `--bare`, `--loop`, query parameters -->
+## One HTML file: `kamishibai export`
+
+```sh
+kamishibai export reel.tsx -o reel.html                    # player with controls
+kamishibai export reel.tsx --bare --loop 0 -o embed.html   # no controls, autoplays, loops (--loop as --gif-loop)
+kamishibai export reel.tsx --bare --no-autoplay -o s.html  # waits for the page: window.kamishibaiPlayer.seek(ms)
+```
+
+- The file plays offline, with the soundtrack (mixed into one track), the
+  narration and captions. Its URL can change the defaults:
+  `reel.html?controls=0&autoplay=0&loop=0&t=10&muted=1&cc=0`.
+- A page is seeked through every frame in Chrome once, and every file it reads
+  from its own server is embedded (`-p` as for render). Files on other
+  servers stay links. It plays at its meta size, scaled to the window.
+- A canvas reel's fonts are cut to the glyphs it draws (`npm i -D subset-font`),
+  and it is laid out for the window's shape.
+- Open the file and play it through before handing it over.
 <!-- /topic -->
 
 ## Rendering (CLI)

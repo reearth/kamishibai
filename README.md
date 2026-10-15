@@ -126,7 +126,7 @@ frames 685–1369  → page #2 ├ run at once → PNG sequence → ffmpeg → m
 frames 1370–…    → page #3 ┘
 ```
 
-A reel can also be a module that draws on a 2D canvas instead of a page: a [**canvas reel**](https://github.com/reearth/kamishibai/blob/main/docs/canvas.md) is painted on the CPU with Skia, with no browser, and lays itself out for any shape, so one reel renders as 16:9 and as a 9:16 vertical video. `kamishibai export` also makes it one small HTML file that plays at the shape of any window.
+A reel can also be a module that draws on a 2D canvas instead of a page: a [**canvas reel**](https://github.com/reearth/kamishibai/blob/main/docs/canvas.md) is painted on the CPU with Skia, with no browser, and lays itself out for any shape, so one reel renders as 16:9 and as a 9:16 vertical video. `kamishibai export` makes any reel one HTML file that plays with no server ([more](https://github.com/reearth/kamishibai/blob/main/docs/export.md)); a canvas reel's also lays itself out for the window's shape.
 
 `seek` can also say a frame is **the same as the one before**, by returning `false` or a fingerprint of its content. The renderer then copies the previous still instead of capturing it, and with `--incremental` it reuses frames from the last run whose fingerprint didn't change, so after an edit only the changed frames are captured again. `kamishibai/react` returns the fingerprint for you. See [Skipping frames & incremental builds](https://github.com/reearth/kamishibai/blob/main/docs/performance.md).
 
