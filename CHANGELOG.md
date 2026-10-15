@@ -4,6 +4,16 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Added
+
+- **Canvas reels: video with no browser.** A script whose default export is `{ meta, setup }` from `kamishibai/canvas` draws each frame on a 2D canvas, and `kamishibai render` paints it on the CPU with Skia (`@napi-rs/canvas`, an optional peer dependency), with no Chrome. `setup(view, env)` runs once per view and returns the painter `(g, ms)`, which returns what `seek()` returns. Frames, `--incremental`, `--only`, `encode`, audio, subtitles and narration (`kamishibai tts` included) work as for a page. See [docs/canvas.md](docs/canvas.md).
+- **`--size`, `--aspect` and `--inset`** render a canvas reel at another shape (for example a 9:16 vertical video from a 16:9 reel), within the shapes its `meta.aspect` allows, and keep its picture clear of an app's controls. The frames cache is kept per view.
+- **`--renderer auto|node|chrome`** says where frames are drawn: `node` paints a canvas reel with Skia, and `chrome` mounts it in a page (`mountCanvas`) and captures it in Chrome. `kamishibai dev` previews a canvas reel too.
+- **`kamishibai export reel.tsx -o reel.html`** writes a reel and its player as one HTML file that plays offline, with its soundtrack (mixed into one track), narration and captions. A page is seeked through every frame in Chrome once, and the files it reads from its server are embedded and served back to it from the file. A canvas reel is laid out for the window's shape, its fonts cut to the characters it draws (`subset-font`, an optional peer dependency). See [docs/export.md](docs/export.md). `--bare` leaves out the controls, for a page to embed, `--loop` takes the values of `--gif-loop` (`0` forever, `-1` once by default, `n` more times), and `--no-autoplay` waits to be started. These are the file's defaults: its URL's query (`?controls=0&autoplay=1&loop=0&t=10&muted=1`) can change them, so one file embeds several ways.
+- **`play(reel, el, options)`** from `kamishibai/canvas` plays a canvas reel in any element, laid out for its shape, and returns a handle (`play`, `pause`, `seek`, …) a page can drive.
+
 ## 0.8.1
 
 ### Fixed

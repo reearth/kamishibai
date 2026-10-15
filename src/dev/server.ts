@@ -27,6 +27,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   SCRIPT_EXT,
   bundleOptions,
+  canvasBundleOptions,
   closeServer,
   hostHtml,
   injectEarly,
@@ -36,6 +37,7 @@ import {
   staticServer,
 } from "../serve.ts";
 import { resolveAudioSrc } from "../render.ts";
+import { loadCanvasEntry, setTTSHook } from "../canvas/node.ts";
 import { createTTSEngine, type TTSAdapter } from "../tts/engine.ts";
 import { PLAYER_HTML } from "./player-html.ts";
 
@@ -195,11 +197,17 @@ export async function dev(opts: DevOptions): Promise<DevServer> {
     roots.push(dirname(abs));
     watchers.push(watch(dirname(abs), { recursive: true }, reloadSoon));
   } else {
+    // A canvas reel mounts in a small generated page, and its folder is served
+    // too, so its fonts and files load by their paths relative to it.
+    setTTSHook(handleTts);
+    const canvas = await loadCanvasEntry(abs).finally(() => setTTSHook(undefined));
+    await canvas?.close();
     dir = await mkdtemp(join(tmpdir(), "kamishibai-dev-"));
     await writeFile(join(dir, "index.html"), hostHtml(), "utf8");
     roots.push(dir);
+    if (canvas) roots.push(dirname(abs));
     ctx = await context({
-      ...bundleOptions(abs, join(dir, "bundle.js")),
+      ...(canvas ? canvasBundleOptions : bundleOptions)(abs, join(dir, "bundle.js")),
       plugins: [
         {
           name: "kamishibai-dev",

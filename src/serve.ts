@@ -14,7 +14,8 @@
 import { build, type BuildOptions } from "esbuild";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { extname, join, resolve, dirname, basename, relative, isAbsolute, sep } from "node:path";
 
@@ -49,6 +50,12 @@ export interface ServeOptions {
    * or into every served .html page of an .html entry. Not for a URL entry.
    */
   burnSubtitles?: boolean;
+  /**
+   * The script entry is a canvas reel: the page mounts it with mountCanvas,
+   * and the entry's folder is also served at the root (after the generated
+   * page), so the reel's fonts and files load by their paths relative to it.
+   */
+  canvas?: boolean;
 }
 
 export const SCRIPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
@@ -280,6 +287,30 @@ export function bundleOptions(entry: string, outfile: string): BuildOptions {
   };
 }
 
+/** kamishibai/canvas: built next to this module (dist), or its source. */
+export function canvasModule(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const built = join(here, "canvas.js");
+  return existsSync(built) ? built : join(here, "canvas", "browser.ts");
+}
+
+/** How a canvas reel entry is bundled: a small page that mounts it. */
+export function canvasBundleOptions(entry: string, outfile: string): BuildOptions {
+  const { entryPoints: _, ...rest } = bundleOptions(entry, outfile);
+  return {
+    ...rest,
+    stdin: {
+      contents:
+        `import reel from ${JSON.stringify(entry)};\n` +
+        `import { mountCanvas } from ${JSON.stringify(canvasModule())};\n` +
+        `mountCanvas(reel);\n`,
+      resolveDir: dirname(entry),
+      sourcefile: "kamishibai-canvas-host.js",
+      loader: "js",
+    },
+  };
+}
+
 /**
  * Make a capturable page reachable over HTTP.
  * Returns the URL to point Chrome at, plus a cleanup function.
@@ -323,7 +354,7 @@ export async function serveEntry(entry: string, opts: ServeOptions = {}): Promis
 
   const dir = await mkdtemp(join(tmpdir(), "kamishibai-"));
   try {
-    await build(bundleOptions(abs, join(dir, "bundle.js")));
+    await build((opts.canvas ? canvasBundleOptions : bundleOptions)(abs, join(dir, "bundle.js")));
     await writeFile(join(dir, "index.html"), hostHtml(opts.burnSubtitles), "utf8");
   } catch (err) {
     await rm(dir, { recursive: true, force: true });
@@ -333,7 +364,8 @@ export async function serveEntry(entry: string, opts: ServeOptions = {}): Promis
 
   // The generated page + bundle come first, so a public/index.html can't
   // replace the host page; publicDir serves everything else at the root.
-  const { server, port } = await staticServer([dir, ...publicRoots], { tts: opts.tts });
+  const roots = opts.canvas ? [dir, dirname(abs), ...publicRoots] : [dir, ...publicRoots];
+  const { server, port } = await staticServer(roots, { tts: opts.tts });
   return {
     url: `http://127.0.0.1:${port}/`,
     close: async () => {

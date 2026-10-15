@@ -53,6 +53,10 @@
     "./path": {
       "types": "./dist/path.d.ts",
       "import": "./dist/path.js"
+    },
+    "./canvas": {
+      "types": "./dist/canvas.d.ts",
+      "import": "./dist/canvas.js"
     }
   },
   "files": [
@@ -75,8 +79,10 @@
     "playwright": "^1.49.0"
   },
   "peerDependencies": {
+    "@napi-rs/canvas": ">=1.0.9",
     "react": ">=18",
-    "react-dom": ">=18"
+    "react-dom": ">=18",
+    "subset-font": ">=2.7.0"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -84,14 +90,22 @@
     },
     "react-dom": {
       "optional": true
+    },
+    "@napi-rs/canvas": {
+      "optional": true
+    },
+    "subset-font": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@napi-rs/canvas": "1.0.9",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "subset-font": "2.7.0",
     "tsup": "^8.3.5",
     "typescript": "^6.0.3",
     "vite": "^8",

@@ -91,6 +91,24 @@ jobs:
           test "$R" = "30/1"
           test "$N" = "180"
 
+      # A canvas reel is painted on the CPU, with no browser; check it at
+      # another shape too.
+      - name: Render the canvas example, wide and tall
+        run: |
+          node dist/cli.js render examples/canvas/reel.ts -o /tmp/wide.mp4 -w 2
+          node dist/cli.js render examples/canvas/reel.ts --aspect 9:16 -o /tmp/tall.mp4 -w 2
+          probe() { ffprobe -v error -select_streams v:0 -show_entries stream=width,height,nb_frames -of csv=p=0 "$1"; }
+          test "$(probe /tmp/wide.mp4)" = "1920,1080,120"
+          test "$(probe /tmp/tall.mp4)" = "1080,1920,120"
+
+      # One HTML file each, for a page (recorded in Chrome) and a canvas reel.
+      - name: Export the basics and canvas examples
+        run: |
+          node dist/cli.js export examples/basics/index.tsx -o /tmp/basics.html
+          node dist/cli.js export examples/canvas/reel.ts -o /tmp/canvas.html
+          grep -q 'id="kamishibai-data"' /tmp/basics.html
+          grep -q 'data:font/woff2' /tmp/canvas.html
+
       - name: Upload sample reel
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

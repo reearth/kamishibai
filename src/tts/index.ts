@@ -262,6 +262,9 @@ export function estimateMs(text: string): number {
   return Math.max(600, Math.round((text.length / 14) * 1000));
 }
 
+/** Where a Node host puts its TTS engine for prepareNarration (no HTTP there). */
+export const TTS_HOOK = "__KAMISHIBAI_TTS__";
+
 /**
  * Synthesize a batch of narration lines (a key -> text map) as a pre-pass,
  * returning a key -> { src, durationMs, text } map. Awaited before mount() so
@@ -281,6 +284,10 @@ export async function prepareNarration<K extends string>(
   const endpoint = opts.endpoint ?? "/__tts";
   const items = {} as Record<K, { text: string; caption: string; opts?: Record<string, unknown> }>;
   for (const k in texts) items[k] = resolveInput(texts[k], opts.lexicon);
+  // A canvas reel rendered in Node has no server to POST to: the host puts its
+  // TTS engine here instead (see ../canvas/node.ts).
+  const local = (globalThis as { [TTS_HOOK]?: (body: unknown) => Promise<unknown> })[TTS_HOOK];
+  if (local) return (await local({ adapter, items })) as Record<K, NarrationClip>;
   let res: Response;
   try {
     res = await fetch(endpoint, {

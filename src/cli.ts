@@ -14,8 +14,10 @@
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { render, encode, capture, synthesize } from "./render.ts";
+import { exportHtml } from "./canvas/export.ts";
 import { dev, CC_MODES, type CcMode } from "./dev/server.ts";
 import { loadTTSAdapters } from "./tts/load.ts";
+import { parseAspect, parseInsets } from "./canvas/types.ts";
 import SKILL from "./skill.md";
 import { skillText } from "./skill.ts";
 
@@ -27,6 +29,8 @@ Usage:
   kamishibai encode -f <frames-dir> [options]    re-encode kept frames, no capture
   kamishibai tts <entry> [options]               bake narration into the TTS cache only
   kamishibai dev <entry> [options]               live preview in the browser
+  kamishibai export <entry> -o reel.html         a reel and its player as one HTML
+                                                 file that plays with no server
   kamishibai skill [topic…|all]                  print the usage guide: the core and a
                                                  topic list, the named topics, or all
 
@@ -35,6 +39,9 @@ Arguments:
                         that exposes window.kamishibai = { meta, seek(ms) }.
                         A URL is loaded as-is: -p, --burn-subtitles and
                         narration (TTS) need a script or .html entry.
+                        A script whose default export is a canvas reel
+                        ({ meta, setup }, kamishibai/canvas) is painted on the
+                        CPU, with no browser.
 
 Capture options (render, capture):
   -w, --workers <n>     parallel capture pages (default: ~cpus-2, max 8)
@@ -58,6 +65,17 @@ Capture options (render, capture):
                         TTSAdapter, or an array of them; the reel picks one by
                         its provider. Repeatable (also: tts)
 
+Canvas reel options (render, capture):
+      --size <w>x<h>    the view's size in layout units (default: meta's)
+      --aspect <w:h>    the view's shape, e.g. 9:16; the long side keeps meta's
+                        (within the reel's meta.aspect)
+      --inset <t,r,b,l> space to keep clear of, in layout units (one number
+                        for all sides), e.g. for an app's controls over the video
+      --renderer <r>    where frames are drawn: auto (default: a canvas reel in
+                        Node, anything else in Chrome), node (Skia, no browser;
+                        needs a canvas reel), or chrome (a canvas reel is
+                        mounted in a page)
+
 Encode options (render, encode):
   -o, --out <file>      output file; .mp4 (default) or .gif by extension
   -f, --frames-dir <d>  (encode) the frames dir to read; fps, audio and
@@ -75,6 +93,18 @@ Encode options (render, encode):
       --mux-args <s>    extra ffmpeg args for the audio/subtitle mux pass, e.g.
                         --mux-args "-movflags +faststart" (mp4 only)
       --verbose         stream ffmpeg output
+
+Export options (export):
+  -o, --out <file>      the HTML file to write (default: reel.html)
+      --bare            no controls: a canvas that autoplays, to embed in a page
+                        (its handle is window.kamishibaiPlayer)
+      --loop <n>        play again from the start, as --gif-loop: 0 = forever,
+                        -1 = once (default), n = n more times
+      --no-autoplay     wait for the viewer (or the page) to start it
+                        These set the file's defaults; its URL can change them:
+                        ?controls=0|1 &autoplay=0|1 &loop=<n> &t=<s> &muted=1
+  -p, --public <dir>, --probe-timeout <s>, --tts-adapter <file>
+                        as for render (a page reel is recorded in Chrome)
 
 Dev options (dev):
   -p, --public <dir>    static assets dir served at the root, as in render
@@ -118,7 +148,7 @@ Examples:
 
 const CAPTURE_FLAGS = [
   "workers", "fps", "scale", "public", "frames-dir", "incremental", "only",
-  "burn-subtitles", "probe-timeout", "tts-adapter",
+  "burn-subtitles", "probe-timeout", "tts-adapter", "size", "aspect", "inset", "renderer",
 ];
 const ENCODE_FLAGS = [
   "out", "frames-dir", "fps", "max-width", "gif-loop", "crf", "preset", "preview",
@@ -131,6 +161,7 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   encode: new Set(ENCODE_FLAGS),
   tts: new Set(["public", "probe-timeout", "tts-adapter"]),
   dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
+  export: new Set(["out", "bare", "loop", "no-autoplay", "public", "probe-timeout", "tts-adapter"]),
 };
 
 // libx264's speed presets, slowest-compressing last. Validated so a typo fails
@@ -185,9 +216,11 @@ async function main(): Promise<void> {
   const enc = takeRawOption(process.argv.slice(2), "encode-args");
   const mux = takeRawOption(enc.rest, "mux-args");
   const loop = takeRawOption(mux.rest, "gif-loop");
+  // export's --loop takes the same values, -1 included.
+  const htmlLoop = takeRawOption(loop.rest, "loop");
 
   const { values, positionals } = parseArgs({
-    args: loop.rest,
+    args: htmlLoop.rest,
     allowPositionals: true,
     options: {
       out: { type: "string", short: "o" },
@@ -206,6 +239,12 @@ async function main(): Promise<void> {
       "burn-subtitles": { type: "boolean" },
       "probe-timeout": { type: "string" },
       "tts-adapter": { type: "string", multiple: true },
+      size: { type: "string" },
+      aspect: { type: "string" },
+      inset: { type: "string" },
+      renderer: { type: "string" },
+      bare: { type: "boolean" },
+      "no-autoplay": { type: "boolean" },
       verbose: { type: "boolean" },
       port: { type: "string" },
       mute: { type: "boolean" },
@@ -237,7 +276,7 @@ async function main(): Promise<void> {
 
   if (!command || !FLAGS_FOR[command]) {
     process.stderr.write(
-      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / dev / encode -f <frames-dir>)\n`,
+      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / dev / export / encode -f <frames-dir>)\n`,
     );
     process.exit(1);
   }
@@ -278,6 +317,7 @@ async function main(): Promise<void> {
   if (enc.value !== undefined) given.push("encode-args");
   if (mux.value !== undefined) given.push("mux-args");
   if (loop.value !== undefined) given.push("gif-loop");
+  if (htmlLoop.value !== undefined) given.push("loop");
   const ignored = given.filter((k) => !FLAGS_FOR[command]!.has(k));
   if (ignored.length > 0) {
     process.stderr.write(
@@ -295,6 +335,21 @@ async function main(): Promise<void> {
       );
     }
   }
+
+  // A canvas reel's view: checked here, so a typo fails before anything loads.
+  const sizeMatch = values.size !== undefined ? /^(\d+)x(\d+)$/.exec(values.size) : undefined;
+  if (values.size !== undefined && !sizeMatch) {
+    throw new Error(`--size must be <width>x<height> in layout units, e.g. 1080x1920, got "${values.size}"`);
+  }
+  const size = sizeMatch ? { width: Number(sizeMatch[1]), height: Number(sizeMatch[2]) } : undefined;
+  if (values.aspect !== undefined) parseAspect(values.aspect);
+  if (size && values.aspect !== undefined) throw new Error(`pass --size or --aspect, not both`);
+  const insets = values.inset !== undefined ? parseInsets(values.inset) : undefined;
+  const renderer = values.renderer as "auto" | "node" | "chrome" | undefined;
+  if (renderer !== undefined && !["auto", "node", "chrome"].includes(renderer)) {
+    throw new Error(`--renderer must be auto, node or chrome, got "${values.renderer}"`);
+  }
+  const view = { size, aspect: values.aspect, insets, renderer };
 
   // --preview is sugar for --preset ultrafast; an explicit --preset wins.
   const preset = values.preset ?? (values.preview ? "ultrafast" : undefined);
@@ -370,6 +425,34 @@ async function main(): Promise<void> {
 
   // `kamishibai capture` captures frames into a dir WITHOUT encoding — pair it
   // with `kamishibai encode` to split a render into its two halves.
+  if (command === "export") {
+    if (!entry) {
+      process.stderr.write(`Missing <entry>.\n\n${HELP}`);
+      process.exit(1);
+    }
+    const htmlLoops = htmlLoop.value != null ? Number(htmlLoop.value) : undefined;
+    if (htmlLoops !== undefined && (!Number.isInteger(htmlLoops) || htmlLoops < -1)) {
+      throw new Error(`--loop must be an integer ≥ -1 (0 = forever, -1 = once), got "${htmlLoop.value}"`);
+    }
+    const r = await exportHtml({
+      entry,
+      out: values.out ?? "reel.html",
+      bare: values.bare,
+      loop: htmlLoops,
+      autoplay: values["no-autoplay"] ? false : undefined,
+      publicDir: values.public,
+      probeTimeoutMs,
+      ttsAdapters,
+      onLog: (msg) => process.stderr.write(`${msg}\n`),
+    });
+    const kb = (n: number) => `${(n / 1024).toFixed(0)} KB`;
+    process.stderr.write(
+      `Done → ${r.out} (${kb(r.bytes)}: script ${kb(r.parts.script)}, fonts ${kb(r.parts.fonts)}` +
+        `${r.parts.files ? `, files ${kb(r.parts.files)}` : ""}${r.parts.soundtrack ? `, soundtrack ${kb(r.parts.soundtrack)}` : ""})\n`,
+    );
+    return;
+  }
+
   if (command === "capture") {
     if (!entry) {
       process.stderr.write(`Missing <entry|url>.\n\n${HELP}`);
@@ -392,6 +475,7 @@ async function main(): Promise<void> {
       burnSubtitles: values["burn-subtitles"],
       probeTimeoutMs,
       ttsAdapters,
+      ...view,
       onLog: (msg) => process.stderr.write(`${msg}\n`),
     });
     process.stderr.write(`Captured ${cap.frames} frame(s) → ${cap.framesDir}\n`);
@@ -447,6 +531,7 @@ async function main(): Promise<void> {
     keepFrames: values["keep-frames"],
     probeTimeoutMs,
     ttsAdapters,
+    ...view,
     verbose: values.verbose,
     onLog: (msg) => process.stderr.write(`${msg}\n`),
   });
