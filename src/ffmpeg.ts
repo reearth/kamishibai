@@ -325,6 +325,37 @@ export function buildAudioGraph(
   return { inputs, filterComplex: [...filters, mix].join(";") };
 }
 
+/**
+ * Mix clips into one audio file of `durationMs`, with the same graph as an mp4's
+ * soundtrack (trims, fades, gain, ducking). For a player that has no video
+ * file to mux into: `kamishibai export` embeds the result. Input 0 is silence,
+ * standing where the video goes in muxAudio, and sets the length.
+ */
+export async function mixAudio(opts: {
+  clips: AudioManifest;
+  out: string;
+  durationMs: number;
+  bitrate?: string;
+  verbose?: boolean;
+}): Promise<void> {
+  const { inputs, filterComplex } = buildAudioGraph(opts.clips, opts.durationMs);
+  const sec = String(opts.durationMs / 1000);
+  await runFfmpeg(
+    [
+      "-y",
+      "-f", "lavfi", "-t", sec, "-i", "anullsrc=r=48000:cl=stereo",
+      ...inputs,
+      "-filter_complex", filterComplex,
+      "-map", "[aout]",
+      "-c:a", "aac",
+      "-b:a", opts.bitrate ?? "96k",
+      "-t", sec,
+      opts.out,
+    ],
+    !!opts.verbose,
+  );
+}
+
 export interface MuxSubtitlesOptions {
   /** video to add the subtitle track to (its streams are copied) */
   video: string;

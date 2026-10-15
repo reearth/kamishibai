@@ -3,9 +3,12 @@
 import { mkdtemp, mkdir, rm, readdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, extname, isAbsolute } from "node:path";
 import os from "node:os";
-import { serveEntry } from "./serve.ts";
+import { serveEntry, SCRIPT_EXT, type Served } from "./serve.ts";
+import { loadCanvasEntry, setTTSHook, type CanvasEntry } from "./canvas/node.ts";
+import { paintPool } from "./canvas/pool.ts";
+import { resolveView, viewKey, type Insets, type View } from "./canvas/types.ts";
 import { GPU_CHROME_ARGS, probeMeta, probeReel, type ReelWaitOptions } from "./renderer.ts";
 import { renderPool } from "./pool.ts";
 import { splitFrames } from "./segment.ts";
@@ -105,6 +108,16 @@ export interface RenderOptions {
    *  in progress (ms; default 15s). Narration synthesis in flight doesn't
    *  count against it. */
   probeTimeoutMs?: number;
+  /** how to draw the frames: a canvas reel on the CPU, or a page in Chrome.
+   *  "auto" (default) paints a script entry whose default export is a canvas
+   *  reel on the CPU, and captures everything else in Chrome. */
+  renderer?: "auto" | "canvas" | "chrome";
+  /** a canvas reel's view size in layout units (default: its meta size) */
+  size?: { width: number; height: number };
+  /** a canvas reel's view shape, e.g. "9:16"; the long side keeps meta's */
+  aspect?: string | number;
+  /** space a canvas reel keeps clear of, in layout units */
+  insets?: Partial<Insets>;
 }
 
 export interface RenderResult {
@@ -138,7 +151,7 @@ export function resolveAudioSrc(src: string, publicDir?: string): string {
  *  auto-duck — after the drop, so a dropped narration line doesn't leave a
  *  phantom dip in the music. When something ducks, each source's length is
  *  probed so a clip without `durationMs` still dips the ducked ones. */
-async function prepareAudio(
+export async function prepareAudio(
   clips: AudioManifest,
   publicDir: string | undefined,
   reelMs: number,
@@ -240,6 +253,14 @@ export interface CaptureOptions {
    *  in progress (ms; default 15s). Narration synthesis in flight doesn't
    *  count against it. */
   probeTimeoutMs?: number;
+  /** see RenderOptions.renderer */
+  renderer?: "auto" | "canvas" | "chrome";
+  /** see RenderOptions.size */
+  size?: { width: number; height: number };
+  /** see RenderOptions.aspect */
+  aspect?: string | number;
+  /** see RenderOptions.insets */
+  insets?: Partial<Insets>;
 }
 
 export interface CaptureResult {
@@ -258,6 +279,8 @@ export interface CaptureResult {
   prints: Map<number, string>;
   /** the output pixel size and scale the prints describe, e.g. "1920x1080@1" */
   geometry: string;
+  /** a canvas reel's view; undefined for a page */
+  view?: View;
 }
 
 /** How often to report narration progress while lines are synthesizing. */
@@ -359,11 +382,53 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
   // once and freeze — deterministic across parallel capture.
   const narration = narrationEngine(opts, log);
   const { tts } = narration;
-  const served = await serveEntry(opts.entry, {
-    publicDir: opts.publicDir,
-    tts: (body) => tts.handle(body as Parameters<typeof tts.handle>[0]),
-    burnSubtitles: opts.burnSubtitles,
-  });
+  const handleTTS = (body: unknown) => tts.handle(body as Parameters<typeof tts.handle>[0]);
+
+  // A canvas reel is painted here, on the CPU (unless --renderer chrome asks
+  // for it to be mounted in a page); anything else is a page for Chrome.
+  // Loading the entry runs its top level, prepareNarration included, so the
+  // TTS engine is in place first.
+  let canvas: CanvasEntry | null = null;
+  let canvasPage = false;
+  const isScript = SCRIPT_EXT.has(extname(opts.entry).toLowerCase()) && !/^https?:\/\//i.test(opts.entry);
+  if (isScript) {
+    setTTSHook(handleTTS);
+    try {
+      canvas = await loadCanvasEntry(opts.entry);
+    } finally {
+      narration.stop();
+      if (!canvas) setTTSHook(undefined);
+    }
+    if (canvas && opts.renderer === "chrome") {
+      canvasPage = true;
+      setTTSHook(undefined);
+      await canvas.close();
+      canvas = null;
+    }
+  }
+  if (opts.renderer === "canvas" && !canvas) {
+    throw new Error(`--renderer canvas: "${opts.entry}" is not a canvas reel (a script whose default export has meta and setup)`);
+  }
+  if (!canvas && (opts.size || opts.aspect !== undefined || opts.insets)) {
+    throw new Error(
+      canvasPage
+        ? `--size, --aspect and --inset need the CPU renderer; in Chrome a canvas reel draws at its meta size`
+        : `--size, --aspect and --inset are for canvas reels; "${opts.entry}" is a page`,
+    );
+  }
+  if (canvas && opts.burnSubtitles) {
+    setTTSHook(undefined);
+    await canvas.close();
+    throw new Error(`--burn-subtitles is for pages; a canvas reel draws its own captions`);
+  }
+  const served: Served | undefined = canvas
+    ? undefined
+    : await serveEntry(opts.entry, {
+        publicDir: opts.publicDir,
+        tts: handleTTS,
+        burnSubtitles: opts.burnSubtitles,
+        canvas: canvasPage,
+      });
 
   // Reuse (incremental/--only) keeps PNGs on disk, so don't wipe first.
   const reuse = !!(opts.incremental || opts.only);
@@ -371,12 +436,25 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
   if (!reuse) await clearFrames(framesDir);
 
   try {
-    log(`Probing ${served.url} …`);
     let probed;
-    try {
-      probed = await probeReel(served.url, narration.wait);
-    } finally {
-      narration.stop();
+    let view: View | undefined;
+    if (canvas) {
+      view = resolveView(canvas.reel.meta, {
+        size: opts.size,
+        aspect: opts.aspect,
+        insets: opts.insets,
+        pixelRatio: opts.scale ?? 1,
+        medium: "video",
+      });
+      const { fps, durationMs } = canvas.reel.meta;
+      probed = { meta: { fps, durationMs, width: view.width, height: view.height }, webgl: false };
+    } else {
+      log(`Probing ${served!.url} …`);
+      try {
+        probed = await probeReel(served!.url, narration.wait);
+      } finally {
+        narration.stop();
+      }
     }
     narration.summarize();
     // An explicit --fps re-samples the same reel (ms-driven) at a new rate.
@@ -407,6 +485,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       height: meta.height,
       scale,
       burnSubtitles: !!opts.burnSubtitles,
+      view: view && viewKey(view),
     };
     const prev = reuse ? await readManifest(framesDir) : undefined;
     if (prev && !manifestMatches(prev, manifestKey)) {
@@ -452,9 +531,10 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     const fingerprints = new Map<number, string>();
 
     log(
-      `Capturing ${selected ? `${selected.size} of ${total}` : `${total}`} frames (${outW}×${outH}` +
+      `${canvas ? "Painting" : "Capturing"} ${selected ? `${selected.size} of ${total}` : `${total}`} frames (${outW}×${outH}` +
         `${scale !== 1 ? ` @${scale}x` : ""} @ ${meta.fps}fps) ` +
-        `on ${chunks.length} page(s)${probed.webgl && GPU_CHROME_ARGS.length ? ", WebGL on the GPU" : ""}…` +
+        `on ${chunks.length} ${canvas ? "worker thread(s), on the CPU" : "page(s)"}` +
+        `${probed.webgl && GPU_CHROME_ARGS.length ? ", WebGL on the GPU" : ""}…` +
         `${opts.incremental && prevFingerprints?.size ? ` (incremental: ${prevFingerprints.size} cached)` : ""}`,
     );
 
@@ -469,8 +549,35 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
 
     let collected;
     try {
-      collected = await renderPool({
-        url: served.url,
+      if (canvas) {
+        await paintPool({
+          bundle: canvas.bundle,
+          dir: canvas.dir,
+          view: view!,
+          fps: meta.fps,
+          chunks,
+          framesDir,
+          prevFingerprints,
+          only: selected,
+          tts: handleTTS,
+          onProgress: (done) => {
+            doneFrames = done;
+          },
+          onFingerprint: (i, fp) => fingerprints.set(i, fp),
+          onChunkDone: (c) => log(`  ✓ chunk ${c.id}: frames ${c.start}..${c.end - 1}`),
+        });
+        // A canvas reel declares its markers up front; its audio paths are
+        // relative to the reel's module.
+        const reelDir = canvas.dir;
+        collected = {
+          audio: (canvas.reel.audio ?? []).map((c) => {
+            const near = resolve(reelDir, c.src);
+            return c.src && !/^https?:\/\//i.test(c.src) && !isAbsolute(c.src) && existsSync(near) ? { ...c, src: near } : c;
+          }),
+          subtitles: canvas.reel.subtitles ?? [],
+        };
+      } else collected = await renderPool({
+        url: served!.url,
         meta,
         chunks,
         framesDir,
@@ -515,6 +622,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
           subtitles: sidecar.subtitles,
           prints,
           geometry,
+          view,
         };
       }
       log(
@@ -545,9 +653,12 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       subtitles: collected.subtitles,
       prints,
       geometry,
+      view,
     };
   } finally {
-    await served.close();
+    await served?.close();
+    await canvas?.close();
+    setTTSHook(undefined);
   }
 }
 
@@ -596,6 +707,10 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
       ttsAdapters: opts.ttsAdapters,
       ttsCacheDir: opts.ttsCacheDir,
       probeTimeoutMs: opts.probeTimeoutMs,
+      renderer: opts.renderer,
+      size: opts.size,
+      aspect: opts.aspect,
+      insets: opts.insets,
     });
 
     // Reuse fills only some frames and trusts the dir for the rest — make sure
@@ -771,6 +886,31 @@ export async function synthesize(opts: SynthesizeOptions): Promise<SynthesizeRes
   await assertFfmpeg(); // ffprobe measures every line
   const narration = narrationEngine(opts, log);
   const { tts } = narration;
+  const report = () => {
+    const s = tts.stats();
+    if (s.total > 0) narration.summarize();
+    else if (s.cached > 0) log(`Narration is up to date — all ${s.cached} line(s) were already cached.`);
+    else log(`No narration found — the reel requested no lines.`);
+    return { synthesized: s.done, cached: s.cached, failed: s.failed, cacheDir: tts.cacheDir };
+  };
+
+  // A canvas reel asks for its narration when its module loads, in Node.
+  if (SCRIPT_EXT.has(extname(opts.entry).toLowerCase())) {
+    setTTSHook((body) => tts.handle(body as Parameters<typeof tts.handle>[0]));
+    let canvas: CanvasEntry | null;
+    try {
+      log(`Loading ${opts.entry} …`);
+      canvas = await loadCanvasEntry(opts.entry);
+    } finally {
+      narration.stop();
+      setTTSHook(undefined);
+    }
+    if (canvas) {
+      await canvas.close();
+      return report();
+    }
+  }
+
   const served = await serveEntry(opts.entry, {
     publicDir: opts.publicDir,
     tts: (body) => tts.handle(body as Parameters<typeof tts.handle>[0]),
@@ -782,11 +922,7 @@ export async function synthesize(opts: SynthesizeOptions): Promise<SynthesizeRes
     } finally {
       narration.stop();
     }
-    const s = tts.stats();
-    if (s.total > 0) narration.summarize();
-    else if (s.cached > 0) log(`Narration is up to date — all ${s.cached} line(s) were already cached.`);
-    else log(`No narration found — the page requested no lines.`);
-    return { synthesized: s.done, cached: s.cached, failed: s.failed, cacheDir: tts.cacheDir };
+    return report();
   } finally {
     await served.close();
   }

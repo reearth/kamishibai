@@ -11,6 +11,7 @@ The [README](../README.md) covers the idea, the one contract and a quick start. 
 - [Video (frame-accurate)](video.md): video clips decoded frame by frame with WebCodecs
 - [Subtitles](subtitles.md): soft tracks, burn-in, SRT/VTT
 - [Narration (TTS)](narration.md): voice-over synthesized once, before capture, and cached
+- [Canvas reels](canvas.md): a reel drawn on a 2D canvas, painted on the CPU with no browser, at any shape
 
 **Running it**
 

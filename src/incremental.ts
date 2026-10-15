@@ -12,7 +12,8 @@
 //
 // Both reuse frames on disk, so both need a persisted --frames-dir. The
 // manifest is invalidated whenever the output geometry changes (fps / size /
-// scale), since old fingerprints no longer describe the same pixels.
+// scale, or a canvas reel's view), since old fingerprints no longer describe
+// the same pixels.
 // ------------------------------------------------------------------
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -30,6 +31,8 @@ export interface ManifestKey {
   scale: number;
   /** burned-in captions change the pixels, so cached frames don't carry over */
   burnSubtitles: boolean;
+  /** a canvas reel's view (viewKey): its size, insets and medium change the layout */
+  view?: string;
 }
 
 export interface FrameManifest extends ManifestKey {
@@ -54,7 +57,8 @@ export function manifestMatches(m: FrameManifest | undefined, key: ManifestKey):
     m.width === key.width &&
     m.height === key.height &&
     m.scale === key.scale &&
-    !!m.burnSubtitles === key.burnSubtitles
+    !!m.burnSubtitles === key.burnSubtitles &&
+    m.view === key.view
   );
 }
 

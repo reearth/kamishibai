@@ -27,10 +27,16 @@ kamishibai render <entry|url> [options]
 | `--probe-timeout` | | seconds to wait for the page to expose `window.kamishibai` with nothing in progress (default: 15); narration still synthesizing doesn't count |
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
+| `--size` | | a [canvas reel](canvas.md)'s view size in layout units, e.g. `1080x1920` (default: its meta size) |
+| `--aspect` | | a canvas reel's view shape, e.g. `9:16`; the long side keeps meta's (within the reel's `meta.aspect`) |
+| `--inset` | | space a canvas reel keeps clear of, in layout units: `top,right,bottom,left`, or one number for all sides |
+| `--renderer` | | `auto` (default): a script whose default export is a canvas reel is painted on the CPU, anything else is captured in Chrome; `canvas` requires a canvas reel; `chrome` mounts a canvas reel in a page |
 
 The entry can be a **URL** you already serve (`http://localhost:3000`), a local **`.html`** file (its directory is served as-is), or a local **script** (`.ts` / `.tsx` / `.js` / `.jsx`) — bundled with esbuild and served for you. A URL is loaded untouched, so `--public`, `--burn-subtitles` and narration (TTS) only work with an `.html` or script entry; the CLI warns when you pass them with a URL.
 
-Not every subcommand reads every flag: `capture` takes the capture-time ones (`-w`, `--fps`, `-s`, `-p`, `-f`, `-i`, `--only`, `--burn-subtitles`, `--probe-timeout`), `encode` the encode-time ones (`-o`, `-f`, `--fps`, `--max-width`, `--gif-loop`, `--crf`, `--preset`/`--preview`, `--encode-args`, `--mux-args`, `--verbose`), `tts` only `-p` and `--probe-timeout`, `dev` only `-p`, `--port`, `--mute`, `--cc`, `--no-sweep` and `--no-open`, and `render` all of them. A flag the subcommand doesn't use is ignored with a warning.
+`kamishibai export <entry> -o reel.html` writes a [canvas reel](canvas.md#one-html-file-kamishibai-export) and its player as one HTML file; `--bare` leaves out the controls (it autoplays), `--loop` takes the values of `--gif-loop` (`0` forever, `-1` once, the default, `n` that many more times), `--no-autoplay` waits for the viewer or the page to start it, and `--tts-adapter` works as for `render`. These set the file's defaults; its URL's query (`?controls=0&autoplay=1&loop=0&t=10&muted=1`) can change them.
+
+Not every subcommand reads every flag: `capture` takes the capture-time ones (`-w`, `--fps`, `-s`, `-p`, `-f`, `-i`, `--only`, `--burn-subtitles`, `--probe-timeout`, `--size`, `--aspect`, `--inset`, `--renderer`), `encode` the encode-time ones (`-o`, `-f`, `--fps`, `--max-width`, `--gif-loop`, `--crf`, `--preset`/`--preview`, `--encode-args`, `--mux-args`, `--verbose`), `tts` only `-p` and `--probe-timeout`, `dev` only `-p`, `--port`, `--mute`, `--cc`, `--no-sweep` and `--no-open`, and `render` all of them. A flag the subcommand doesn't use is ignored with a warning.
 
 ```sh
 kamishibai render reel.tsx -o reel.mp4 -w 4

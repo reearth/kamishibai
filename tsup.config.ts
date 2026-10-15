@@ -12,6 +12,10 @@ export default defineConfig({
     path: "src/path.ts",
     // The dev player's browser script, served by `kamishibai dev`.
     "dev-player": "src/dev/player.ts",
+    // Canvas reels: the contract and the browser host (kamishibai/canvas), and
+    // the worker thread that paints them on the CPU.
+    canvas: "src/canvas/browser.ts",
+    "canvas-worker": "src/canvas/worker.ts",
   },
   format: ["esm"],
   target: "node20",
@@ -25,5 +29,5 @@ export default defineConfig({
   // without resolving a file path at runtime.
   loader: { ".md": "text" },
   // React sugar is consumed by the user's bundle, not by us — keep it external.
-  external: ["react", "react-dom", "playwright"],
+  external: ["react", "react-dom", "playwright", "@napi-rs/canvas"],
 });

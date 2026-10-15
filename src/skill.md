@@ -292,6 +292,55 @@ From `kamishibai/easing` (also re-exported by `kamishibai/react`; no React neede
 `pointAt(d, t)` → `{ x, y, angle }` at progress `t`; `pointAtLength(d, len)`;
 `pathLength(d)`.
 
+<!-- topic: canvas | Canvas reels: a module drawn on a 2D canvas, painted on the CPU with no browser, laid out for any shape (`--aspect 9:16`) -->
+## Canvas reels
+
+A reel can be a module instead of a page: its default export draws a frame on
+a 2D canvas, and `kamishibai render` paints it on the CPU with Skia, no
+browser. It needs `npm i -D @napi-rs/canvas`. Use it when everything fits a 2D
+canvas; keep a page for the DOM, CSS or WebGL.
+
+```ts
+import { canvasReel } from "kamishibai/canvas";
+
+export default canvasReel({
+  meta: { fps: 30, durationMs: 4000, width: 1920, height: 1080, aspect: { min: 9 / 16, max: 16 / 9 } },
+  fonts: [{ family: "Geist", src: "fonts/Geist.ttf", weight: "100 900" }], // relative to this file
+  setup(view, env) {
+    // once per view: lay out for view.width × view.height (layout units)
+    return (g, ms) => {
+      // every frame: draw the whole frame for ms; return false / a fingerprint like seek()
+    };
+  },
+});
+```
+
+- `setup` runs once per view; the painter must be a pure function of `ms`.
+  Time (`durationMs`, `audio`, `subtitles`) must not depend on the view.
+- `view` = `{ width, height, pixelRatio, medium, insets }`. Lay out from
+  `width`/`height`, and keep text out of `insets` (an app's controls over a
+  vertical video).
+- `env.readText(path)`, `env.loadImage(path)`, `env.createCanvas(w, h)` instead
+  of `fs`, `<img>` or `document.createElement("canvas")`; paths are relative to
+  the reel.
+- Any weight works in `font` for a variable font, and `textBaseline` is placed
+  as in a browser.
+
+```sh
+kamishibai render reel.ts -o out.mp4
+kamishibai render reel.ts --aspect 9:16 -o tall.mp4   # the long side keeps meta's
+kamishibai render reel.ts --aspect 9:16 --inset 160,140,360,40 -o app.mp4
+kamishibai dev reel.ts                                # the same player as a page
+kamishibai export reel.ts -o reel.html                # one HTML file, any window shape (npm i -D subset-font)
+kamishibai export reel.ts --bare --loop 0 -o embed.html  # no controls, autoplays; --loop as --gif-loop
+# the file's URL can change those: reel.html?controls=0&autoplay=0&loop=0&t=10&muted=1
+```
+
+Frames, `-i`, `--only`, `encode`, audio and narration work as for a page. Look
+at the frames of every shape you render: a layout that fits 16:9 may not fit
+9:16.
+<!-- /topic -->
+
 ## Rendering (CLI)
 
 ```
