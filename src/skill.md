@@ -2,6 +2,9 @@
 
 kamishibai seeks a web page to each moment, screenshots it, and encodes the
 stills into a video. You write a page that draws "the state at time `ms`".
+A reel can also be a module drawn on a 2D canvas, painted with no browser
+(`kamishibai skill canvas`), and any reel can be exported as one HTML file
+that plays with no server (`kamishibai skill export`).
 
 <!-- topics -->
 

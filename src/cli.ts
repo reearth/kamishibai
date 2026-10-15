@@ -21,7 +21,11 @@ import { parseAspect, parseInsets } from "./canvas/types.ts";
 import SKILL from "./skill.md";
 import { skillText } from "./skill.ts";
 
-const HELP = `kamishibai — seek a web page frame by frame and bake it into an mp4.
+const HELP = `kamishibai — turn a reel into a video: a web page seeked frame by frame
+in Chrome, or a canvas reel painted with no browser. Or into one HTML file.
+
+Writing a reel (or helping someone write one)? Run \`kamishibai skill\` first:
+it prints the guide.
 
 Usage:
   kamishibai render <entry|url> [options]        capture + encode (the usual one)

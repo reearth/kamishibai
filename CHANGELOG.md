@@ -14,6 +14,10 @@ can contain breaking changes, and they are called out under **Changed**.
 - **`kamishibai export reel.tsx -o reel.html`** writes a reel and its player as one HTML file that plays offline, with its soundtrack (mixed into one track), narration and captions. A page is seeked through every frame in Chrome once, and the files it reads from its server are embedded and served back to it from the file. A canvas reel is laid out for the window's shape, its fonts cut to the characters it draws (`subset-font`, an optional peer dependency). See [docs/export.md](docs/export.md). `--bare` leaves out the controls, for a page to embed, `--loop` takes the values of `--gif-loop` (`0` forever, `-1` once by default, `n` more times), and `--no-autoplay` waits to be started. These are the file's defaults: its URL's query (`?controls=0&autoplay=1&loop=0&t=10&muted=1`) can change them, so one file embeds several ways.
 - **`play(reel, el, options)`** from `kamishibai/canvas` plays a canvas reel in any element, laid out for its shape, and returns a handle (`play`, `pause`, `seek`, …) a page can drive.
 
+### Docs
+
+- **`kamishibai --help` starts by pointing at `kamishibai skill`**, the guide for writing a reel, and its first line, like the guide's, now names canvas reels and HTML export.
+
 ## 0.8.1
 
 ### Fixed
