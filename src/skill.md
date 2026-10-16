@@ -353,8 +353,10 @@ kamishibai export reel.tsx --bare --loop 0 -o embed.html   # no controls, autopl
 kamishibai export reel.tsx --bare --no-autoplay -o s.html  # waits for the page: window.kamishibaiPlayer.seek(ms)
 ```
 
-- The file plays offline, with the soundtrack (mixed into one track), the
-  narration and captions. Its URL can change the defaults:
+- The file plays offline, with the sound, the narration and captions. The
+  sound is mixed into one track (`--audio mix`, the default), or each file is
+  carried and the clips are played live with Web Audio (`--audio live`;
+  smaller when a short loop runs under a long reel). Its URL can change the defaults:
   `reel.html?controls=0&autoplay=0&loop=0&t=10&muted=1&cc=0`.
 - A page is seeked through every frame in Chrome once, and every file it reads
   from its own server is embedded (`-p` as for render). Files on other

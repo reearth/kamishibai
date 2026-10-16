@@ -17,7 +17,7 @@ Both kinds of reel export: a page (`window.kamishibai`, React or raw) and a [can
 ## The player
 
 - Click the picture, or press space, to play and pause; the arrow keys step a frame.
-- The reel's soundtrack plays with it, and the player follows the soundtrack's clock. Browsers start sound only after the viewer has interacted with the page, so a file that autoplays starts muted.
+- The reel's sound plays with it, and the player follows the sound's clock. Browsers start sound only after the viewer has interacted with the page, so a file that autoplays starts muted; the sound button turns it on.
 - Subtitle cues show as captions over the picture.
 - `--loop` takes the values of `--gif-loop`: `0` forever, `-1` once (the default), `n` that many more times.
 
@@ -43,7 +43,9 @@ A page that embeds the file can drive it through `window.kamishibaiPlayer` (`pla
 `export` runs the reel once, every frame, and puts in the file what it reads while it plays:
 
 - **the narration** `prepareNarration` returned, so the reel lays out to the voice-over's real length with no TTS server;
-- **the soundtrack**, mixed into one AAC track by the same pass that mixes an mp4's (gains, fades and ducking included). It adds about 16 KB a second (96 kbps, as base64);
+- **the sound**, in one of two ways (`--audio`):
+  - `mix` (the default): mixed into one AAC track by the same pass that mixes an mp4's (gains, fades and ducking included). The player plays that track and follows its clock. It adds about 16 KB a second (96 kbps, as base64), however many clips there are.
+  - `live`: each sound file once, with each clip's start, trim, loop, gain, fades and gain keyframes (ducking is worked out at export, as keyframes). The player schedules the clips with Web Audio, as `kamishibai dev` does, and follows the Web Audio clock. The file grows with the sound files instead of the reel's length, so a short loop under a long reel stays small. A file browsers can't decode (macOS `say` writes AIFF) is re-encoded as AAC; that and checking the clips need ffmpeg, and without it the clips go in unchecked. Fades and resampling can differ slightly from the mp4's mix.
 - **the reel's code**, bundled and minified, with the player.
 
 Then, by kind of reel:

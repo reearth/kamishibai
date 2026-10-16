@@ -105,6 +105,8 @@ Export options (export):
       --loop <n>        play again from the start, as --gif-loop: 0 = forever,
                         -1 = once (default), n = n more times
       --no-autoplay     wait for the viewer (or the page) to start it
+      --audio <mode>    mix (default): the sound mixed into one track with ffmpeg;
+                        live: each clip's file, played with Web Audio
                         These set the file's defaults; its URL can change them:
                         ?controls=0|1 &autoplay=0|1 &loop=<n> &t=<s> &muted=1
   -p, --public <dir>, --probe-timeout <s>, --tts-adapter <file>
@@ -165,7 +167,7 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   encode: new Set(ENCODE_FLAGS),
   tts: new Set(["public", "probe-timeout", "tts-adapter"]),
   dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
-  export: new Set(["out", "bare", "loop", "no-autoplay", "public", "probe-timeout", "tts-adapter"]),
+  export: new Set(["out", "bare", "loop", "no-autoplay", "audio", "public", "probe-timeout", "tts-adapter"]),
 };
 
 // libx264's speed presets, slowest-compressing last. Validated so a typo fails
@@ -249,6 +251,7 @@ async function main(): Promise<void> {
       renderer: { type: "string" },
       bare: { type: "boolean" },
       "no-autoplay": { type: "boolean" },
+      audio: { type: "string" },
       verbose: { type: "boolean" },
       port: { type: "string" },
       mute: { type: "boolean" },
@@ -438,7 +441,11 @@ async function main(): Promise<void> {
     if (htmlLoops !== undefined && (!Number.isInteger(htmlLoops) || htmlLoops < -1)) {
       throw new Error(`--loop must be an integer ≥ -1 (0 = forever, -1 = once), got "${htmlLoop.value}"`);
     }
+    if (values.audio !== undefined && values.audio !== "mix" && values.audio !== "live") {
+      throw new Error(`--audio must be mix or live, got "${values.audio}"`);
+    }
     const r = await exportHtml({
+      audio: values.audio as "mix" | "live" | undefined,
       entry,
       out: values.out ?? "reel.html",
       bare: values.bare,

@@ -356,6 +356,11 @@ export async function mixAudio(opts: {
   );
 }
 
+/** Re-encode an audio file (or a video's sound) as AAC in an .m4a, for a browser that can't decode the source. */
+export async function transcodeAudio(o: { src: string; out: string; bitrate?: string; verbose?: boolean }): Promise<void> {
+  await runFfmpeg(["-y", "-i", o.src, "-vn", "-c:a", "aac", "-b:a", o.bitrate ?? "96k", o.out], !!o.verbose);
+}
+
 export interface MuxSubtitlesOptions {
   /** video to add the subtitle track to (its streams are copied) */
   video: string;

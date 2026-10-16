@@ -140,18 +140,19 @@ export function resolveView(meta: CanvasReelMeta, req: ViewRequest = {}): View {
     const long = Math.max(meta.width, meta.height);
     [width, height] = r >= 1 ? [long, long / r] : [long * r, long];
   }
-  width = even(width);
-  height = even(height);
+  // The shape is checked as asked for: rounding to even numbers can move a
+  // small size's ratio more than any slack would allow (16×9 → 16×10).
   const range = aspectRange(meta);
   const r = width / height;
-  // A hair of slack, for sizes rounded to even numbers.
-  if (r < range.min * 0.99 || r > range.max * 1.01) {
+  if (r < range.min * 0.999 || r > range.max * 1.001) {
     const fmt = (x: number) => x.toFixed(3);
     throw new Error(
       `the reel lays out for width/height ${fmt(range.min)}…${fmt(range.max)} ` +
         `(meta.aspect), not ${width}×${height} (${fmt(r)})`,
     );
   }
+  width = even(width);
+  height = even(height);
   return {
     width,
     height,

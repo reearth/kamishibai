@@ -9,14 +9,12 @@
 // prepareNarration returns, and the soundtrack, mixed into one track.
 // ------------------------------------------------------------------
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { writeExportHtml } from "../export-html.ts";
+import { exportSound, writeExportHtml } from "../export-html.ts";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import { build, type Plugin } from "esbuild";
 import { frameCount, frameTimeMs } from "../protocol.ts";
-import { assertFfmpeg, mixAudio } from "../ffmpeg.ts";
-import { prepareAudio } from "../render.ts";
 import { SCRIPT_EXT, bundleOptions, canvasModule } from "../serve.ts";
 import { createTTSEngine, type TTSAdapter } from "../tts/engine.ts";
 import { loadCanvasEntry, loadSkia, nodeEnv, patchContext, recordText, registerFonts, setTTSHook, type EnvReads } from "./node.ts";
@@ -37,6 +35,9 @@ export interface ExportOptions {
   publicDir?: string;
   /** how long to wait for a page to expose window.kamishibai (ms) */
   probeTimeoutMs?: number;
+  /** the sound: "mix" (default) mixes it into one track with ffmpeg; "live" carries
+   *  each clip's file and plays them with Web Audio, as kamishibai dev does */
+  audio?: "mix" | "live";
   /** the soundtrack's AAC bitrate (default "96k") */
   audioBitrate?: string;
   ttsAdapters?: TTSAdapter[];
@@ -163,25 +164,12 @@ export async function exportHtml(opts: ExportOptions): Promise<ExportResult> {
       images[path] = dataUrl(MIME[extname(file).toLowerCase()] ?? "application/octet-stream", bytes);
     }
 
-    // ---- the soundtrack, mixed into one track as for an mp4
-    let soundtrack: string | undefined;
-    let audioBytes = 0;
+    // ---- the sound: mixed into one track, or the clips to play live
     const clips = (reel.audio ?? []).map((c) => {
       const near = resolve(dir, c.src);
       return c.src && !/^https?:\/\//i.test(c.src) && !isAbsolute(c.src) && existsSync(near) ? { ...c, src: near } : c;
     });
-    if (clips.length) {
-      await assertFfmpeg();
-      const kept = await prepareAudio(clips, undefined, reel.meta.durationMs, log);
-      if (kept.length) {
-        const m4a = join(tmp, "soundtrack.m4a");
-        log(`Mixing ${kept.length} audio clip(s) into one track…`);
-        await mixAudio({ clips: kept, out: m4a, durationMs: reel.meta.durationMs, bitrate: opts.audioBitrate });
-        const bytes = await readFile(m4a);
-        audioBytes = bytes.length;
-        soundtrack = dataUrl("audio/mp4", bytes);
-      }
-    }
+    const sound = await exportSound({ clips, mode: opts.audio ?? "mix", durationMs: reel.meta.durationMs, bitrate: opts.audioBitrate, tmp, log });
 
     // ---- the reel and the player, bundled for the page
     const prelude: Plugin = {
@@ -217,7 +205,7 @@ const data = JSON.parse(document.getElementById("kamishibai-data").textContent);
 const options = optionsFromQuery(location.search, { controls: !data.bare, loop: data.loop, autoplay: data.autoplay });
 window.kamishibaiPlayer = await play(reel, document.getElementById("kamishibai"), {
   ...options, medium: data.bare ? "embed" : "player",
-  texts: data.texts, images: data.images, fonts: data.fonts, soundtrack: data.soundtrack,
+  texts: data.texts, images: data.images, fonts: data.fonts, soundtrack: data.soundtrack, liveAudio: data.liveAudio,
 });`,
         resolveDir: dir,
         sourcefile: "kamishibai-export.js",
@@ -228,9 +216,9 @@ window.kamishibaiPlayer = await play(reel, document.getElementById("kamishibai")
     const js = built.outputFiles[0]!.text;
     const loop = opts.loop === undefined || opts.loop === -1 ? false : opts.loop === 0 ? true : opts.loop;
 
-    const data = { bare: !!opts.bare, loop, autoplay: opts.autoplay === false ? false : undefined, texts, images, fonts, soundtrack, narration: [...narration] };
+    const data = { bare: !!opts.bare, loop, autoplay: opts.autoplay === false ? false : undefined, texts, images, fonts, soundtrack: sound.soundtrack, liveAudio: sound.liveAudio, narration: [...narration] };
     const bytes = await writeExportHtml({ out: opts.out, title: reel.meta.title ?? basename(opts.entry), bare: !!opts.bare, data, js });
-    return { out: resolve(opts.out), bytes, parts: { script: js.length, fonts: fontBytes, files: fileBytes, soundtrack: audioBytes }, frames };
+    return { out: resolve(opts.out), bytes, parts: { script: js.length, fonts: fontBytes, files: fileBytes, soundtrack: sound.bytes }, frames };
   } finally {
     await entry.close();
     await rm(tmp, { recursive: true, force: true });

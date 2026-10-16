@@ -17,6 +17,7 @@
 // ------------------------------------------------------------------
 import { frameCount, frameTimeMs, type KamishibaiMeta, type KamishibaiPage } from "../protocol.ts";
 import { applyDucking, clipKey, type AudioClip } from "../audio.ts";
+import { clipLength as clipLengthIn, scheduleClip as scheduleClipLive } from "../audio-live.ts";
 import type { Cue } from "../subtitle.ts";
 
 /** What the overlay shows: nothing; the soft subtitles; or, on top of those,
@@ -434,70 +435,11 @@ function scheduleAudio(): void {
   });
 }
 
-/** dB at `ms` along linearly interpolated keyframes (held flat outside them). */
-function keyframeDb(kf: Array<{ atMs: number; gain: number }>, ms: number): number {
-  if (kf.length === 0) return 0;
-  if (ms <= kf[0]!.atMs) return kf[0]!.gain;
-  for (let i = 1; i < kf.length; i++) {
-    const a = kf[i - 1]!;
-    const b = kf[i]!;
-    if (ms <= b.atMs) return b.atMs === a.atMs ? b.gain : a.gain + ((b.gain - a.gain) * (ms - a.atMs)) / (b.atMs - a.atMs);
-  }
-  return kf[kf.length - 1]!.gain;
-}
-
-function clipLength(c: AudioClip, sourceMs: number | undefined): number | undefined {
-  const rest = sourceMs != null ? Math.max(0, sourceMs - (c.trimStartMs ?? 0)) : undefined;
-  if (c.loop) return c.durationMs ?? meta!.durationMs - c.atMs;
-  if (c.durationMs != null) return rest != null ? Math.min(c.durationMs, rest) : c.durationMs;
-  return rest;
-}
+const clipLength = (c: AudioClip, sourceMs: number | undefined) => clipLengthIn(c, sourceMs, meta!.durationMs);
 
 function scheduleClip(c: AudioClip, buf: AudioBuffer, nowMs: number): void {
-  const a = ac!;
-  const trim = c.trimStartMs ?? 0;
-  const len = clipLength(c, buf.duration * 1000)!;
-  const end = Math.min(c.atMs + len, meta!.durationMs);
-  if (end <= nowMs) return;
-  const startMs = Math.max(c.atMs, nowMs);
-  const local = startMs - c.atMs;
-  const when = a.currentTime + (startMs - nowMs) / 1000;
-
-  const node = a.createBufferSource();
-  node.buffer = buf;
-  let offsetMs = trim + local;
-  if (c.loop) {
-    node.loop = true;
-    node.loopStart = trim / 1000;
-    node.loopEnd = buf.duration;
-    const loopLen = buf.duration * 1000 - trim;
-    offsetMs = trim + (loopLen > 0 ? local % loopLen : 0);
-  }
-
-  // The level over the clip's own time: gain + keyframes in dB, times the fades.
-  const kf = c.gainKeyframes ?? [];
-  const level = (ms: number) => {
-    let v = 10 ** (((c.gain ?? 0) + keyframeDb(kf, ms)) / 20);
-    if (c.fadeInMs && ms < c.fadeInMs) v *= ms / c.fadeInMs;
-    if (c.fadeOutMs && ms > len - c.fadeOutMs) v *= Math.max(0, (len - ms) / c.fadeOutMs);
-    return v;
-  };
-  const points = [
-    ...kf.map((k) => k.atMs),
-    c.fadeInMs ?? 0,
-    c.fadeOutMs ? len - c.fadeOutMs : 0,
-    len,
-  ]
-    .filter((p) => p > local && p <= len)
-    .sort((x, y) => x - y);
-  const g = a.createGain();
-  g.gain.setValueAtTime(level(local), when);
-  for (const p of points) g.gain.linearRampToValueAtTime(level(p), when + (p - local) / 1000);
-
-  node.connect(g).connect(a.destination);
-  node.start(when, offsetMs / 1000);
-  node.stop(when + (end - startMs) / 1000);
-  sources.push(node);
+  const node = scheduleClipLive(ac!, ac!.destination, c, buf, nowMs, meta!.durationMs);
+  if (node) sources.push(node);
 }
 
 // ---- drawing ----------------------------------------------------------
