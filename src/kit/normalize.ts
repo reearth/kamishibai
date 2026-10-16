@@ -5,7 +5,7 @@
 import { checkFields, closest, f, type Fields } from "./fields.ts";
 import { kataDef, kataNames } from "./kata.ts";
 import { COMMON, partDef, partTypes, type Placed } from "./parts.ts";
-import { KIT_VERSION, type KitReelSpec, type PartSpec } from "./spec.ts";
+import { KIT_VERSION, type KitReelSpec, type PartSpec, type Transition } from "./spec.ts";
 import { sentences } from "./text.ts";
 
 export type NormScene = {
@@ -16,7 +16,16 @@ export type NormScene = {
   parts: Placed<PartSpec>[];
   /** the sentence each cued part (and every part inside it) comes in with, by id */
   cues: Map<string, number>;
+  /** how it comes in after the scene before */
+  transition: Transition;
+  /** where the camera moves in, in order of their sentences */
+  focus: Focus[];
 };
+
+/** The camera on a part from a sentence on, at a zoom (or as close as fits). */
+export type Focus = { on: string; cue: number; zoom?: number };
+
+const TRANSITIONS = ["morph", "cut", "fade", "push", "wipe"] as const;
 
 export const REEL_FIELDS: Fields = {
   kit: f.num(`the layout rules' version: ${KIT_VERSION}`, true),
@@ -41,6 +50,14 @@ export const SCENE_FIELDS: Fields = {
   ms: f.num("hold this long instead of the narration's length"),
   kata: f.str("a scene shape, filled in with the fields beside it"),
   parts: f.parts("parts, after the shape's"),
+  transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
+  focus: f.any("move the camera in on a part: its id, { on, cue?, zoom? }, or a list of those"),
+};
+
+const FOCUS_FIELDS: Fields = {
+  on: f.str("the id of the part to frame", true),
+  cue: f.num("move as this sentence of the scene's say starts (default 0, with the scene)"),
+  zoom: f.num("how far in at most, 1 or more (default: as close as frames the part)"),
 };
 
 export class KitSpecError extends Error {
@@ -70,7 +87,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], parts: [], cues: new Map() };
+      return { id: `s${i}`, say: [], parts: [], cues: new Map(), transition: "morph", focus: [] };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -141,12 +158,34 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     // The shape's ids are fixed: mark them first, so a written part never takes one.
     const kataParts = fromKata.map((p, j) => place(p, `${where} (kata ${String(sc.kata)}) part ${j}`));
     const written = Array.isArray(sc.parts) ? sc.parts.map((p, j) => place(p, `${where}.parts[${j}]`)) : [];
+    const focus: Focus[] = [];
+    if (sc.focus !== undefined) {
+      const list = Array.isArray(sc.focus) ? sc.focus : [sc.focus];
+      list.forEach((fc, j) => {
+        const fat = `${where}.focus${Array.isArray(sc.focus) ? `[${j}]` : ""}`;
+        const o = typeof fc === "string" ? { on: fc } : isObj(fc) ? fc : undefined;
+        if (!o) return problems.push(`${fat}: expected a part's id or { on, cue?, zoom? }, got ${JSON.stringify(fc)}`);
+        problems.push(...checkFields(o, FOCUS_FIELDS, fat));
+        if (typeof o.on !== "string") return;
+        if (!used.has(o.on)) {
+          const near = closest(o.on, [...used]);
+          return problems.push(`${fat}: no part "${o.on}" in this scene${near ? ` (did you mean "${near}"?)` : ""}`);
+        }
+        const cue = typeof o.cue === "number" ? o.cue : 0;
+        if (!Number.isInteger(cue) || cue < 0 || cue >= Math.max(1, say.length)) return problems.push(`${fat}.cue: ${cue} is not a sentence of this scene's say (it has ${say.length})`);
+        if (typeof o.zoom === "number" && !(o.zoom >= 1)) return problems.push(`${fat}.zoom: ${o.zoom} is under 1 (the camera only moves in)`);
+        if (focus.length && cue <= focus.at(-1)!.cue) return problems.push(`${fat}.cue: the camera moves in sentence order, so this cue must be after ${focus.at(-1)!.cue}`);
+        focus.push({ on: o.on, cue, zoom: typeof o.zoom === "number" ? o.zoom : undefined });
+      });
+    }
     return {
       id,
       say,
       ms: typeof sc.ms === "number" ? sc.ms : undefined,
       parts: [...kataParts, ...written].filter((p) => p !== null),
       cues,
+      transition: (sc.transition as Transition | undefined) ?? "morph",
+      focus,
     };
   });
   if (problems.length) throw new KitSpecError(problems);

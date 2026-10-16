@@ -2,7 +2,7 @@
 // Yoga places them once per keyframe, and each box paints drawables into its rect.
 // ------------------------------------------------------------------
 import type { Node as YNode } from "yoga-layout";
-import type { Drawable } from "./model.ts";
+import type { Bounds, Drawable } from "./model.ts";
 
 type YogaModule = typeof import("yoga-layout");
 let Y: YogaModule | undefined;
@@ -106,8 +106,11 @@ export function intrinsic(b: Box): { w: number; h: number } {
   return { w: l.width, h: l.height };
 }
 
-/** Lay out `root` in a W×H stage and return its drawables in paint order. */
-export function layout(root: Box, W: number, H: number): Drawable[] {
+/**
+ * Lay out `root` in a W×H stage and return its drawables in paint order.
+ * `boxes`, when given, gets the box of every part (by its owner id).
+ */
+export function layout(root: Box, W: number, H: number, boxes?: Map<string, Bounds>): Drawable[] {
   const yn = build(root);
   yn.calculateLayout(W, H, yoga().Direction.LTR);
   const out: Drawable[] = [];
@@ -115,6 +118,7 @@ export function layout(root: Box, W: number, H: number): Drawable[] {
     const l = n.getComputedLayout();
     const r = { x: ox + l.left, y: oy + l.top, w: l.width, h: l.height };
     const own = b.owner ?? owner;
+    if (b.owner && boxes && !boxes.has(b.owner)) boxes.set(b.owner, r);
     for (const p of b.paint?.(r) ?? []) out.push({ ...p, owner: p.owner ?? own } as Drawable);
     (b.kids ?? []).forEach((k, i) => walk(k, n.getChild(i), r.x, r.y, own));
   };

@@ -18,8 +18,9 @@ import {
   type TTSAdapterRef,
 } from "../tts/index.ts";
 import { check, type Issue } from "./check.ts";
-import { drawLive } from "./draw.ts";
-import { frameAt, keyframeAt, settleMs, type Keyframe } from "./engine.ts";
+import { drawLayers } from "./draw.ts";
+import { keyframeAt, layersAt, settleMs, type Cam, type Keyframe, type Shot } from "./engine.ts";
+import type { Bounds } from "./model.ts";
 import { normalize, type NormScene } from "./normalize.ts";
 import { partDef, type Ctx, type Stage } from "./parts.ts";
 import { loadYoga } from "./layout.ts";
@@ -36,6 +37,8 @@ const TAIL_MS = 700;
 const SILENT_MS = 3000;
 /** The pause between two sentences of a scene. */
 const GAP_MS = 250;
+/** The camera moves in no closer than this, by default. */
+const MAX_ZOOM = 2.5;
 
 const ADAPTERS: Record<VoiceSpec["provider"], (o: never) => TTSAdapterRef> = {
   say: sayAdapter,
@@ -136,14 +139,22 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       },
       child: (p, flow) => partBox(p as PartSpec & { id: string }, { ...ctx, flow }),
     };
+    // The camera's home: the middle of the frame, where a focused part is brought.
+    const fr = ctx.frame;
+    const anchor = { x: (fr.left + stage.W - fr.right) / 2, y: (fr.top + stage.H - fr.bottom) / 2 };
     const ks: Keyframe[] = scenes.map((s, i) => {
       const t = timing[i]!;
       // A cued part comes in as its sentence starts.
       const cues: Record<string, number> = {};
       for (const [id, n] of s.cues) if (t.say[n]) cues[id] = t.say[n]!.atMs - t.start;
-      return { id: s.id, start: t.start, ms: t.ms, ds: layoutScene(s, ctx), cues };
+      const boxes = new Map<string, Bounds>();
+      const ds = layoutScene(s, ctx, boxes);
+      const at = (n: number) => (n && t.say[n] ? t.say[n]!.atMs - t.start : 0);
+      const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(boxes.get(fc.on)!, fc.zoom, stage, fr, anchor) }));
+      if (!shots.length || shots[0]!.at > 0) shots.unshift({ at: 0, cam: { ...anchor, s: 1 } });
+      return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, shots };
     });
-    return { k, stage, insets, fonts, images, ks };
+    return { k, stage, insets, fonts, images, ks, anchor };
   }
 
   return {
@@ -164,7 +175,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       return check(ks, stage, insets, theme);
     },
     async setup(view, env) {
-      const { k, ks, fonts, images } = await prepare(view, env);
+      const { k, ks, fonts, images, anchor, stage } = await prepare(view, env);
       const painted = ks.map((kf) => kf.ds.some((d) => d.t === "paint"));
       const settle = ks.map((_, i) => settleMs(ks, i));
       // A scene's frames after its last part came in all look the same.
@@ -172,16 +183,35 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const dc = { fonts, env, images };
       return (g, ms) => {
         const i = keyframeAt(ks, ms);
-        const live = frameAt(ks, ms);
+        const layers = layersAt(ks, ms, stage.W);
         g.save();
         g.scale(k, k);
-        drawLive(g, live, dc);
+        drawLayers(g, layers, dc, anchor, stage.H);
         g.restore();
-        if (painted[i] || (i > 0 && painted[i - 1] && ms - ks[i]!.start < 400)) return undefined;
+        // A painted part changes every frame, and so does the scene before it while this one comes in.
+        if (painted[i] || (i > 0 && painted[i - 1] && ms - ks[i]!.start < 800)) return undefined;
         if (ms - ks[i]!.start >= settle[i]!) return rest[i];
-        return `${view.width}x${view.height}:${fnv1a64(JSON.stringify(live))}`;
+        return `${view.width}x${view.height}:${fnv1a64(JSON.stringify(layers))}`;
       };
     },
+  };
+}
+
+/**
+ * The camera framing box `b` at the anchor: as close as fits the frame (never
+ * past MAX_ZOOM, or `zoom`), and moved so the stage still fills the view.
+ */
+export function aim(b: Bounds, zoom: number | undefined, stage: { W: number; H: number }, fr: { top: number; right: number; bottom: number; left: number }, anchor: { x: number; y: number }): Cam {
+  const aw = stage.W - fr.left - fr.right;
+  const ah = stage.H - fr.top - fr.bottom;
+  // Never so close that the part itself is cut off: a zoom only holds the camera back.
+  const fit = Math.min(MAX_ZOOM, (aw * 0.85) / Math.max(1, b.w), (ah * 0.85) / Math.max(1, b.h));
+  const s = Math.max(1, Math.min(zoom ?? fit, fit));
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  return {
+    x: clamp(b.x + b.w / 2, anchor.x / s, stage.W - (stage.W - anchor.x) / s),
+    y: clamp(b.y + b.h / 2, anchor.y / s, stage.H - (stage.H - anchor.y) / s),
+    s,
   };
 }
 

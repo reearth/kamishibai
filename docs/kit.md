@@ -68,7 +68,7 @@ The reel's fields:
 
 ## Scenes
 
-A scene has a `say` (the narration, and its captions) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length.
+A scene has a `say` (the narration, and its captions) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)).
 
 | Shape | Fields (* required) | |
 |---|---|---|
@@ -120,7 +120,7 @@ Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [c
 
 ### What moves between scenes
 
-A part is the same part in the next scene when it has the same `id`. Then it moves there, changing size and colour on the way; a part that is gone fades out, and a new one comes in with its `enter` verb (`rise` by default, `draw` for lines; also `fade`, `pop`, `type`, `count` and `none`). New parts come in one after another, after the movers have mostly settled. A number under the same id counts from its old value to its new one, and a line of code still on screen slides to its new place instead of being typed again.
+A part is the same part in the next scene when it has the same `id`. Then it moves there, changing size and colour on the way; a part that is gone fades out, and a new one comes in with its `enter` verb (`rise` by default, `draw` for lines; also `fade`, `pop`, `type`, `count`, `none`, `from-left`, `from-right`, `from-top` and `from-bottom` to slide in from that side, `wipe` to be uncovered from the left, and `blur` to come into focus). New parts come in one after another, after the movers have mostly settled. A number under the same id counts from its old value to its new one, and a line of code still on screen slides to its new place instead of being typed again.
 
 A part without an `id` gets its type as its id, numbered when the type repeats in the scene (`card`, `card.2`). So a `title` in every scene is the same title, and it stays put while the rest changes. The shapes use fixed ids (`title`, `flow.0`, `flow.1`, …), so moving `at` along a flow from one scene to the next fills the next pill.
 
@@ -144,6 +144,40 @@ A part with `cue: n` comes in as sentence `n` of the scene's `say` starts, count
         - { type: arrow, cue: 2 }
         - { type: chip, text: Server, cue: 2 }
 ```
+
+### Transitions
+
+A scene comes in after the one before it by its `transition`:
+
+| Transition | |
+|---|---|
+| `morph` | The default: parts under the same id move, the rest fade out, and new parts come in with their verbs. |
+| `cut` | The new scene is there at once, whole. |
+| `fade` | The scene before fades out to the paper, then the new parts come in with their verbs. |
+| `push` | The new scene slides in from the right and pushes the one before out to the left. |
+| `wipe` | The new scene is uncovered over the one before, from left to right. |
+
+With `cut`, `push` and `wipe`, a part with a `cue` still comes in with its sentence. Nothing carries over from the scene before, so a change of topic reads as one.
+
+### Camera
+
+`focus` moves the camera in on a part, by its `id`: as close as frames it (2.5× at most), and never so close that the part is cut off or the stage's edge shows. `{ on, cue, zoom }` moves in as sentence `cue` starts, and holds back at `zoom` if that is less. A list moves from part to part, in the order of their sentences. Captions stay where they are.
+
+```yaml
+- say: [The card holds your balance., The gate reads it over radio., The station server keeps the fare tables.]
+  focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]
+  parts:
+    - { type: title, text: Three parts }
+    - type: row
+      parts:
+        - { type: card, id: card, label: Card }
+        - { type: arrow, cue: 1 }
+        - { type: card, id: gate, label: Gate, cue: 1 }
+        - { type: arrow, cue: 2 }
+        - { type: card, id: server, label: Station server, cue: 2 }
+```
+
+The next scene starts where the camera was and moves back out, unless it comes in another way than `morph`. A part that already fills the frame across, as a card does on a tall stage, has nothing to move in to.
 
 ## Any shape
 

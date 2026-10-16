@@ -119,7 +119,7 @@ export const rect = (id: string, r: Rect, p: Partial<Omit<RectD, "t" | "id" | "o
 
 // ---- the parts --------------------------------------------------------------
 
-const VERBS = ["fade", "rise", "draw", "type", "count", "pop", "none"] as const;
+export const VERBS = ["fade", "rise", "draw", "type", "count", "pop", "none", "from-left", "from-right", "from-top", "from-bottom", "wipe", "blur"] as const;
 /** Fields every part takes. */
 export const COMMON: Fields = {
   id: f.str("same id in the next scene: the part moves there"),
@@ -322,10 +322,12 @@ definePart<ChipSpec>("chip", {
 
 definePart<StatSpec>("stat", {
   doc: "A big number that counts up from its previous value (or 0).",
-  fields: { value: f.num("the number", true), unit: f.str(), label: f.str("a line under it"), tone: f.one(["plain", "accent"]), digits: f.num("decimals shown") },
+  fields: { value: f.num("the number", true), unit: f.str(), label: f.str("a line under it"), tone: f.one(["plain", "accent"]), digits: f.num("decimals shown (default: as many as the value has)") },
   box: (s, ctx) => {
     const T = ctx.theme;
-    const v = s.value.toLocaleString("en-US", { maximumFractionDigits: s.digits ?? 0, minimumFractionDigits: s.digits ?? 0 });
+    // As many decimals as the value is written with, unless told.
+    const digits = s.digits ?? (String(s.value).split(".")[1]?.length ?? 0);
+    const v = s.value.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits });
     return {
       style: { gap: 8, align: "center" },
       kids: [

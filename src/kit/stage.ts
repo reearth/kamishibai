@@ -4,7 +4,7 @@
 // ------------------------------------------------------------------
 import type { Insets } from "../canvas/types.ts";
 import { layout, type Box } from "./layout.ts";
-import type { Drawable } from "./model.ts";
+import type { Bounds, Drawable } from "./model.ts";
 import type { NormScene } from "./normalize.ts";
 import { isTall, partDef, rect, type Ctx, type Frame, type Stage } from "./parts.ts";
 import type { PartSpec } from "./spec.ts";
@@ -25,8 +25,8 @@ export function partBox(spec: PartSpec & { id: string }, ctx: Ctx): Box {
   return { ...def.box(spec as never, ctx), owner: spec.id };
 }
 
-/** Lay out one scene on the stage, as drawables in paint order. */
-export function layoutScene(scene: NormScene, ctx: Ctx): Drawable[] {
+/** Lay out one scene on the stage, as drawables in paint order; `boxes` gets every part's box. */
+export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Bounds>): Drawable[] {
   const { W, H } = ctx.stage;
   const fr = ctx.frame;
   const tall = isTall(ctx.stage);
@@ -57,5 +57,5 @@ export function layoutScene(scene: NormScene, ctx: Ctx): Drawable[] {
     paint: (r) => [rect("stage", r, { fill: ctx.theme.paper, ground: true, enter: "none" })],
     kids: [...top, { style: { grow: 1, justify: "center", align: "center", gap: 48 }, kids: body.map(own) }],
   };
-  return layout(root, W, H);
+  return layout(root, W, H, boxes);
 }

@@ -1,7 +1,8 @@
 // The drawables of one moment, painted on the host's 2D context.
 // ------------------------------------------------------------------
 import type { Context2D, Env } from "../canvas/types.ts";
-import type { Live } from "./engine.ts";
+import type { Cam, Layer, Live } from "./engine.ts";
+import { bbox } from "./model.ts";
 import type { Fonts } from "./text.ts";
 
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
@@ -49,7 +50,17 @@ function one(g: Context2D, d: Live, c: DrawCtx) {
   if (d.o <= 0.003) return;
   g.save();
   g.globalAlpha = Math.min(1, d.o);
-  if (d.dy) g.translate(0, d.dy);
+  if (d.reveal !== undefined && d.reveal < 1) {
+    // Shown from the left edge of its box: a little past it, for strokes and descenders.
+    const b = bbox(d);
+    const pad = 24;
+    g.beginPath();
+    g.rect(b.x - pad, b.y - pad, (b.w + pad * 2) * Math.max(0, d.reveal), b.h + pad * 2);
+    g.clip();
+  }
+  if (d.dx || d.dy) g.translate(d.dx ?? 0, d.dy ?? 0);
+  // Blur is in canvas pixels, so it scales with the view like everything else.
+  if (d.blur && d.blur > 0.2) g.filter = `blur(${d.blur * g.getTransform().a}px)`;
   if (d.sc !== undefined && d.sc !== 1) {
     const [cx, cy] = d.t === "circle" ? [d.cx, d.cy] : d.t === "path" ? d.pts[0]! : [d.x + d.w / 2, d.y + d.h / 2];
     g.translate(cx, cy);
@@ -146,4 +157,31 @@ function one(g: Context2D, d: Live, c: DrawCtx) {
 /** Paint `ds` in order. The transform maps stage units to the canvas. */
 export function drawLive(g: Context2D, ds: Live[], c: DrawCtx): void {
   for (const d of ds) one(g, d, c);
+}
+
+/**
+ * Paint layers in order, each under its camera: `anchor` is the stage point
+ * a camera's (x, y) is shown at. The transform maps stage units to the canvas.
+ */
+export function drawLayers(g: Context2D, layers: Layer[], c: DrawCtx, anchor: { x: number; y: number }, H: number): void {
+  for (const l of layers) {
+    if ((l.o ?? 1) <= 0.003) continue;
+    g.save();
+    if (l.clipW !== undefined) {
+      g.beginPath();
+      g.rect(0, 0, Math.max(0, l.clipW), H);
+      g.clip();
+    }
+    if (l.dx) g.translate(l.dx, 0);
+    if (l.cam) camera(g, l.cam, anchor);
+    const o = l.o ?? 1;
+    drawLive(g, o < 1 ? l.ds.map((d) => ({ ...d, o: d.o * o })) : l.ds, c);
+    g.restore();
+  }
+}
+
+function camera(g: Context2D, cam: Cam, anchor: { x: number; y: number }) {
+  g.translate(anchor.x, anchor.y);
+  g.scale(cam.s, cam.s);
+  g.translate(-cam.x, -cam.y);
 }

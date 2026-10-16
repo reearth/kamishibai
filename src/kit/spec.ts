@@ -68,6 +68,12 @@ export type CustomSpec = Common & { type: string; [k: string]: unknown };
 export type BuiltinSpec = TitleSpec | TextSpec | GroupSpec | CardSpec | ArrowSpec | ChipSpec | StatSpec | ListSpec | ImageSpec | PaintSpec;
 export type PartSpec = BuiltinSpec | CustomSpec;
 
+/** Where the camera looks: a part's id (the camera moves in to frame it), or that with a cue and a zoom to stop at. */
+export type FocusSpec = string | { on: string; cue?: number; zoom?: number };
+
+/** How a scene comes in after the one before it. */
+export type Transition = "morph" | "cut" | "fade" | "push" | "wipe";
+
 /** One keyframe: what the screen shows while `say` is spoken. */
 export type SceneSpec = {
   id?: string;
@@ -78,6 +84,10 @@ export type SceneSpec = {
   /** a scene shape from `kata`, filled in with the fields beside it */
   kata?: string;
   parts?: PartSpec[];
+  /** how it comes in: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe" */
+  transition?: Transition;
+  /** move the camera in on a part, or a list of those, each with a cue */
+  focus?: FocusSpec | FocusSpec[];
   [field: string]: unknown;
 };
 

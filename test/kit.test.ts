@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { kit, kitSchema, normalize, KitSpecError, card, row, title, arrow, scene, definePart, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
-import { frameAt, type Keyframe } from "../src/kit/engine.ts";
+import { camAt, frameAt, layersAt, type Keyframe } from "../src/kit/engine.ts";
+import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
 import { resolveView, type Context2D } from "../src/canvas/types.ts";
@@ -184,6 +185,82 @@ describe("kit", () => {
     const env = await nodeEnv(".");
     expect(await reel.check(resolveView(reel.meta), env)).toEqual([]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "badge" }] }] })).toEqual(['scenes[0].parts[0] (badge): "label" is required (its text)']);
+  });
+});
+
+describe("transitions and the camera", () => {
+  const rect = (id: string, x: number, more: object = {}) => ({ t: "rect" as const, id, owner: id, x, y: 0, w: 10, h: 10, r: 0, o: 1, ...more });
+  const paper = rect("stage", 0, { w: 100, h: 100, enter: "none" as const });
+  const two = (transition?: Keyframe["transition"]): Keyframe[] => [
+    { id: "1", start: 0, ms: 1000, ds: [paper, rect("a", 0)] },
+    { id: "2", start: 1000, ms: 1000, ds: [paper, rect("a", 50)], transition },
+  ];
+
+  it("moves what stays by default, and lays the scene before beside, under or behind the new one otherwise", () => {
+    expect(layersAt(two(), 1350, 100)).toHaveLength(1);
+    const cut = layersAt(two("cut"), 1001, 100);
+    expect(cut).toHaveLength(1);
+    // A cut shows the new scene whole at once, with nothing moving.
+    expect((cut[0]!.ds[1] as { x: number }).x).toBe(50);
+    const [old, now] = layersAt(two("push"), 1350, 100);
+    expect(old!.dx).toBeLessThan(0);
+    expect(now!.dx).toBeCloseTo(old!.dx! + 100);
+    const wipe = layersAt(two("wipe"), 1350, 100);
+    expect(wipe[1]!.clipW).toBeGreaterThan(0);
+    expect(wipe[1]!.clipW).toBeLessThan(100);
+    // A fade: the old scene goes out over the paper before the new parts come in.
+    const fade = layersAt(two("fade"), 1200, 100);
+    expect(fade).toHaveLength(2);
+    expect(fade[0]!.ds.map((d) => d.id)).toEqual(["stage"]);
+    expect(layersAt(two("fade"), 1800, 100)).toHaveLength(1);
+  });
+
+  it("brings a part in from a side, wiped on, or out of a blur", () => {
+    const ks = (enter: string): Keyframe[] => [{ id: "1", start: 0, ms: 2000, ds: [rect("a", 0, { enter })] }];
+    const at = (enter: string, t: number) => frameAt(ks(enter), t)[0]!;
+    expect(at("from-left", 300).dx).toBeLessThan(0);
+    expect(at("from-left", 1500).dx).toBeCloseTo(0);
+    expect(at("from-bottom", 300).dy).toBeGreaterThan(0);
+    expect(at("wipe", 400).reveal).toBeGreaterThan(0);
+    expect(at("wipe", 400).reveal).toBeLessThan(1);
+    expect(at("blur", 300).blur).toBeGreaterThan(0);
+    expect(at("blur", 1500).blur).toBeCloseTo(0);
+  });
+
+  it("moves the camera from shot to shot, carrying it over a morph", () => {
+    const home = { x: 50, y: 50, s: 1 };
+    const close = { x: 20, y: 20, s: 2 };
+    const ks: Keyframe[] = [
+      { id: "1", start: 0, ms: 3000, ds: [paper], shots: [{ at: 0, cam: home }, { at: 1000, cam: close }] },
+      { id: "2", start: 3000, ms: 3000, ds: [paper], shots: [{ at: 0, cam: home }] },
+    ];
+    expect(camAt(ks, 0, 500)).toEqual(home);
+    expect(camAt(ks, 0, 2500)).toEqual(close);
+    expect(camAt(ks, 0, 1450)!.s).toBeCloseTo(1.5, 1);
+    // The next scene starts where the camera was and goes back home.
+    expect(camAt(ks, 1, 0)).toEqual(close);
+    expect(camAt(ks, 1, 2000)).toEqual(home);
+  });
+
+  it("frames a part as close as fits, never cutting it off, and keeps the stage filling the view", () => {
+    const stage = { W: 1000, H: 1000 };
+    const fr = { top: 0, right: 0, bottom: 0, left: 0 };
+    const mid = { x: 500, y: 500 };
+    expect(aim({ x: 450, y: 450, w: 100, h: 100 }, undefined, stage, fr, mid).s).toBe(2.5);
+    expect(aim({ x: 100, y: 450, w: 800, h: 100 }, undefined, stage, fr, mid).s).toBeCloseTo(850 / 800);
+    expect(aim({ x: 100, y: 450, w: 800, h: 100 }, 3, stage, fr, mid).s).toBeCloseTo(850 / 800);
+    expect(aim({ x: 450, y: 450, w: 100, h: 100 }, 1.5, stage, fr, mid).s).toBe(1.5);
+    // A part in the corner: the camera stops where the stage's edge meets the view's.
+    expect(aim({ x: 0, y: 0, w: 100, h: 100 }, 2, stage, fr, mid)).toEqual({ x: 250, y: 250, s: 2 });
+  });
+
+  it("checks where the camera goes and how a scene comes in", () => {
+    const sc = (more: object) => ({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", id: "word", text: "x" }], ...more }] });
+    expect(problems(sc({ focus: "wrod" }))).toEqual(['scenes[0].focus: no part "wrod" in this scene (did you mean "word"?)']);
+    expect(problems(sc({ focus: { on: "word", zoom: 0.5 } }))).toEqual(["scenes[0].focus.zoom: 0.5 is under 1 (the camera only moves in)"]);
+    expect(problems(sc({ focus: [{ on: "word", cue: 1 }, { on: "word" }] }))).toEqual(["scenes[0].focus[1].cue: the camera moves in sentence order, so this cue must be after 1"]);
+    expect(problems(sc({ transition: "dissolve" }))[0]).toMatch(/transition: "dissolve" is not one of "morph", "cut", "fade", "push", "wipe"/);
+    expect(normalize(sc({ focus: [{ on: "word", cue: 1 }], transition: "push" }) as KitReelSpec)[0]).toMatchObject({ transition: "push", focus: [{ on: "word", cue: 1 }] });
   });
 });
 

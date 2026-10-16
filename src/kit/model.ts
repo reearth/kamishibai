@@ -5,7 +5,7 @@ import type { Context2D } from "../canvas/types.ts";
 import type { FontRole } from "./theme.ts";
 
 /** How a part comes in when it first appears. Everything else is a plain move. */
-export type Verb = "fade" | "rise" | "draw" | "type" | "count" | "pop" | "none";
+export type Verb = "fade" | "rise" | "draw" | "type" | "count" | "pop" | "none" | "from-left" | "from-right" | "from-top" | "from-bottom" | "wipe" | "blur";
 
 type Base = {
   id: string;
