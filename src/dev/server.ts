@@ -206,9 +206,11 @@ export async function dev(opts: DevOptions): Promise<DevServer> {
     await writeFile(join(dir, "index.html"), hostHtml(), "utf8");
     roots.push(dir);
     if (canvas) roots.push(dirname(abs));
+    const opts = (canvas ? canvasBundleOptions : bundleOptions)(abs, join(dir, "bundle.js"));
     ctx = await context({
-      ...(canvas ? canvasBundleOptions : bundleOptions)(abs, join(dir, "bundle.js")),
+      ...opts,
       plugins: [
+        ...(opts.plugins ?? []),
         {
           name: "kamishibai-dev",
           setup(b) {

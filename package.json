@@ -57,6 +57,10 @@
     "./canvas": {
       "types": "./dist/canvas.d.ts",
       "import": "./dist/canvas.js"
+    },
+    "./kit": {
+      "types": "./dist/kit.d.ts",
+      "import": "./dist/kit.js"
     }
   },
   "files": [
@@ -82,19 +86,27 @@
     "@napi-rs/canvas": ">=1.0.9",
     "react": ">=18",
     "react-dom": ">=18",
-    "subset-font": ">=2.7.0"
+    "subset-font": ">=2.7.0",
+    "yaml": ">=2.8.0",
+    "yoga-layout": ">=3.2.1"
   },
   "peerDependenciesMeta": {
+    "@napi-rs/canvas": {
+      "optional": true
+    },
     "react": {
       "optional": true
     },
     "react-dom": {
       "optional": true
     },
-    "@napi-rs/canvas": {
+    "subset-font": {
       "optional": true
     },
-    "subset-font": {
+    "yaml": {
+      "optional": true
+    },
+    "yoga-layout": {
       "optional": true
     }
   },
@@ -109,7 +121,9 @@
     "tsup": "^8.3.5",
     "typescript": "^6.0.3",
     "vite": "^8",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "yaml": "2.8.1",
+    "yoga-layout": "3.2.1"
   },
   "engines": {
     "node": ">=20"

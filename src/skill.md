@@ -3,8 +3,9 @@
 kamishibai seeks a web page to each moment, screenshots it, and encodes the
 stills into a video. You write a page that draws "the state at time `ms`".
 A reel can also be a module drawn on a 2D canvas, painted with no browser
-(`kamishibai skill canvas`), and any reel can be exported as one HTML file
-that plays with no server (`kamishibai skill export`).
+(`kamishibai skill canvas`), or scenes written as YAML from a kit of parts
+(`kamishibai skill kit`), and any reel can be exported as one HTML file that
+plays with no server (`kamishibai skill export`).
 
 <!-- topics -->
 
@@ -342,6 +343,50 @@ kamishibai export reel.ts -o reel.html                # one HTML file, any windo
 Frames, `-i`, `--only`, `encode`, audio and narration work as for a page. Look
 at the frames of every shape you render: a layout that fits 16:9 may not fit
 9:16.
+<!-- /topic -->
+
+<!-- topic: kit | Kit reels: scenes as YAML/JSON/code from a kit of parts (title, card, flow, stat…), laid out for any shape, parts moving between scenes, `kamishibai check` -->
+## Kit reels
+
+The cheapest way to an explainer: write scenes as data, and the kit lays them
+out for any shape, moves parts that keep their id from scene to scene, and
+holds each scene as long as its `say` takes. A canvas reel underneath (no
+browser). Needs `npm i -D @napi-rs/canvas yoga-layout` (and `yaml` for YAML).
+
+```yaml
+kit: 1
+fonts: [{ family: Geist, src: fonts/Geist.ttf, weight: "100 900" }]   # relative to this file
+theme: { fonts: { sans: Geist, mono: Geist } }
+voice: { provider: kokoro, voice: af_heart }   # optional; without it, lengths are estimated
+scenes:
+  - { kata: cover, say: "…", title: "…", kicker: "…", sub: "…" }
+  - { kata: flow, say: "…", title: "…", steps: [A, B, C], at: 1 }
+  - kata: compare
+    say: "…"
+    title: "…"
+    left: { label: Docs, body: "…" }
+    right: { label: Code, code: "src/x.ts#L40-L44", mark: "now >= t" }
+  - say: "…"
+    parts:
+      - { type: title, text: "…" }
+      - type: row
+        parts: [{ type: card, body: "…" }, { type: arrow }, { type: card, body: "…", tone: accent }]
+```
+
+- Shapes (`kata`): `cover`, `flow`, `compare`, `code`, `stat`, `points`, `picture`.
+  Parts: `title`, `text`, `row`, `col`, `card`, `arrow`, `chip`, `stat`, `list`,
+  `image`. `kamishibai schema` prints every field.
+- Same `id` in the next scene: the part moves there. Without an id, a part's
+  id is its type (`title` stays put across scenes); the shapes' ids are fixed,
+  so moving `at` along a `flow` walks it. Gone parts fade; new ones come in.
+- `code` is text or `"path#L44"` / `"path#L40-L48"` read next to the reel.
+- Loop: `kamishibai check reel.yaml` (overlap, off-stage, overflow, contrast,
+  widow, for 16:9 and 9:16, no frames; `--json` for parsing; exit 1 on any),
+  fix, then `render` and look at a few frames of each shape.
+- In code: `export default await kit({ … })` from `kamishibai/kit`, with
+  `title()`, `card()`, `row()`… building the same data; `definePart` adds a part.
+
+Give it font files for every script it draws (a container has few fonts).
 <!-- /topic -->
 
 <!-- topic: export | One HTML file that plays the reel with no server: `kamishibai export`, `--bare`, `--loop`, query parameters -->

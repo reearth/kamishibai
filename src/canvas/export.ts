@@ -211,7 +211,7 @@ window.kamishibaiPlayer = await play(reel, document.getElementById("kamishibai")
         sourcefile: "kamishibai-export.js",
         loader: "js",
       },
-      plugins: [prelude],
+      plugins: [...(base.plugins ?? []), prelude],
     });
     const js = built.outputFiles[0]!.text;
     const loop = opts.loop === undefined || opts.loop === -1 ? false : opts.loop === 0 ? true : opts.loop;

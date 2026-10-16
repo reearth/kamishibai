@@ -11,6 +11,7 @@
 // Every way you get back { url, close } and the renderer points Chrome
 // at `url`.
 // ------------------------------------------------------------------
+import { isDataEntry, kitDataPlugin } from "./kit-entry.ts";
 import { build, type BuildOptions } from "esbuild";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
@@ -58,7 +59,8 @@ export interface ServeOptions {
   canvas?: boolean;
 }
 
-export const SCRIPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+// A .json / .yaml / .yml entry is a kit reel (kit-entry.ts), bundled like a script.
+export const SCRIPT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".yaml", ".yml"]);
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -284,6 +286,7 @@ export function bundleOptions(entry: string, outfile: string): BuildOptions {
       ".gif": "dataurl",
     },
     logLevel: "silent",
+    plugins: isDataEntry(entry) ? [kitDataPlugin(entry)] : [],
   };
 }
 

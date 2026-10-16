@@ -31,7 +31,7 @@ export default canvasReel({
 });
 ```
 
-[`examples/canvas/reel.ts`](../examples/canvas/reel.ts) is a complete one.
+[`examples/canvas/reel.ts`](../examples/canvas/reel.ts) is a complete one. To write scenes from a kit of parts instead of drawing code, see [kit reels](kit.md).
 
 - **`meta`** is a page's meta, plus `aspect`: the shapes (width / height) the reel lays out for. Without it, the reel has only its own shape.
 - **`fonts`** are font files, as paths relative to the module. They are registered before `setup` runs, in Node and in a browser alike. A variable font draws at any weight: `650 48px Geist`, or a weight that changes from frame to frame.
