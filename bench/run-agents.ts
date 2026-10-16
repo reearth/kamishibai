@@ -5,7 +5,9 @@
 // (briefs/<task>/) into out.mp4, starting from a clone of the tool's
 // ready-made template (setup.sh). Conditions: tool × task × skill/noskill,
 // where `kit` is kamishibai with its kit's optional dependencies installed,
-// asked for a kit reel (scenes as data) by name,
+// asked for a kit reel (scenes as data) by name, and `page` is the kamishibai
+// project asked for a page reel (React or the DOM, captured in Chrome) and
+// nothing else, so it can be set against `kit`,
 // each repeated `reps` times. `--tools bare` adds a baseline with no video
 // tool at all: an empty project, noskill only. Within each repetition the order of conditions is shuffled with a
 // fixed seed, so drift over the day (API latency, machine load) spreads
@@ -37,7 +39,7 @@
 //   node run-agents.ts --dry-run                   # print the plan only
 //   node run-agents.ts --label agents [--reps 5] [--token-file path]
 //     [--stop-at-weekly 0.8]
-//     [--tools kamishibai,kit,remotion,hyperframes] [--tasks text,three,scenes,explainer]
+//     [--tools kamishibai,kit,page,remotion,hyperframes] [--tasks text,three,scenes,explainer]
 //     [--skills skill,noskill] [--model claude-opus-5-5]
 //     [--budget-usd 20] [--timeout-min 45] [--limit N] [--resume]
 // ------------------------------------------------------------------
@@ -77,9 +79,14 @@ const { values: args } = parseArgs({
   },
 });
 
-const TOOL_NAMES: Record<string, string> = { kamishibai: "kamishibai", kit: "kamishibai", remotion: "Remotion", hyperframes: "HyperFrames" };
+const TOOL_NAMES: Record<string, string> = { kamishibai: "kamishibai", kit: "kamishibai", page: "kamishibai", remotion: "Remotion", hyperframes: "HyperFrames" };
 /** What the prompt asks the video to be made with, where it isn't just the tool's name. */
-const MADE_WITH: Record<string, string> = { kit: "kamishibai's kit (a kit reel, from `kamishibai/kit`)" };
+const MADE_WITH: Record<string, string> = {
+  kit: "kamishibai's kit (a kit reel, from `kamishibai/kit`)",
+  page: "kamishibai as a page reel (React or the DOM, captured in Chrome; not a kit reel or a canvas reel)",
+};
+/** The template a condition starts from, where it isn't its own. */
+const TEMPLATE: Record<string, string> = { page: "kamishibai" };
 /** Made for producing video from code: the bare baseline may not use these,
  *  and each bare trial records any it finds in the project afterwards. */
 const VIDEO_TOOLS = ["Remotion", "HyperFrames", "kamishibai", "Motion Canvas", "Revideo", "Manim", "editly", "Etro"];
@@ -197,6 +204,8 @@ function digest(lines: any[]) {
     },
     limited: limits.some((l) => l.status && l.status !== "allowed") || /usage limit|rate limit|limit reached/i.test(resultText),
     notLoggedIn: /not logged in|please run \/login|invalid api key|oauth/i.test(resultText) && !result?.num_turns,
+    // A kit or canvas reel (in a condition that may not use one: page).
+    usedKit: bash.some((c) => /kamishibai\/kit|yoga-layout|render\s+\S+\.(ya?ml|json)\b/.test(c)),
     frameExtracts: bash.filter((c) => /ffmpeg[^|;&]*(-frames:v|select=|fps=|-ss )/.test(c)).length,
     outside: outsideAccess(uses),
     bashCommands: bash,
@@ -251,7 +260,7 @@ async function runTrial(t: Trial, file: string, blindDir: string) {
   const home = join(root, "home");
   await rm(root, { recursive: true, force: true });
   await mkdir(root, { recursive: true });
-  cloneDir(join(WORK, "templates", t.tool, t.skill ? "skill" : "noskill"), project);
+  cloneDir(join(WORK, "templates", TEMPLATE[t.tool] ?? t.tool, t.skill ? "skill" : "noskill"), project);
   cloneDir(join(WORK, "home-seed"), home);
   await cp(join(BENCH, "briefs", t.task), project, { recursive: true });
 
@@ -351,7 +360,7 @@ if (!token && !args["agent-cmd"]) {
 }
 for (const tool of list(args.tools!))
   for (const s of tool === "bare" ? ["noskill"] : ["skill", "noskill"])
-    if (!existsSync(join(WORK, "templates", tool, s))) throw new Error(`missing template ${tool}/${s}: run setup.sh first`);
+    if (!existsSync(join(WORK, "templates", TEMPLATE[tool] ?? tool, s))) throw new Error(`missing template ${tool}/${s}: run setup.sh first`);
 
 const blindDir = join(RESULTS, `${args.label}-blind`);
 await mkdir(blindDir, { recursive: true });
