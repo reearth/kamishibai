@@ -9,7 +9,7 @@ export type { Ctx, Frame, PartDef, Placed, Stage, TextOpts } from "./parts.ts";
 export { defineKata, type KataDef } from "./kata.ts";
 export { f, type Field, type Fields } from "./fields.ts";
 export { KitSpecError, normalize } from "./normalize.ts";
-export { kitSchema } from "./schema.ts";
+export { kitBrief, kitSchema } from "./schema.ts";
 export { contrast, type Issue, type IssueKind } from "./check.ts";
 export { DEFAULT_THEME, SIZE, type Theme, type FontRole } from "./theme.ts";
 export type { Box, Paint, Rect, Style } from "./layout.ts";

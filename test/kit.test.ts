@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
-import { kit, kitSchema, normalize, KitSpecError, card, row, title, arrow, scene, definePart, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
+import { kit, kitBrief, kitSchema, normalize, KitSpecError, card, row, title, arrow, scene, definePart, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
 import { camAt, frameAt, layersAt, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences } from "../src/kit/text.ts";
@@ -285,6 +285,15 @@ describe("schema", () => {
     expect(types).not.toContain("paint");
     expect(s.required).toEqual(["kit", "scenes"]);
     expect(JSON.stringify(s)).toContain('"const":"flow"');
+  });
+
+  it("gives every field a line per part and shape, a small fraction of the schema", () => {
+    const b = kitBrief();
+    expect(b).toContain("  flow: title*, steps* [..], at #, note");
+    expect(b).toContain("  chip: text*, state (active|done)");
+    expect(b).toMatch(/^Scene: .*transition \(morph\|cut\|fade\|push\|wipe\)/m);
+    expect(b).not.toMatch(/^ {2}paint:/m);
+    expect(b.length).toBeLessThan(JSON.stringify(kitSchema()).length / 5);
   });
 });
 

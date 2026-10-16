@@ -375,7 +375,11 @@ scenes:
 
 - Shapes (`kata`): `cover`, `flow`, `compare`, `code`, `stat`, `points`, `picture`.
   Parts: `title`, `text`, `row`, `col`, `card`, `arrow`, `chip`, `stat`, `list`,
-  `image`. `kamishibai schema` prints every field.
+  `image`. Every field, a line each (`*` required, `#` number, `[..]` list),
+  as `kamishibai schema --brief` prints it (the full JSON Schema is 27 KB):
+
+<!-- fill: kit-fields -->
+
 - Same `id` in the next scene: the part moves there. Without an id, a part's
   id is its type (`title` stays put across scenes); the shapes' ids are fixed,
   so moving `at` along a `flow` walks it. Gone parts fade; new ones come in.

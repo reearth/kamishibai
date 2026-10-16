@@ -261,3 +261,5 @@ kamishibai schema > kit.schema.json
 ```
 
 prints the JSON Schema of a reel (with the built-in parts and shapes), for an editor's completion, or for an agent to write a reel against. A YAML file can name it in a `# yaml-language-server: $schema=kit.schema.json` comment.
+
+`kamishibai schema --brief` prints every field instead, a line for the reel, a scene, each shape and each part (`*` required, `#` a number, `[..]` a list, `(a|b)` the values it takes): about 2 KB against the schema's 27 KB. The kit topic of `kamishibai skill` includes it.

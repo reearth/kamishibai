@@ -39,7 +39,8 @@ Usage:
                                                  file that plays with no server
   kamishibai check <entry> [--json]              check a kit reel's layout with no frame
                                                  drawn (overlaps, overflow, contrast…)
-  kamishibai schema                              print the JSON Schema of a kit reel
+  kamishibai schema [--brief]                    print the JSON Schema of a kit reel, or
+                                                 every field, a line per part and shape
   kamishibai skill [topic…|all]                  print the usage guide: the core and a
                                                  topic list, the named topics, or all
 
@@ -182,7 +183,7 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
   export: new Set(["out", "bare", "loop", "no-autoplay", "audio", "public", "probe-timeout", "tts-adapter"]),
   check: new Set(["size", "aspect", "inset", "json"]),
-  schema: new Set([]),
+  schema: new Set(["brief"]),
 };
 
 // libx264's speed presets, slowest-compressing last. Validated so a typo fails
@@ -269,6 +270,7 @@ async function main(): Promise<void> {
       audio: { type: "string" },
       verbose: { type: "boolean" },
       json: { type: "boolean" },
+      brief: { type: "boolean" },
       port: { type: "string" },
       mute: { type: "boolean" },
       cc: { type: "string" },
@@ -284,7 +286,9 @@ async function main(): Promise<void> {
   // context: the core and a topic list, or the named topics, or `all`.
   if (command === "skill" || command === "skills") {
     try {
-      process.stdout.write(skillText(SKILL, positionals.slice(1)));
+      // The kit topic carries the field reference, made from the fields themselves.
+      const { kitBrief } = await import("./kit/schema.ts");
+      process.stdout.write(skillText(SKILL, positionals.slice(1), { "kit-fields": "```\n" + kitBrief() + "```" }));
     } catch (e) {
       console.error((e as Error).message);
       process.exit(1);
@@ -293,8 +297,8 @@ async function main(): Promise<void> {
   }
 
   if (command === "schema") {
-    const { kitSchema } = await import("./kit/schema.ts");
-    process.stdout.write(JSON.stringify(kitSchema(), null, 2) + "\n");
+    const { kitBrief, kitSchema } = await import("./kit/schema.ts");
+    process.stdout.write(values.brief ? kitBrief() : JSON.stringify(kitSchema(), null, 2) + "\n");
     return;
   }
 
