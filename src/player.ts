@@ -336,8 +336,13 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
 
   pic.addEventListener("click", () => (playing ? pause() : start()));
   bar?.btn.addEventListener("click", () => (playing ? pause() : start()));
-  // Scrubbing pauses, as in a video player.
-  bar?.seek.addEventListener("input", () => (pause(), seekTo(Number(bar!.seek.value), false)));
+  // Scrubbing pauses, as in a video player. The value is read first: pausing
+  // redraws the bar at the time it was paused at.
+  bar?.seek.addEventListener("input", () => {
+    const t = Number(bar!.seek.value);
+    pause();
+    seekTo(t, false);
+  });
   bar?.mute?.addEventListener("click", () => {
     if (!sound) return;
     sound.muted = !sound.muted;
