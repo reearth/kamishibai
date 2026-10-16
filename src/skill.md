@@ -394,6 +394,19 @@ scenes:
   with `at: [x, y]`; colours by theme name (`accent`, `ink3`…). Items keep
   ids across scenes, so a diagram can change shape; an item can have a `cue`.
 - `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
+- `voice: { provider: say, voice: Samantha }` (macOS), `{ provider: kokoro,
+  voice: af_heart }`, or `openai` / `gemini` / `google` / `elevenlabs` /
+  `polly` with the options of the narration topic. Timing: the voice starts
+  400 ms into a scene, 250 ms between sentences, the scene holds 700 ms after
+  (2.5 s at least); `ms: 4000` holds a scene that long instead.
+- `captions: burn` draws them into the picture (needed for social video and
+  gifs); `true` (default) is a subtitle track + `.srt`; `false` none.
+- `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
+  `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
+  { sans, mono }`, `weights: { body, bold, black }`. Dark: paper `#0b0f1a`,
+  card `#151b2b`, ink `#eef1ff`, ink3 `#8c95bc`, rule `#2e3760`.
+- Tall from the same reel: `render reel.yaml --size 1080x1920 -o tall.mp4`
+  (or `--aspect 9:16`); rows stack and the layout is redone.
 - Loop: `kamishibai check reel.yaml` (overlap, off-stage, overflow, contrast,
   widow, for 16:9 and 9:16, no frames; `--json` for parsing; exit 1 on any),
   fix, then `render` and look at a few frames of each shape.

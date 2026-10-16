@@ -60,10 +60,10 @@ The reel's fields:
 | `aspect` | The shapes it lays out for, `{ min, max }` as `"9:16"` or numbers (default 9:16 to 16:9). |
 | `fonts` | Font files, `[{ family, src, weight? }]`, paths relative to the reel. |
 | `theme` | Colours and font families over the default theme (see below). |
-| `voice` | The narration's voice: `{ provider, …options }`, with any provider of [`kamishibai/tts`](narration.md) (`kokoro`, `openai`, `gemini`, `google`, `elevenlabs`, `polly`, `say`). |
+| `voice` | The narration's voice: `{ provider, …options }`, with any provider of [`kamishibai/tts`](narration.md) (`kokoro`, `openai`, `gemini`, `google`, `elevenlabs`, `polly`, `say`) and its options, such as `{ provider: say, voice: Samantha }` or `{ provider: kokoro, voice: jf_alpha }`. |
 | `lexicon` | Readings for the voice only; captions keep the text. |
 | `music` | A track under the whole reel, `{ src, gain?, duck? }`: looped, faded out at the end, and lowered while the voice speaks unless `duck: false`. |
-| `captions` | Captions from each scene's `say` (default true). |
+| `captions` | Captions from each scene's `say`: `true` (the default) for a subtitle track and an `.srt` next to the video, `burn` to draw them into the picture (light on a dark box, in the room kept at the foot), or `false`. |
 | `scenes` | The scenes, in order. |
 
 ## Scenes

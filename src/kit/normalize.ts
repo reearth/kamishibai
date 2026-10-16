@@ -40,7 +40,7 @@ export const REEL_FIELDS: Fields = {
   voice: f.obj('the narration voice: { provider: "kokoro" | "openai" | "gemini" | …, voice?, … }'),
   lexicon: f.obj("reading substitutions for the voice only"),
   music: f.obj("a track under the whole reel: { src, gain?, duck? }"),
-  captions: f.bool("captions from each scene's say (default true)"),
+  captions: f.any('captions from each scene\'s say: true (a subtitle track, the default), "burn" (drawn into the picture) or false'),
   scenes: f.any("the scenes, in order", true),
 };
 
@@ -74,6 +74,9 @@ export function normalize(spec: KitReelSpec): NormScene[] {
   const problems: string[] = [];
   if (!isObj(spec)) throw new KitSpecError(["the reel must be an object with kit and scenes"]);
   problems.push(...checkFields(spec, REEL_FIELDS, "reel"));
+  if (spec.captions !== undefined && typeof spec.captions !== "boolean" && spec.captions !== "burn") {
+    problems.push(`reel.captions: expected true, false or "burn", got ${JSON.stringify(spec.captions)}`);
+  }
   if (typeof spec.kit === "number" && spec.kit > KIT_VERSION) {
     problems.push(`reel.kit: ${spec.kit} is newer than this kamishibai's layout rules (${KIT_VERSION}); update kamishibai`);
   }

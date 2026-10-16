@@ -113,7 +113,7 @@ export type KitReelSpec = {
   lexicon?: Record<string, string>;
   /** a track under the whole reel, lowered while the voice speaks */
   music?: { src: string; gain?: number; duck?: boolean };
-  /** captions from each scene's `say` (default true) */
-  captions?: boolean;
+  /** captions from each scene's `say`: a subtitle track (true, the default), drawn into the picture ("burn"), or none */
+  captions?: boolean | "burn";
   scenes: SceneSpec[];
 };

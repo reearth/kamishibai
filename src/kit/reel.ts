@@ -2,7 +2,7 @@
 // timed to it, and a setup that lays every scene out once for the view and
 // paints the moment asked for.
 // ------------------------------------------------------------------
-import type { CanvasReel, Env, View } from "../canvas/types.ts";
+import type { CanvasReel, Context2D, Env, View } from "../canvas/types.ts";
 import { parseAspect } from "../canvas/types.ts";
 import { fnv1a64 } from "../fingerprint.ts";
 import {
@@ -79,6 +79,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
   await loadYoga();
   const theme = mergeTheme(spec.theme);
   const captions = spec.captions ?? true;
+  const burn = captions === "burn";
 
   // ---- the narration, one clip per sentence, and the timeline it sets
   let clips: Record<string, NarrationClip> = {};
@@ -109,7 +110,8 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
   if (spec.music) {
     audio.push({ src: spec.music.src, atMs: 0, durationMs, loop: true, gain: spec.music.gain ?? -14, duck: spec.music.duck ?? true, fadeOutMs: 1500, label: "music" });
   }
-  const subtitles = captions ? timing.flatMap((t) => t.say.map((l) => ({ start: l.atMs, end: l.atMs + l.ms, text: l.text }))) : undefined;
+  // Burned captions are in the picture, so there is no track as well.
+  const subtitles = captions === true ? timing.flatMap((t) => t.say.map((l) => ({ start: l.atMs, end: l.atMs + l.ms, text: l.text }))) : undefined;
 
   // ---- one layout per view
   async function prepare(view: View, env: Env) {
@@ -128,7 +130,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     }
     const ctx: Ctx = {
       stage,
-      frame: stageFrame(stage, insets, captions),
+      frame: stageFrame(stage, insets, !!captions),
       fonts,
       theme,
       readText: (p) => env.readText(p),
@@ -154,7 +156,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       if (!shots.length || shots[0]!.at > 0) shots.unshift({ at: 0, cam: { ...anchor, s: 1 } });
       return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, shots };
     });
-    return { k, stage, insets, fonts, images, ks, anchor };
+    return { k, stage, insets, fonts, images, ks, anchor, frame: fr };
   }
 
   return {
@@ -175,7 +177,9 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       return check(ks, stage, insets, theme);
     },
     async setup(view, env) {
-      const { k, ks, fonts, images, anchor, stage } = await prepare(view, env);
+      const { k, ks, fonts, images, anchor, stage, insets, frame } = await prepare(view, env);
+      const lines = timing.flatMap((t) => t.say);
+      const caption = burn ? captionPainter(lines, fonts, stage, insets, frame) : undefined;
       const painted = ks.map((kf) => kf.ds.some((d) => d.t === "paint"));
       const settle = ks.map((_, i) => settleMs(ks, i));
       // A scene's frames after its last part came in all look the same.
@@ -187,11 +191,12 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
         g.save();
         g.scale(k, k);
         drawLayers(g, layers, dc, anchor, stage.H);
+        const cue = caption?.(g, ms) ?? -1;
         g.restore();
         // A painted part changes every frame, and so does the scene before it while this one comes in.
         if (painted[i] || (i > 0 && painted[i - 1] && ms - ks[i]!.start < 800)) return undefined;
-        if (ms - ks[i]!.start >= settle[i]!) return rest[i];
-        return `${view.width}x${view.height}:${fnv1a64(JSON.stringify(layers))}`;
+        if (ms - ks[i]!.start >= settle[i]!) return `${rest[i]}#${cue}`;
+        return `${view.width}x${view.height}:${fnv1a64(JSON.stringify(layers))}#${cue}`;
       };
     },
   };
@@ -212,6 +217,44 @@ export function aim(b: Bounds, zoom: number | undefined, stage: { W: number; H: 
     x: clamp(b.x + b.w / 2, anchor.x / s, stage.W - (stage.W - anchor.x) / s),
     y: clamp(b.y + b.h / 2, anchor.y / s, stage.H - (stage.H - anchor.y) / s),
     s,
+  };
+}
+
+/**
+ * Captions drawn into the picture: the sentence being spoken, light on a
+ * dark box, centred in the room kept for them at the foot. Returns the
+ * painter, which returns the index of the sentence it drew (-1 for none).
+ */
+function captionPainter(lines: SayTiming[], fonts: Fonts, stage: { W: number; H: number }, insets: { top: number; right: number; bottom: number; left: number }, fr: { left: number; right: number; bottom: number }) {
+  const tall = stage.H > stage.W;
+  const size = tall ? 48 : 40;
+  const lh = 1.45;
+  const padX = size * 0.7;
+  const padY = size * 0.35;
+  const maxW = stage.W - fr.left - fr.right - padX * 2;
+  const laid = lines.map((l) => fonts.balance(l.text, "bold", size, maxW));
+  const room = fr.bottom - insets.bottom;
+  return (g: Context2D, ms: number): number => {
+    const n = lines.findIndex((l) => ms >= l.atMs && ms < l.atMs + l.ms);
+    if (n < 0) return -1;
+    const ls = laid[n]!;
+    const w = Math.max(...ls.map((s) => fonts.measure(s, "bold", size))) + padX * 2;
+    const h = ls.length * size * lh + padY * 2;
+    const y = stage.H - insets.bottom - room / 2 - h / 2;
+    const x = (stage.W - w) / 2;
+    g.save();
+    g.fillStyle = "rgba(0, 0, 0, 0.62)";
+    g.beginPath();
+    g.roundRect(x, y, w, h, size * 0.3);
+    g.fill();
+    g.font = fonts.css("bold", size);
+    g.letterSpacing = "0px";
+    g.fillStyle = "#ffffff";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    ls.forEach((s, i) => g.fillText(s, stage.W / 2, y + padY + (i + 0.5) * size * lh));
+    g.restore();
+    return n;
   };
 }
 

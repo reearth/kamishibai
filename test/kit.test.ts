@@ -153,6 +153,19 @@ describe("kit", () => {
     expect(paint(g, 2000)).not.toBe(paint(g, 3500));
   });
 
+  it("burns captions into the picture with captions: burn, instead of a track", async () => {
+    const reel = await kit({ kit: 1, fonts, theme, captions: "burn", scenes: [{ say: ["One sentence here.", "And another one."], parts: [title("A")] }] });
+    expect(reel.subtitles).toBeUndefined();
+    const env = await nodeEnv(".");
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, env);
+    const g = patchContext(createCanvas(view.width, view.height).getContext("2d") as unknown as Context2D);
+    const [one, two] = reel.timing[0]!.say;
+    // Two frames under different sentences differ by their caption.
+    expect(paint(g, one!.atMs + one!.ms - 10)).not.toBe(paint(g, two!.atMs + 10));
+    expect(problems({ kit: 1, captions: "yes", scenes: [{ kata: "cover", title: "x" }] })).toEqual(['reel.captions: expected true, false or "burn", got "yes"']);
+  });
+
   it("refuses a cue past the scene's sentences", () => {
     expect(problems({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", text: "x", cue: 2 }] }] })[0]).toMatch(/cue: 2 is not a sentence of this scene's say \(it has 2/);
   });
