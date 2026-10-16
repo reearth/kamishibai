@@ -7,6 +7,8 @@ The harness behind [docs/benchmarks.md](../docs/benchmarks.md): kamishibai next 
 | `run-edit.ts` | Render again after an edit: an 86-second reel, five edits in a row, each tool rendering after every edit |
 | `run-speed.ts` | Render speed: a reference implementation of each brief per tool, with each tool's defaults and with one capture worker |
 | `run-agents.ts` | Agents: tokens, cost, turns and time for a headless Claude Code session to turn a brief into a passing `out.mp4`, with and without each tool's skills, and with no video tool at all (`bare`) |
+| `run-container.ts` | A kit reel rendered on the CPU in a Linux container with no browser, at a few CPU limits |
+| `lexicon/compare.ts` | Every drawing of the [Lexicon](https://reearth.github.io/kamishibai/lexicon/) on Skia with no browser, against Chromium |
 
 ## Files
 
@@ -20,6 +22,8 @@ The harness behind [docs/benchmarks.md](../docs/benchmarks.md): kamishibai next 
 | `summarize.ts` | Tables for any mix of results files. |
 | `sandbox-check.ts` | Whether each render works inside Claude Code's Bash sandbox. On macOS it doesn't (see below). |
 | `smoke-agent.sh` | A fake "agent" for testing the trial plumbing without an API token. |
+| `container/Dockerfile` | Node, ffmpeg, the packed kamishibai and the kit's optional peers, with `examples/kit`: no browser. |
+| `lexicon/` | The Lexicon comparison: `cpu.ts` draws a term on Skia through kamishibai's canvas host, `browser-entry.ts` the way the site does, and `fonts.ts` the faces both use (Zen Kaku Gothic New is fetched into `.work/fonts` the first time). |
 
 The music in `briefs/scenes/assets/` and `edit/` is a sine-wave chord made with ffmpeg:
 
@@ -82,6 +86,23 @@ node run-agents.ts --label explainer --tools kamishibai,kit,remotion,hyperframes
 ```
 
 It needs macOS for `say`.
+
+### In a container
+
+```sh
+node run-container.ts                       # builds the image, then 1, 2 and 4 CPUs × (1 warm-up + 3)
+node run-container.ts --platform linux/amd64 --cpus 1   # the platform Cloudflare's containers run
+```
+
+The image renders `examples/kit/reel.yaml` at 1080p, so it also shows what a container needs to draw text: the reel's own font files. On an Apple Silicon host, `linux/amd64` runs under emulation and is much slower than on real hardware. Don't run it while other benchmarks are running.
+
+### The Lexicon on the CPU
+
+```sh
+node lexicon/compare.ts                     # results/lexicon/: a sheet per chapter and report.json
+```
+
+Draws each of the Lexicon's 137 terms at three moments of its loop on Skia (the site's paint code runs unchanged; its shape terms are drawn from their CSS fields) and in Chromium, and counts the pixels that differ by more than 40 of 255. It also times each term at 1920×1440. It needs the Chromium that Playwright installs.
 
 ## Fairness decisions
 
