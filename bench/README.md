@@ -13,7 +13,7 @@ The harness behind [docs/benchmarks.md](../docs/benchmarks.md): kamishibai next 
 | Path | What |
 |---|---|
 | `setup.sh` | Packs kamishibai, builds the agent templates and the warm homes, and installs the projects' dependencies. Everything it builds goes under `.work/`. |
-| `briefs/<task>/` | The three briefs (`text`, `three`, `scenes`), the same for every tool. Agents get these; `run-speed.ts` renders the reference implementations of them. |
+| `briefs/<task>/` | The briefs, the same for every tool. Agents get these; `run-speed.ts` renders the reference implementations of `text`, `three` and `scenes`. `explainer` is for agents only: a narrated explainer in two shapes (see below). |
 | `speed/<tool>/<task>/` | Reference implementations, each with a `speed.json` naming its render commands and noting anything that deviates from the tool's defaults. |
 | `edit/` | The edit reel: `spec.json` describes it, `edit/<tool>/` draws it, and `gen-hyperframes.mjs` writes HyperFrames' HTML from the spec. |
 | `lib.ts` | Paths, the render environment, the automatic check (size, 30 fps, duration ±1 frame, audio) and frame hashes. |
@@ -59,7 +59,7 @@ To time your own change to kamishibai, run `setup.sh` again on that checkout, an
 claude setup-token                          # in your own terminal: it prints a token
 export CLAUDE_CODE_OAUTH_TOKEN=…            # or save it to a file (chmod 600) and pass --token-file
 node run-agents.ts --dry-run                # the plan: 90 trials by default
-node run-agents.ts --agent-cmd ./smoke-agent.sh --limit 3   # the plumbing, without the API
+node run-agents.ts --agent-cmd "$PWD/smoke-agent.sh" --limit 3   # the plumbing, without the API
 node run-agents.ts                          # resumable with --resume
 node summarize.ts results/agents.jsonl
 ```
@@ -71,6 +71,18 @@ node summarize.ts results/agents.jsonl
 - **Permissions:** trials run with `--permission-mode bypassPermissions`, in their own directories with a throwaway HOME, but as your account. Each trial records every tool call that names a path in your real home (other than the npm cache), and the summary lists them under "Access outside the trial".
 - **No sandbox:** Claude Code's Bash sandbox doesn't work here. On macOS, Seatbelt stops Chromium from registering its Mach rendezvous service, so every tool's render crashes at browser launch. `sandbox.network.allowMachLookup` doesn't help, even with `"*"`. `sandbox-check.ts` reproduces this.
 
+### The explainer brief
+
+`explainer` is a 30–50 second explainer in five scenes, narrated with macOS `say` (voice Samantha), with burned-in captions, things that appear as the narration names them, and the same reel at 1920×1080 (`out.mp4`) and 1080×1920 (`out-tall.mp4`). The narration sets its length, so the automatic check takes a range, and both videos must be the same length.
+
+It runs with a fourth condition, `kit`: the kamishibai project plus the kit's optional dependencies (`@napi-rs/canvas`, `yoga-layout`, `yaml`), with a prompt that asks for a kit reel by name. The plain `kamishibai` condition gets neither, so the agent picks its own way within kamishibai.
+
+```sh
+node run-agents.ts --label explainer --tools kamishibai,kit,remotion,hyperframes --tasks explainer --skills skill --reps 3
+```
+
+It needs macOS for `say`.
+
 ## Fairness decisions
 
 - **Same prompt** for every tool. Only the tool's name changes, and the prompt says the brief is final, so the agent asks no questions.
@@ -81,7 +93,7 @@ node summarize.ts results/agents.jsonl
   - noskill trials also pass `--disable-slash-commands`.
   - The summary's isolation audit lists what each session could see.
 - **Skills** are each tool's official recommendation, installed in the project:
-  - kamishibai: both of its skills, from this checkout.
+  - kamishibai (and kit): its skill, from this checkout.
   - Remotion: all of `remotion-dev/skills`.
   - HyperFrames: the core set from `hyperframes skills update`.
 

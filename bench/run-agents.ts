@@ -4,6 +4,8 @@
 // One trial = one headless Claude Code run that turns a brief's BRIEF.md
 // (briefs/<task>/) into out.mp4, starting from a clone of the tool's
 // ready-made template (setup.sh). Conditions: tool × task × skill/noskill,
+// where `kit` is kamishibai with its kit's optional dependencies installed,
+// asked for a kit reel (scenes as data) by name,
 // each repeated `reps` times. `--tools bare` adds a baseline with no video
 // tool at all: an empty project, noskill only. Within each repetition the order of conditions is shuffled with a
 // fixed seed, so drift over the day (API latency, machine load) spreads
@@ -35,7 +37,7 @@
 //   node run-agents.ts --dry-run                   # print the plan only
 //   node run-agents.ts --label agents [--reps 5] [--token-file path]
 //     [--stop-at-weekly 0.8]
-//     [--tools kamishibai,remotion,hyperframes] [--tasks text,three,scenes]
+//     [--tools kamishibai,kit,remotion,hyperframes] [--tasks text,three,scenes,explainer]
 //     [--skills skill,noskill] [--model claude-opus-5-5]
 //     [--budget-usd 20] [--timeout-min 45] [--limit N] [--resume]
 // ------------------------------------------------------------------
@@ -75,7 +77,9 @@ const { values: args } = parseArgs({
   },
 });
 
-const TOOL_NAMES: Record<string, string> = { kamishibai: "kamishibai", remotion: "Remotion", hyperframes: "HyperFrames" };
+const TOOL_NAMES: Record<string, string> = { kamishibai: "kamishibai", kit: "kamishibai", remotion: "Remotion", hyperframes: "HyperFrames" };
+/** What the prompt asks the video to be made with, where it isn't just the tool's name. */
+const MADE_WITH: Record<string, string> = { kit: "kamishibai's kit (a kit reel, from `kamishibai/kit`)" };
 /** Made for producing video from code: the bare baseline may not use these,
  *  and each bare trial records any it finds in the project afterwards. */
 const VIDEO_TOOLS = ["Remotion", "HyperFrames", "kamishibai", "Motion Canvas", "Revideo", "Manim", "editly", "Etro"];
@@ -83,19 +87,24 @@ const VIDEO_TOOLS = ["Remotion", "HyperFrames", "kamishibai", "Motion Canvas", "
 const VIDEO_PACKAGES = /^(remotion|@remotion\/.*|hyperframes|@hyperframes\/.*|kamishibai|@motion-canvas\/.*|@revideo\/.*|manim|manimgl|editly|etro)$/i;
 
 /** The same words for every tool; only the tool's name changes. "bare" is the
- *  baseline with no video tool: an empty project, where the agent picks its own way. */
-const prompt = (tool: string) =>
-  tool === "bare"
+ *  baseline with no video tool: an empty project, where the agent picks its own way.
+ *  A brief with one output reads as it always has; one with more names them all. */
+const prompt = (tool: string, task: string) => {
+  const files = SPEC[task]!.outputs.map((o) => `./${o.file}`);
+  const to = files.length === 1 ? files[0] : `${files.slice(0, -1).join(", ")} and ${files.at(-1)}`;
+  const done = files.length === 1 ? "out.mp4 matches it" : "they match it";
+  return tool === "bare"
     ? `This is an empty project, and ffmpeg is on PATH. ` +
-      `Make the video described in BRIEF.md and render it to ./out.mp4, writing the rendering yourself: ` +
-      `do not use a tool or framework made for producing video from code (${VIDEO_TOOLS.join(", ")} or the like). ` +
-      `Any other library is fine. ` +
-      `The brief is final: do not ask questions, make any remaining choices yourself. ` +
-      `Check your result against the brief, fix what doesn't match, and stop when out.mp4 matches it.`
+        `Make the video described in BRIEF.md and render it to ${to}, writing the rendering yourself: ` +
+        `do not use a tool or framework made for producing video from code (${VIDEO_TOOLS.join(", ")} or the like). ` +
+        `Any other library is fine. ` +
+        `The brief is final: do not ask questions, make any remaining choices yourself. ` +
+        `Check your result against the brief, fix what doesn't match, and stop when ${done}.`
     : `This project is already set up for ${TOOL_NAMES[tool]}, with its dependencies installed. ` +
-      `Make the video described in BRIEF.md with ${TOOL_NAMES[tool]} and render it to ./out.mp4. ` +
-      `The brief is final: do not ask questions, make any remaining choices yourself. ` +
-      `Check your result against the brief, fix what doesn't match, and stop when out.mp4 matches it.`;
+        `Make the video described in BRIEF.md with ${MADE_WITH[tool] ?? TOOL_NAMES[tool]} and render it to ${to}. ` +
+        `The brief is final: do not ask questions, make any remaining choices yourself. ` +
+        `Check your result against the brief, fix what doesn't match, and stop when ${done}.`;
+};
 
 interface Trial { id: string; tool: string; task: string; skill: boolean; rep: number }
 
@@ -129,19 +138,24 @@ function plan(): Trial[] {
   return args.limit ? out.slice(0, Number(args.limit)) : out;
 }
 
-/** 12 evenly spaced frames tiled 4×3, saved under a random name so the judge
- *  can't tell the tool; the mapping is kept separately. */
-function contactSheet(project: string, task: string, blindDir: string): string | undefined {
-  const file = join(project, "out.mp4");
-  if (!existsSync(file)) return undefined;
+/** 12 evenly spaced frames of each output tiled 4×3 (6×2 for a tall one),
+ *  saved under one random name so the judge can't tell the tool; the mapping
+ *  is kept separately. */
+function contactSheet(project: string, task: string, blindDir: string, seconds: number | undefined): string | undefined {
   const name = randomBytes(6).toString("hex");
-  const step = SPEC[task].seconds / 12;
-  try {
-    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-vf", `fps=1/${step},scale=480:-1,tile=4x3`, "-frames:v", "1", join(blindDir, `${task}-${name}.png`)]);
-    return `${task}-${name}.png`;
-  } catch {
-    return undefined;
+  const step = (seconds ?? SPEC[task].seconds) / 12;
+  let made = false;
+  for (const [i, o] of SPEC[task].outputs.entries()) {
+    const file = join(project, o.file);
+    if (!existsSync(file)) continue;
+    const tall = o.height > o.width;
+    const suffix = i === 0 ? "" : `-${o.file.replace(/^out-?|\.mp4$/g, "")}`;
+    try {
+      execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", file, "-vf", `fps=1/${step},scale=${tall ? "-1:480" : "480:-1"},tile=${tall ? "6x2" : "4x3"}`, "-frames:v", "1", join(blindDir, `${task}-${name}${suffix}.png`)]);
+      made = true;
+    } catch {}
   }
+  return made ? `${task}-${name}.png` : undefined;
 }
 
 /** Pull the numbers we compare out of the stream-json transcript. */
@@ -173,7 +187,7 @@ function digest(lines: any[]) {
     toolUses: uses.reduce<Record<string, number>>((m, u) => ((m[u.name] = (m[u.name] ?? 0) + 1), m), {}),
     imageReads: uses.filter((u) => u.name === "Read" && isImage(u.input?.file_path)).length,
     skillLoads: uses.filter((u) => u.name === "Skill").map((u) => u.input?.skill),
-    renders: bash.filter((c) => /\b(kamishibai|remotion|hyperframes)\b[^|;&]*\brender\b|npm run render/.test(c)).length,
+    renders: bash.filter((c) => /\b(kamishibai|remotion|hyperframes)\b[^|;&]*\b(render|export)\b|npm run render/.test(c)).length,
     rateLimit: lastLimit && {
       status: lastLimit.status,
       resetsAt: lastLimit.resetsAt,
@@ -245,7 +259,7 @@ async function runTrial(t: Trial, file: string, blindDir: string) {
   const env = renderEnv(home, { TMPDIR: join(root, "tmp"), CLAUDE_CODE_OAUTH_TOKEN: token });
   await mkdir(env.TMPDIR, { recursive: true });
   const cli = [
-    "-p", prompt(t.tool),
+    "-p", prompt(t.tool, t.task),
     "--setting-sources", "project",
     "--strict-mcp-config",
     "--model", args.model!,
@@ -293,6 +307,7 @@ async function runTrial(t: Trial, file: string, blindDir: string) {
     await appendFile(file, JSON.stringify(rec) + "\n");
     return rec;
   }
+  const checked = check(project, t.task);
   const rec = {
     type: "trial",
     ...t,
@@ -301,9 +316,9 @@ async function runTrial(t: Trial, file: string, blindDir: string) {
     timedOut,
     wallMs,
     ...digested,
-    check: check(project, t.task),
+    check: checked,
     videoTools: t.tool === "bare" ? videoToolsIn(project, digested.bashCommands) : undefined,
-    sheet: contactSheet(project, t.task, blindDir),
+    sheet: contactSheet(project, t.task, blindDir, (checked as { duration?: number }).duration),
   };
   await appendFile(file, JSON.stringify(rec) + "\n");
   if (rec.sheet) await appendFile(join(blindDir, "..", `${args.label}-blind-key.jsonl`), JSON.stringify({ sheet: rec.sheet, id: t.id }) + "\n");
@@ -320,7 +335,8 @@ const trials = plan();
 console.log(`${trials.length} trials · model ${args.model} · budget $${args["budget-usd"]}/trial · timeout ${args["timeout-min"]} min`);
 if (args["dry-run"]) {
   for (const t of trials) console.log(t.id);
-  for (const tool of new Set(trials.map((t) => t.tool))) console.log(`\nprompt (${tool}): ${prompt(tool)}`);
+  for (const tool of new Set(trials.map((t) => t.tool)))
+    for (const task of new Set(trials.map((t) => t.task))) console.log(`\nprompt (${tool}, ${task}): ${prompt(tool, task)}`);
   process.exit(0);
 }
 const token =
@@ -357,7 +373,7 @@ await appendFile(
     date: new Date().toISOString(),
     claude: args["agent-cmd"] ? `agent-cmd: ${args["agent-cmd"]}` : execFileSync("claude", ["--version"], { encoding: "utf8" }).trim(),
     inventory: await readFile(join(WORK, "templates", "INVENTORY.md"), "utf8"),
-    prompts: Object.fromEntries(list(args.tools!).map((tool) => [tool, prompt(tool)])),
+    prompts: Object.fromEntries(list(args.tools!).flatMap((tool) => list(args.tasks!).map((task) => [`${tool}/${task}`, prompt(tool, task)]))),
     args,
   }) + "\n",
 );

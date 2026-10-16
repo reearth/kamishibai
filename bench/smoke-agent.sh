@@ -14,6 +14,15 @@ const R = () => { const { ms } = useClock(); return <div style={{ position: "abs
 mount(<R />, { fps: 30, durationMs: 1000, width: 1920, height: 1080 });
 TSX
     npx kamishibai render reel.tsx -o out.mp4 ;;
+  kit)
+    cat > reel.yaml <<'YAML'
+kit: 1
+voice: { provider: say, voice: Samantha }
+scenes:
+  - { kata: cover, title: Smoke test, say: One sentence. Two sentences. }
+YAML
+    npx kamishibai render reel.yaml -o out.mp4
+    npx kamishibai render reel.yaml --size 1080x1920 -o out-tall.mp4 ;;
   remotion) npx remotion render src/index.ts MyComp out.mp4 --frames=0-29 ;;
   hyperframes) perl -pi -e 's/data-duration="10"/data-duration="1"/g' index.html && npx -y hyperframes@0.8.143 render -o out.mp4 ;;
 esac

@@ -4,6 +4,7 @@
 #   .work/kamishibai.tgz             kamishibai packed from this repo, or $KAMISHIBAI_TARBALL
 #   .work/templates/<tool>/skill     a ready-to-use project per tool, with its
 #   .work/templates/<tool>/noskill   official agent skills, and without them
+#                                    (kit: kamishibai's, with the kit's optional deps)
 #   .work/home-seed                  a HOME with every tool's browser and caches warm
 #   .work/home/<tool>                the HOME each tool renders with in run-speed / run-edit
 #
@@ -82,11 +83,16 @@ mkdir -p .claude/skills
 src="$HOME/.claude/skills"; [ -d "$src" ] || src="$HOME/.agents/skills"
 cp -RL "$src"/. .claude/skills/
 
+# kit: the kamishibai project plus what a kit reel needs (Skia, Yoga, YAML),
+# the optional peers its guide says to install.
+mkdir -p "$OUT/kit" && clone "$OUT/kamishibai/skill" "$OUT/kit/skill"
+(cd "$OUT/kit/skill" && npm i --no-audit --no-fund -D @napi-rs/canvas@1.0.9 yoga-layout@3.2.1 yaml@2.8.1 >/dev/null)
+
 # The baseline with no video tool: an empty project. The agent installs
 # whatever it decides to use.
 mkdir -p "$OUT/bare/noskill" && (cd "$OUT/bare/noskill" && npm init -y >/dev/null && npm pkg set type=module)
 
-for tool in kamishibai remotion hyperframes; do
+for tool in kamishibai kit remotion hyperframes; do
   rm -rf "$OUT/$tool/noskill"
   clone "$OUT/$tool/skill" "$OUT/$tool/noskill"
   rm -rf "$OUT/$tool/noskill/.claude/skills" "$OUT/$tool/noskill/.agents" "$OUT/$tool/noskill/skills-lock.json"
@@ -150,7 +156,7 @@ done
   echo "# Bench setup — $(date -u +%FT%TZ)"
   echo "kamishibai: $(tar -xOzf "$TARBALL" package/package.json | node -e 'process.stdin.on("data",d=>console.log(JSON.parse(d).version))') ($(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo "?")${KAMISHIBAI_TARBALL:+, from $(basename "$KAMISHIBAI_TARBALL")})"
   echo "remotion: $REMOTION_VERSION · hyperframes: $HYPERFRAMES_VERSION · skills cli: $SKILLS_CLI"
-  for tool in kamishibai remotion hyperframes; do
+  for tool in kamishibai kit remotion hyperframes; do
     echo "## $tool/skill — skills and their size"
     (cd "$OUT/$tool/skill" && find .claude/skills -name SKILL.md 2>/dev/null | sort | while read -r f; do
       printf '%6d bytes (dir %s)  %s\n' "$(wc -c <"$f")" "$(du -sk "$(dirname "$f")" | cut -f1)k" "$f"; done)
