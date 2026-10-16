@@ -34,6 +34,8 @@ const LEAD_MS = 400;
 const TAIL_MS = 700;
 /** A scene with nothing to say holds this long. */
 const SILENT_MS = 3000;
+/** The pause between two sentences of a scene. */
+const GAP_MS = 250;
 
 const ADAPTERS: Record<VoiceSpec["provider"], (o: never) => TTSAdapterRef> = {
   say: sayAdapter,
@@ -52,8 +54,11 @@ function voiceAdapter(v: VoiceSpec): TTSAdapterRef {
   return make(opts as never);
 }
 
-/** Where each scene sits on the reel's clock. */
-export type SceneTiming = { id: string; start: number; ms: number; say?: { atMs: number; ms: number; text: string; src: string } };
+/** One sentence of a scene's narration on the reel's clock: the caption, and its audio ("" with none). */
+export type SayTiming = { atMs: number; ms: number; text: string; src: string };
+
+/** Where each scene sits on the reel's clock, with its sentences. */
+export type SceneTiming = { id: string; start: number; ms: number; say: SayTiming[] };
 
 /** A canvas reel made by the kit, which can also check its layout. */
 export interface KitReel extends CanvasReel {
@@ -72,30 +77,36 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
   const theme = mergeTheme(spec.theme);
   const captions = spec.captions ?? true;
 
-  // ---- the narration, and the timeline it sets
+  // ---- the narration, one clip per sentence, and the timeline it sets
   let clips: Record<string, NarrationClip> = {};
-  const lines = Object.fromEntries(scenes.filter((s) => s.say).map((s) => [s.id, s.say]));
+  const key = (s: NormScene, i: number) => `${s.id}#${i}`;
+  const lines = Object.fromEntries(scenes.flatMap((s) => s.say.map((text, i) => [key(s, i), text])));
   if (spec.voice && Object.keys(lines).length) {
     clips = await prepareNarration(voiceAdapter(spec.voice), lines, { lexicon: spec.lexicon });
   }
   let start = 0;
   const timing: SceneTiming[] = scenes.map((s) => {
-    const clip = clips[s.id];
-    const sayMs = s.say ? Math.round(clip?.durationMs ?? speechMs(s.say)) : 0;
-    const ms = s.ms ?? (s.say ? Math.max(2500, LEAD_MS + sayMs + TAIL_MS) : SILENT_MS);
-    const t: SceneTiming = { id: s.id, start, ms };
-    if (s.say) t.say = { atMs: start + LEAD_MS, ms: sayMs, text: clip?.text ?? s.say, src: clip?.src ?? "" };
+    let at = start + LEAD_MS;
+    const say = s.say.map((text, i): SayTiming => {
+      const clip = clips[key(s, i)];
+      const t = { atMs: at, ms: Math.round(clip?.durationMs ?? speechMs(text)), text: clip?.text ?? text, src: clip?.src ?? "" };
+      at += t.ms + GAP_MS;
+      return t;
+    });
+    const sayEnd = say.length ? at - GAP_MS - start : 0;
+    const ms = s.ms ?? (say.length ? Math.max(2500, sayEnd + TAIL_MS) : SILENT_MS);
+    const t: SceneTiming = { id: s.id, start, ms, say };
     start += ms;
     return t;
   });
   const durationMs = start;
 
   const audio: NonNullable<CanvasReel["audio"]> = [];
-  for (const t of timing) if (t.say?.src) audio.push({ src: t.say.src, atMs: t.say.atMs, label: t.id });
+  for (const t of timing) t.say.forEach((l, i) => l.src && audio.push({ src: l.src, atMs: l.atMs, label: `${t.id}#${i}` }));
   if (spec.music) {
     audio.push({ src: spec.music.src, atMs: 0, durationMs, loop: true, gain: spec.music.gain ?? -14, duck: spec.music.duck ?? true, fadeOutMs: 1500, label: "music" });
   }
-  const subtitles = captions ? timing.filter((t) => t.say).map((t) => ({ start: t.say!.atMs, end: t.say!.atMs + t.say!.ms, text: t.say!.text })) : undefined;
+  const subtitles = captions ? timing.flatMap((t) => t.say.map((l) => ({ start: l.atMs, end: l.atMs + l.ms, text: l.text }))) : undefined;
 
   // ---- one layout per view
   async function prepare(view: View, env: Env) {
@@ -125,7 +136,13 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       },
       child: (p, flow) => partBox(p as PartSpec & { id: string }, { ...ctx, flow }),
     };
-    const ks: Keyframe[] = scenes.map((s, i) => ({ id: s.id, start: timing[i]!.start, ms: timing[i]!.ms, ds: layoutScene(s, ctx) }));
+    const ks: Keyframe[] = scenes.map((s, i) => {
+      const t = timing[i]!;
+      // A cued part comes in as its sentence starts.
+      const cues: Record<string, number> = {};
+      for (const [id, n] of s.cues) if (t.say[n]) cues[id] = t.say[n]!.atMs - t.start;
+      return { id: s.id, start: t.start, ms: t.ms, ds: layoutScene(s, ctx), cues };
+    });
     return { k, stage, insets, fonts, images, ks };
   }
 

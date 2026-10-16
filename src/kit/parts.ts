@@ -59,6 +59,10 @@ export interface PartDef<S = Record<string, unknown>> {
   corner?(spec: Placed<S>): boolean;
   /** the parts inside it, so they get ids too */
   children?(spec: Placed<S>): PartSpec[];
+  /** cues of things inside it (a figure's items), as [turn, sentence] */
+  cues?(spec: S): Array<[string, number]>;
+  /** problems beyond its fields' kinds, each led by `at` */
+  check?(spec: S, at: string): string[];
   /** image files it draws, loaded before layout */
   images?(spec: Placed<S>): string[];
 }
@@ -120,6 +124,7 @@ const VERBS = ["fade", "rise", "draw", "type", "count", "pop", "none"] as const;
 export const COMMON: Fields = {
   id: f.str("same id in the next scene: the part moves there"),
   enter: f.one(VERBS, "how it comes in when it first appears"),
+  cue: f.num("come in as this sentence of the scene's say starts (0 = the first)"),
 };
 
 definePart<TitleSpec>("title", {
@@ -403,3 +408,113 @@ export const stat = (value: number, o: Opt<StatSpec, "value"> = {}): StatSpec =>
 export const list = (items: string[], o: Opt<ListSpec, "items"> = {}): ListSpec => ({ type: "list", items, ...o });
 export const image = (src: string, o: Opt<ImageSpec, "src"> = {}): ImageSpec => ({ type: "image", src, ...o });
 export const paint = (o: Opt<PaintSpec, never>): PaintSpec => ({ type: "paint", ...o });
+
+// ---- figure: drawing as data ----------------------------------------------
+
+type FigureItem = {
+  id?: string;
+  enter?: Verb;
+  cue?: number;
+  rect?: [number, number, number, number];
+  circle?: [number, number, number];
+  line?: [number, number][];
+  text?: string;
+  /** a text's anchor */
+  at?: [number, number];
+  fill?: string;
+  stroke?: string;
+  /** a line's or an outline's width */
+  width?: number;
+  r?: number;
+  arrow?: boolean;
+  size?: number;
+  color?: string;
+  bold?: boolean;
+  align?: "start" | "center" | "end";
+};
+type FigureSpec = { id: string; type: "figure"; width: number; height: number; items: FigureItem[]; caption?: string };
+
+const SHAPES = ["rect", "circle", "line", "text"] as const;
+const isNums = (v: unknown, n?: number) => Array.isArray(v) && (n === undefined || v.length === n) && v.every((x) => typeof x === "number" && isFinite(x));
+const itemId = (s: { id: string }, it: FigureItem, i: number) => `${s.id}.${it.id ?? i}`;
+
+/** A theme colour by name (accent, ink, ink3, card…), or a CSS colour as it is. */
+function colour(c: string | undefined, theme: Theme, fallback: string): string {
+  if (!c) return fallback;
+  const named = (theme as unknown as Record<string, unknown>)[c];
+  return typeof named === "string" ? named : c;
+}
+
+definePart<FigureSpec>("figure", {
+  doc: "A drawing as data: rects, circles, lines and text in its own width × height units, fitted to the room it gets. Each item may have an id (the same id in the next scene moves it) and a cue.",
+  fields: {
+    width: f.num("its units across", true),
+    height: f.num("its units down", true),
+    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, at: [x, y], size?, bold?, align? }, with fill, stroke, width, r, color (a theme colour name or CSS), id, enter, cue', true),
+    caption: f.str("a small line under it"),
+  },
+  check: (s, at) => {
+    if (!Array.isArray(s.items)) return [];
+    const out: string[] = [];
+    s.items.forEach((it, i) => {
+      const where = `${at}.items[${i}]`;
+      if (!it || typeof it !== "object") return void out.push(`${where}: expected an item ({ rect | circle | line | text, … })`);
+      const kinds = SHAPES.filter((k) => it[k] !== undefined);
+      if (kinds.length !== 1) return void out.push(`${where}: give one of ${SHAPES.join(", ")} (got ${kinds.length ? kinds.join(" and ") : "none"})`);
+      if (it.rect !== undefined && !isNums(it.rect, 4)) out.push(`${where}.rect: expected [x, y, w, h]`);
+      if (it.circle !== undefined && !isNums(it.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
+      if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p) => isNums(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
+      if (it.text !== undefined && (typeof it.text !== "string" || !isNums(it.at, 2))) out.push(`${where}: a text needs text and at: [x, y]`);
+    });
+    const ids = s.items.map((it, i) => (it && typeof it === "object" ? (it.id ?? String(i)) : String(i)));
+    for (const id of new Set(ids.filter((x, i) => ids.indexOf(x) !== i))) out.push(`${at}.items: the id "${id}" is used twice`);
+    return out;
+  },
+  cues: (s) => (Array.isArray(s.items) ? s.items.flatMap((it, i) => (typeof it?.cue === "number" ? [[itemId(s, it, i), it.cue] as [string, number]] : [])) : []),
+  box: (s, ctx) => {
+    const T = ctx.theme;
+    const maxH = ctx.stage.H * 0.6;
+    const pic: Box = {
+      style: { shrink: 1 },
+      measure: (maxW) => {
+        let w = Math.min(maxW, s.width);
+        if ((w * s.height) / s.width > maxH) w = (maxH * s.width) / s.height;
+        return { w, h: (w * s.height) / s.width };
+      },
+      paint: (r) => {
+        const k = r.w / s.width;
+        const X = (x: number) => r.x + x * k;
+        const Y = (y: number) => r.y + y * k;
+        return s.items.map((it, i): Paint => {
+          // An item with a cue comes in on its own turn; the rest with the figure.
+          const base = { id: itemId(s, it, i), ...(it.cue ? { turn: itemId(s, it, i) } : {}), o: 1, enter: it.enter };
+          if (it.rect) {
+            const [x, y, w, h] = it.rect;
+            return { ...base, t: "rect", x: X(x), y: Y(y), w: w * k, h: h * k, r: (it.r ?? 0) * k, fill: it.fill || it.stroke ? (it.fill ? colour(it.fill, T, T.card) : undefined) : T.card, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.width ?? 2) * k, ground: !!it.fill };
+          }
+          if (it.circle) {
+            const [cx, cy, rad] = it.circle;
+            return { ...base, t: "circle", cx: X(cx), cy: Y(cy), r: rad * k, fill: it.fill || !it.stroke ? colour(it.fill, T, T.ink) : undefined, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.width ?? 2) * k };
+          }
+          if (it.line) {
+            return { ...base, t: "path", pts: it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]), stroke: colour(it.stroke, T, T.ink), sw: (it.width ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none" };
+          }
+          const size = (it.size ?? SIZE.body) * k;
+          const font: FontRole = it.bold ? "bold" : "sans";
+          const lines = it.text!.split("\n");
+          const w = Math.max(...lines.map((l) => ctx.fonts.measure(l, font, size)));
+          const h = lines.length * size * 1.3;
+          const align = it.align ?? "start";
+          const x = X(it.at![0]) - (align === "center" ? w / 2 : align === "end" ? w : 0);
+          // at is the text's top-left (or top-centre, top-right) corner
+          return { ...base, t: "text", x, y: Y(it.at![1]), w, h, lines, font, size, lh: 1.3, track: 0, color: colour(it.color, T, T.ink), align, need: w };
+        });
+      },
+    };
+    if (!s.caption) return pic;
+    return { style: { gap: 16, align: "center" }, kids: [pic, textBox(`${s.id}.caption`, s.caption, ctx, { size: SIZE.small, color: T.ink3, align: "center" })] };
+  },
+});
+
+export const figure = (width: number, height: number, items: FigureItem[], o: { id?: string; caption?: string; enter?: Verb; cue?: number } = {}) => ({ type: "figure" as const, width, height, items, ...o });
+export type { FigureItem };

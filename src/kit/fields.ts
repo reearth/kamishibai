@@ -4,7 +4,7 @@
 // ------------------------------------------------------------------
 
 export type Field = {
-  kind: "string" | "number" | "boolean" | "strings" | "parts" | "function" | "object" | "any";
+  kind: "string" | "number" | "boolean" | "strings" | "text" | "parts" | "function" | "object" | "list" | "any";
   /** the values a string may take */
   enum?: readonly string[];
   required?: boolean;
@@ -17,6 +17,8 @@ export const f = {
   num: (doc?: string, required = false): Field => ({ kind: "number", doc, required }),
   bool: (doc?: string): Field => ({ kind: "boolean", doc }),
   strs: (doc?: string, required = false): Field => ({ kind: "strings", doc, required }),
+  text: (doc?: string, required = false): Field => ({ kind: "text", doc, required }),
+  list: (doc?: string, required = false): Field => ({ kind: "list", doc, required }),
   parts: (doc?: string, required = false): Field => ({ kind: "parts", doc, required }),
   fn: (doc?: string, required = false): Field => ({ kind: "function", doc, required }),
   obj: (doc?: string, required = false): Field => ({ kind: "object", doc, required }),
@@ -51,8 +53,14 @@ export function checkFields(o: Record<string, unknown>, fields: Fields, at: stri
       case "strings":
         if (!Array.isArray(v) || v.some((s) => typeof s !== "string")) bad("a list of strings");
         break;
+      case "text":
+        if (typeof v !== "string" && (!Array.isArray(v) || v.some((s) => typeof s !== "string"))) bad("a string or a list of strings");
+        break;
       case "parts":
         if (!Array.isArray(v)) bad("a list of parts");
+        break;
+      case "list":
+        if (!Array.isArray(v)) bad("a list");
         break;
       case "function":
         if (typeof v !== "function") bad("a function (only in a code reel)");
@@ -113,6 +121,10 @@ export function fieldSchema(fd: Field, part: object): Record<string, unknown> {
       return { type: "boolean", ...doc };
     case "strings":
       return { type: "array", items: { type: "string" }, ...doc };
+    case "text":
+      return { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }], ...doc };
+    case "list":
+      return { type: "array", ...doc };
     case "parts":
       return { type: "array", items: part, ...doc };
     case "object":

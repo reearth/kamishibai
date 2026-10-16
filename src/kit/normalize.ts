@@ -6,11 +6,21 @@ import { checkFields, closest, f, type Fields } from "./fields.ts";
 import { kataDef, kataNames } from "./kata.ts";
 import { COMMON, partDef, partTypes, type Placed } from "./parts.ts";
 import { KIT_VERSION, type KitReelSpec, type PartSpec } from "./spec.ts";
+import { sentences } from "./text.ts";
 
-export type NormScene = { id: string; say: string; ms?: number; parts: Placed<PartSpec>[] };
+export type NormScene = {
+  id: string;
+  /** the narration, as sentences */
+  say: string[];
+  ms?: number;
+  parts: Placed<PartSpec>[];
+  /** the sentence each cued part (and every part inside it) comes in with, by id */
+  cues: Map<string, number>;
+};
 
 export const REEL_FIELDS: Fields = {
   kit: f.num(`the layout rules' version: ${KIT_VERSION}`, true),
+  uses: f.strs("modules that define parts and shapes, relative to the reel (a JSON or YAML reel)"),
   title: f.str(),
   fps: f.num("frames per second (default 30)"),
   width: f.num("the default view's width (default 1920)"),
@@ -27,7 +37,7 @@ export const REEL_FIELDS: Fields = {
 
 export const SCENE_FIELDS: Fields = {
   id: f.str("a name for messages and the scene list"),
-  say: f.str("the narration, also the caption"),
+  say: f.text("the narration, and its captions: a text split into sentences, or a list of sentences"),
   ms: f.num("hold this long instead of the narration's length"),
   kata: f.str("a scene shape, filled in with the fields beside it"),
   parts: f.parts("parts, after the shape's"),
@@ -60,7 +70,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: "", parts: [] };
+      return { id: `s${i}`, say: [], parts: [], cues: new Map() };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -84,8 +94,10 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     problems.push(...checkFields(sc, SCENE_FIELDS, where, sc.kata !== undefined ? Object.keys(sc) : []));
     if (sc.kata === undefined && !sc.parts) problems.push(`${where}: a scene needs kata or parts`);
 
+    const say = typeof sc.say === "string" ? sentences(sc.say) : Array.isArray(sc.say) ? sc.say.filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];
+    const cues = new Map<string, number>();
     const used = new Set<string>();
-    const place = (p: unknown, pat: string): Placed<PartSpec> | null => {
+    const place = (p: unknown, pat: string, inherited?: number): Placed<PartSpec> | null => {
       if (!isObj(p)) {
         problems.push(`${pat}: expected a part ({ type, … }), got ${JSON.stringify(p)}`);
         return null;
@@ -97,18 +109,31 @@ export function normalize(spec: KitReelSpec): NormScene[] {
         return null;
       }
       const pid = typeof p.id === "string" ? p.id : undefined;
-      problems.push(...checkFields(p, { ...COMMON, ...def.fields }, `${pat} (${p.type}${pid ? ` ${pid}` : ""})`, ["type"]));
+      const label = `${pat} (${p.type}${pid ? ` ${pid}` : ""})`;
+      problems.push(...checkFields(p, { ...COMMON, ...def.fields }, label, ["type"]));
+      problems.push(...(def.check?.(p as never, label) ?? []));
+      let cue = inherited;
+      if (typeof p.cue === "number") {
+        if (!Number.isInteger(p.cue) || p.cue < 0 || p.cue >= Math.max(1, say.length)) {
+          problems.push(`${label}.cue: ${p.cue} is not a sentence of this scene's say (it has ${say.length}: 0${say.length > 1 ? `…${say.length - 1}` : ""})`);
+        } else cue = p.cue;
+      }
       let id = pid;
       if (id === undefined) {
         id = p.type as string;
         for (let n = 2; used.has(id); n++) id = `${p.type}.${n}`;
       } else if (used.has(id)) problems.push(`${pat}: the id "${id}" is used twice in this scene`);
       used.add(id);
+      if (cue) cues.set(id, cue);
+      for (const [turn, n] of def.cues?.({ ...p, id } as never) ?? []) {
+        if (!Number.isInteger(n) || n < 0 || n >= Math.max(1, say.length)) problems.push(`${label}: the cue ${n} of ${turn} is not a sentence of this scene's say (it has ${say.length})`);
+        else if (n) cues.set(turn, n);
+      }
       const placed: Record<string, unknown> = { ...p, id };
       // Parts inside parts (a row's, or a custom part's lists of parts).
       for (const [k, fd] of Object.entries(def.fields)) {
         if (fd.kind === "parts" && Array.isArray(p[k])) {
-          placed[k] = (p[k] as unknown[]).map((c, j) => place(c, `${pat}.${k}[${j}]`)).filter((c) => c !== null);
+          placed[k] = (p[k] as unknown[]).map((c, j) => place(c, `${pat}.${k}[${j}]`, cue)).filter((c) => c !== null);
         }
       }
       return placed as Placed<PartSpec>;
@@ -118,9 +143,10 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const written = Array.isArray(sc.parts) ? sc.parts.map((p, j) => place(p, `${where}.parts[${j}]`)) : [];
     return {
       id,
-      say: typeof sc.say === "string" ? sc.say : "",
+      say,
       ms: typeof sc.ms === "number" ? sc.ms : undefined,
       parts: [...kataParts, ...written].filter((p) => p !== null),
+      cues,
     };
   });
   if (problems.length) throw new KitSpecError(problems);

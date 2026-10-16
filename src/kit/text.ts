@@ -112,6 +112,32 @@ export function tokens(s: string): string[] {
 }
 
 /**
+ * Split narration into sentences: after 。！？ (and the closing brackets
+ * that follow), and after . ! ? before a space.
+ */
+export function sentences(s: string): string[] {
+  const out: string[] = [];
+  const chars = [...s];
+  const close = /[」』）)"'”’]/;
+  let cur = "";
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]!;
+    cur += ch;
+    const wide = /[。！？]/.test(ch);
+    if (!wide && !/[.!?]/.test(ch)) continue;
+    // Keep a run of marks and the closing brackets after them in this sentence.
+    while (i + 1 < chars.length && (/[。！？.!?]/.test(chars[i + 1]!) || close.test(chars[i + 1]!))) cur += chars[++i];
+    // A latin mark ends a sentence only before a space or the end (3.5 and e.g. don't).
+    if (wide || i + 1 >= chars.length || /\s/.test(chars[i + 1]!)) {
+      if (cur.trim()) out.push(cur.trim());
+      cur = "";
+    }
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/**
  * A guessed spoken length, for a scene with no audio yet: Japanese at about
  * 7.5 characters a second, other text at about 14.
  */

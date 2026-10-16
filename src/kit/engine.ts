@@ -7,7 +7,14 @@
 import { bezier, eases } from "../easing.ts";
 import type { Drawable, ImageD, PaintD, PathD, TextD } from "./model.ts";
 
-export type Keyframe = { id: string; start: number; ms: number; ds: Drawable[] };
+export type Keyframe = {
+  id: string;
+  start: number;
+  ms: number;
+  ds: Drawable[];
+  /** when a part (by owner) comes in, in ms from the scene's start, if not with the scene */
+  cues?: Record<string, number>;
+};
 
 /** A drawable as it is at one moment: maybe lifted, scaled, and (painted) on the reel's clock. */
 export type Live = Drawable & { dy?: number; sc?: number; now?: number };
@@ -103,17 +110,34 @@ export function keyframeAt(ks: Keyframe[], t: number): number {
   return i < 0 ? ks.length - 1 : i;
 }
 
-/** How long after a scene starts its last part has come in (its frames repeat after). */
-export function settleMs(ks: Keyframe[], i: number): number {
+/**
+ * When each new part's turn comes, in ms from the scene's start: with the
+ * scene, one owner after another once the movers have mostly settled, or
+ * with its cue, one after another among those with the same cue.
+ */
+function turns(ks: Keyframe[], i: number): Map<string, number> {
   const k = ks[i]!;
   const prev = i > 0 ? ks[i - 1]! : null;
   const before = new Set(prev?.ds.map((d) => d.id));
-  const owners = new Set<string>();
-  let fresh = 0;
-  for (const d of k.ds) if (!before.has(d.id)) owners.add(d.owner), fresh++;
   const base = prev ? MORPH_MS * 0.55 : 150;
-  // the last newcomer's delay, plus the longest verb (a count, or typing)
-  return Math.max(MORPH_MS, base + owners.size * 160 + Math.min(fresh, 12) * 35 + 1500);
+  const out = new Map<string, number>();
+  const rank = new Map<number, number>();
+  for (const d of k.ds) {
+    const who = d.turn ?? d.owner;
+    if (before.has(d.id) || out.has(who)) continue;
+    const at = k.cues?.[who] ?? k.cues?.[d.owner] ?? base;
+    const n = rank.get(at) ?? 0;
+    rank.set(at, n + 1);
+    out.set(who, at + n * 160);
+  }
+  return out;
+}
+
+/** How long after a scene starts its last part has come in (its frames repeat after). */
+export function settleMs(ks: Keyframe[], i: number): number {
+  const last = Math.max(0, ...turns(ks, i).values());
+  // the last turn, its staggered drawables, and the longest verb (a count, or typing)
+  return Math.max(MORPH_MS, last + 12 * 35 + 1500);
 }
 
 /** Everything on screen at time `t`, in paint order. */
@@ -126,10 +150,8 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
   const now = new Set(k.ds.map((d) => d.id));
   const p = move(clamp01(tau / MORPH_MS));
 
-  // New parts come in one owner at a time, after the movers have mostly settled.
-  const owners: string[] = [];
-  for (const d of k.ds) if (!before.has(d.id) && !owners.includes(d.owner)) owners.push(d.owner);
-  const base = prev ? MORPH_MS * 0.55 : 150;
+  // New parts come in one owner at a time, after the movers have mostly settled (or with their cue).
+  const turn = turns(ks, i);
   const seen = new Map<string, number>();
 
   const out: Live[] = [];
@@ -157,9 +179,10 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
         if (fresh) out.push(fresh);
       }
     } else {
-      const n = seen.get(d.owner) ?? 0;
-      seen.set(d.owner, n + 1);
-      const delay = base + owners.indexOf(d.owner) * 160 + Math.min(n, 12) * 35;
+      const who = d.turn ?? d.owner;
+      const n = seen.get(who) ?? 0;
+      seen.set(who, n + 1);
+      const delay = turn.get(who)! + Math.min(n, 12) * 35;
       const e = enter(d, tau - delay);
       if (e) out.push(e);
     }

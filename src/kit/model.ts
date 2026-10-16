@@ -14,6 +14,8 @@ type Base = {
   enter?: Verb;
   /** the top-level part this belongs to: the checker reads overlaps by it */
   owner: string;
+  /** what it comes in with, when not its owner (a figure's item): a cue names it */
+  turn?: string;
 };
 
 export type RectD = Base & {

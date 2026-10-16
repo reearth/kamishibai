@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { kit, kitSchema, normalize, KitSpecError, card, row, title, arrow, scene, definePart, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
 import { frameAt, type Keyframe } from "../src/kit/engine.ts";
-import { tokens, speechMs } from "../src/kit/text.ts";
+import { tokens, speechMs, sentences } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
 import { resolveView, type Context2D } from "../src/canvas/types.ts";
 import { checkEntry } from "../src/kit-check.ts";
@@ -76,6 +76,11 @@ describe("text", () => {
     expect(ts.some((t) => t.startsWith("、") || /^[のがです]/.test(t))).toBe(false);
   });
 
+  it("splits narration into sentences, but not at a decimal point", () => {
+    expect(sentences("期限です。直します！ 終わり")).toEqual(["期限です。", "直します！", "終わり"]);
+    expect(sentences('It costs 3.5 dollars. Then it stops! "Yes." Done')).toEqual(["It costs 3.5 dollars.", "Then it stops!", '"Yes."', "Done"]);
+  });
+
   it("guesses a spoken length from the script", () => {
     expect(speechMs("あいうえおかきくけこさしすせそ")).toBe(2000);
     expect(speechMs("fourteen chars")).toBe(929);
@@ -86,8 +91,8 @@ describe("kit", () => {
   it("times each scene to its narration and captions it", async () => {
     const reel = await kit({ kit: 1, fonts, theme, scenes: [{ say: "あいうえおかきくけこさしすせそ", parts: [title("A")] }, { ms: 1000, parts: [title("B")] }] });
     expect(reel.timing).toEqual([
-      { id: "s1", start: 0, ms: 3100, say: { atMs: 400, ms: 2000, text: "あいうえおかきくけこさしすせそ", src: "" } },
-      { id: "s2", start: 3100, ms: 1000 },
+      { id: "s1", start: 0, ms: 3100, say: [{ atMs: 400, ms: 2000, text: "あいうえおかきくけこさしすせそ", src: "" }] },
+      { id: "s2", start: 3100, ms: 1000, say: [] },
     ]);
     expect(reel.meta).toMatchObject({ durationMs: 4100, width: 1920, height: 1080, aspect: { min: 9 / 16, max: 16 / 9 } });
     expect(reel.subtitles).toEqual([{ start: 400, end: 2400, text: "あいうえおかきくけこさしすせそ" }]);
@@ -125,6 +130,48 @@ describe("kit", () => {
     expect(x(1000)).toBe(0);
     expect(x(1375)).toBeCloseTo(50, 0);
     expect(x(1750)).toBe(100);
+  });
+
+  it("says a scene sentence by sentence, and brings a cued part in with its sentence", async () => {
+    const reel = await kit({
+      kit: 1,
+      fonts,
+      theme,
+      scenes: [{ say: "あいうえおかきくけこ。さしすせそたちつてと。", parts: [title("A"), { type: "text", id: "late", text: "B", cue: 1 }] }],
+    });
+    const [one, two] = reel.timing[0]!.say;
+    expect(one).toMatchObject({ atMs: 400, ms: 1467, text: "あいうえおかきくけこ。" });
+    expect(two).toMatchObject({ atMs: 400 + 1467 + 250, text: "さしすせそたちつてと。" });
+    expect(reel.subtitles).toHaveLength(2);
+    const env = await nodeEnv(".");
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, env);
+    const g = patchContext(createCanvas(view.width, view.height).getContext("2d") as unknown as Context2D);
+    // Before its sentence the frame is the title alone; after it, the cued text has come in.
+    expect(paint(g, 1500)).toBe(paint(g, 2000));
+    expect(paint(g, 2000)).not.toBe(paint(g, 3500));
+  });
+
+  it("refuses a cue past the scene's sentences", () => {
+    expect(problems({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", text: "x", cue: 2 }] }] })[0]).toMatch(/cue: 2 is not a sentence of this scene's say \(it has 2/);
+  });
+
+  it("draws a figure from data, moving an item kept under its id", async () => {
+    const box = (x: number, fill: string) => ({ id: "box", rect: [x, 10, 100, 60], fill, r: 8 });
+    const reel = await kit({
+      kit: 1,
+      fonts,
+      theme,
+      scenes: [
+        { ms: 2000, parts: [{ type: "figure", width: 400, height: 100, items: [box(0, "accent"), { text: "a", at: [200, 30], align: "center" }] }] },
+        { ms: 2000, parts: [{ type: "figure", width: 400, height: 100, items: [box(300, "ink3")] }] },
+      ],
+    });
+    expect(await reel.check(resolveView(reel.meta), await nodeEnv("."))).toEqual([]);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ rect: [0, 0] }, { circle: [0, 0, 1], line: [[0, 0], [1, 1]] }] }] }] })).toEqual([
+      "scenes[0].parts[0] (figure).items[0].rect: expected [x, y, w, h]",
+      "scenes[0].parts[0] (figure).items[1]: give one of rect, circle, line, text (got circle and line)",
+    ]);
   });
 
   it("takes a part defined with definePart", async () => {
@@ -169,6 +216,13 @@ scenes:
       scenes: [{ parts: [row([card({ body: "a".repeat(30), width: 900 }), arrow(), card({ body: "b".repeat(30), width: 900 })], { narrow: "keep" })] }],
     }));
     await writeFile(join(dir, "plain.json"), JSON.stringify({ hello: 1 }));
+    // A module of parts in a package that says it has no side effects: uses must still run it.
+    await writeFile(join(dir, "package.json"), JSON.stringify({ name: "parts", type: "module", sideEffects: false }));
+    await writeFile(join(dir, "dot.ts"), `import { definePart } from "kamishibai/kit";
+definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 40 }, paint: (r) => [{ t: "circle", id: s.id, cx: r.x + 20, cy: r.y + 20, r: 20, fill: "#d9662a", o: 1 }] }) });
+`);
+    await writeFile(join(dir, "uses.json"), JSON.stringify({ kit: 1, uses: ["dot.ts"], fonts: [{ family: "Geist", src: GEIST }], theme, scenes: [{ parts: [{ type: "dot" }] }] }));
+    await writeFile(join(dir, "missing.json"), JSON.stringify({ kit: 1, uses: ["nope.ts"], scenes: [{ parts: [] }] }));
   });
   afterAll(() => rm(dir, { recursive: true, force: true }));
 
@@ -187,6 +241,11 @@ scenes:
     const r = await checkEntry({ entry: join(dir, "wide.json") });
     expect(r.views.map((v) => `${v.width}x${v.height}`)).toEqual(["1920x1080", "1080x1920"]);
     expect(r.views[1]!.issues.some((i) => i.kind === "off-stage")).toBe(true);
+  });
+
+  it("runs the modules uses names, with the kit the reel is made with", async () => {
+    expect((await checkEntry({ entry: join(dir, "uses.json") })).count).toBe(0);
+    await expect(loadCanvasEntry(join(dir, "missing.json"))).rejects.toThrow(/uses names nope.ts, which is not there/);
   });
 
   it("says what a JSON file without kit is", async () => {

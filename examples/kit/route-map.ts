@@ -72,8 +72,10 @@ definePart<RouteMap>("route-map", {
           const w = ctx.fonts.measure(st.name, "bold", size);
           const h = size * 1.3;
           const ls = legs(code);
-          const side = sides.reduce((best, c) => (clear(ls, c.a) > clear(ls, best.a) ? c : best));
           const off = rad * 2 + 8;
+          // Only the sides with room for the name inside the map.
+          const fits = sides.filter((c) => (c.dx > 0 ? cx + off + w <= r.x + r.w - 12 : c.dx < 0 ? cx - off - w >= r.x + 12 : true));
+          const side = fits.reduce((best, c) => (clear(ls, c.a) > clear(ls, best.a) ? c : best));
           const x = Math.min(r.x + r.w - w - 12, Math.max(r.x + 12, side.dx > 0 ? cx + off : side.dx < 0 ? cx - off - w : cx - w / 2));
           const y = side.dy > 0 ? cy + off - 4 : side.dy < 0 ? cy - off - h + 4 : cy - h / 2;
           out.push({ t: "text", id: `${s.id}.N.${code}`, x, y, w, h, lines: [st.name], font: "bold", size, lh: 1.3, track: 0, color: focus.has(code) ? T.accentText : T.ink2, align: "center", o: 1, need: w });

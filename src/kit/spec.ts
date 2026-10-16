@@ -15,6 +15,8 @@ type Common = {
   id?: string;
   /** how it comes in when it first appears */
   enter?: Verb;
+  /** come in as this sentence of the scene's say starts (0 = the first, with the scene) */
+  cue?: number;
 };
 
 export type TitleSpec = Common & { type: "title"; text: string; kicker?: string };
@@ -69,8 +71,8 @@ export type PartSpec = BuiltinSpec | CustomSpec;
 /** One keyframe: what the screen shows while `say` is spoken. */
 export type SceneSpec = {
   id?: string;
-  /** the narration; also the caption */
-  say?: string;
+  /** the narration, and its captions: split into sentences, or given as a list of them */
+  say?: string | string[];
   /** hold this long instead of the narration's length */
   ms?: number;
   /** a scene shape from `kata`, filled in with the fields beside it */
@@ -85,6 +87,8 @@ export type VoiceSpec = { provider: "say" | "kokoro" | "openai" | "elevenlabs" |
 export type KitReelSpec = {
   /** the layout rules' version (KIT_VERSION) */
   kit: number;
+  /** modules that define parts and shapes (definePart, defineKata), relative to the reel; read for a JSON or YAML reel */
+  uses?: string[];
   title?: string;
   fps?: number;
   /** the default view (1920×1080) */

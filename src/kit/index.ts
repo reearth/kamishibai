@@ -4,7 +4,7 @@
 // The result is a canvas reel, rendered with no browser.
 // ------------------------------------------------------------------
 export { kit, type KitReel, type SceneTiming } from "./reel.ts";
-export { arrow, card, chip, col, definePart, image, list, paint, row, stat, text, textBox, title, rect, isTall } from "./parts.ts";
+export { arrow, card, chip, col, definePart, figure, image, list, paint, row, stat, text, textBox, title, rect, isTall, type FigureItem } from "./parts.ts";
 export type { Ctx, Frame, PartDef, Placed, Stage, TextOpts } from "./parts.ts";
 export { defineKata, type KataDef } from "./kata.ts";
 export { f, type Field, type Fields } from "./fields.ts";

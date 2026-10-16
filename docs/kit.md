@@ -54,6 +54,7 @@ The reel's fields:
 | Field | |
 |---|---|
 | `kit` | The version of the layout rules the reel was written for: `1`. A reel written for newer rules than this kamishibai has is refused. |
+| `uses` | Modules that define parts and shapes (see [Parts of your own](#parts-of-your-own)), as paths relative to the reel. A JSON or YAML reel reads them before its scenes; a code reel imports them itself. |
 | `title`, `fps` | The reel's title, and frames per second (default 30). |
 | `width`, `height` | The default view, in layout units (default 1920×1080). |
 | `aspect` | The shapes it lays out for, `{ min, max }` as `"9:16"` or numbers (default 9:16 to 16:9). |
@@ -67,7 +68,7 @@ The reel's fields:
 
 ## Scenes
 
-A scene has a `say` (the narration, and its caption) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length.
+A scene has a `say` (the narration, and its captions) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length.
 
 | Shape | Fields (* required) | |
 |---|---|---|
@@ -81,7 +82,7 @@ A scene has a `say` (the narration, and its caption) and either a `kata`, a scen
 
 ## Parts
 
-Every part is `{ type, … }`, with an optional `id` and `enter`.
+Every part is `{ type, … }`, with an optional `id`, `enter` and `cue`.
 
 | Part | Fields (* required) | |
 |---|---|---|
@@ -94,7 +95,26 @@ Every part is `{ type, … }`, with an optional `id` and `enter`.
 | `stat` | `value`\*, `unit`, `label`, `tone`, `digits` | A big number that counts up from its previous value. |
 | `list` | `items`\*, `mark` | A bulleted list. |
 | `image` | `src`\*, `width`, `height`, `caption` | A picture, fitted to the room it gets. |
+| `figure` | `width`\*, `height`\*, `items`\*, `caption` | A drawing as data (see below). |
 | `paint` | `width`\*, `height`\*, `fn`\*, `key` | A box drawn by code, `fn(g, ms, w, h)`, on the reel's clock. Only in a code reel. |
+
+### Figures
+
+A `figure` draws in its own units, `width` × `height`, and is fitted to the room it gets, its items scaled with it:
+
+```yaml
+- type: figure
+  width: 1200
+  height: 360
+  items:
+    - { id: app, rect: [0, 120, 260, 120], r: 16, stroke: rule }
+    - { id: app.t, text: App, at: [130, 160], align: center, bold: true }
+    - { id: a1, line: [[270, 180], [460, 180]], arrow: true }
+    - { id: server, rect: [470, 120, 260, 120], r: 16, fill: accentTint, stroke: accent, width: 4 }
+    - { id: dot, circle: [600, 300, 20], fill: accent }
+```
+
+Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `at: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (36 by default) and `bold`. `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `width` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
 
 `code` is the code itself, or a reference to a file next to the reel: `"src/coupon.ts#L44"` shows lines 43 to 45, and `"src/coupon.ts#L40-L48"` that range, with line numbers.
 
@@ -106,7 +126,24 @@ A part without an `id` gets its type as its id, numbered when the type repeats i
 
 ### Timing
 
-A scene holds for its narration plus a little: the voice starts 400 ms in, as the parts finish moving, and the scene holds 700 ms after it ends (at least 2.5 s in all). With a `voice`, the lengths are the synthesized audio's own, measured before any frame is drawn (`kamishibai tts reel.yaml` synthesizes them ahead). Without one, each length is estimated from the text: about 7.5 characters a second for Japanese, 14 for other scripts.
+A scene's `say` is spoken a sentence at a time: it is split after 。！？, and after . ! ? before a space (a decimal point doesn't split it), or it can be given as a list of sentences. Each sentence is one clip and one caption, with 250 ms between them. A scene holds for its narration plus a little: the voice starts 400 ms in, as the parts finish moving, and the scene holds 700 ms after it ends (at least 2.5 s in all). With a `voice`, the lengths are the synthesized audio's own, measured before any frame is drawn (`kamishibai tts reel.yaml` synthesizes them ahead). Without one, each length is estimated from the text: about 7.5 characters a second for Japanese, 14 for other scripts.
+
+### Cues
+
+A part with `cue: n` comes in as sentence `n` of the scene's `say` starts, counting from 0, instead of with the scene. Parts inside it come in with it, and so does a figure's item with its own `cue`. It takes its place in the layout from the start of the scene, so nothing moves when it comes in.
+
+```yaml
+- say: [A shop scans the coupon., The app asks the server., The server answers.]
+  parts:
+    - { type: title, text: How a coupon is checked }
+    - type: row
+      parts:
+        - { type: chip, text: Shop }
+        - { type: arrow, cue: 1 }
+        - { type: chip, text: App, cue: 1 }
+        - { type: arrow, cue: 2 }
+        - { type: chip, text: Server, cue: 2 }
+```
 
 ## Any shape
 
@@ -176,6 +213,8 @@ definePart<{ id: string; label: string }>("badge", {
 });
 export const badge = (label: string, o: { id?: string } = {}) => ({ type: "badge", label, ...o });
 ```
+
+A JSON or YAML reel uses such a module by naming it in `uses`; then `{ type: "badge", label: "new" }` is a part of the reel like any other. Its `import … from "kamishibai/kit"` is the same kit the reel is made with.
 
 `box` returns a tree of boxes that Yoga lays out (`style` is flexbox: `dir`, `gap`, `pad`, `grow`, `align`, `w`, `h`, …), and each box's `paint(rect)` returns the drawables in its rectangle: rects, text, paths, circles and images, each with an id. Drawables with the same id move between scenes, so give them ids from the part's. `corner(spec)` pins a part to the top-right corner on a wide stage, and `fields` are checked and go into the schema. [`examples/kit/route-map.ts`](../examples/kit/route-map.ts) is a complete one. `defineKata(name, { doc, fields, parts })` adds a scene shape the same way.
 

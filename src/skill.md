@@ -380,6 +380,14 @@ scenes:
   id is its type (`title` stays put across scenes); the shapes' ids are fixed,
   so moving `at` along a `flow` walks it. Gone parts fade; new ones come in.
 - `code` is text or `"path#L44"` / `"path#L40-L48"` read next to the reel.
+- `say` is spoken a sentence at a time (or give a list of sentences); a part
+  with `cue: n` comes in as sentence n starts (0 = with the scene), so one
+  scene can build up instead of being split.
+- `{ type: figure, width, height, items }` draws as data: items `rect: [x, y,
+  w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`), `text`
+  with `at: [x, y]`; colours by theme name (`accent`, `ink3`…). Items keep
+  ids across scenes, so a diagram can change shape; an item can have a `cue`.
+- `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
 - Loop: `kamishibai check reel.yaml` (overlap, off-stage, overflow, contrast,
   widow, for 16:9 and 9:16, no frames; `--json` for parsing; exit 1 on any),
   fix, then `render` and look at a few frames of each shape.
