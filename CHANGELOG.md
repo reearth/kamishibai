@@ -20,6 +20,7 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ### Docs
 
+- The guide opens by saying which kind of reel to write: a page unless the requester asks otherwise, a kit reel when many videos are wanted, and a canvas reel for drawing of your own with no browser.
 - **`kamishibai --help` starts by pointing at `kamishibai skill`**, the guide for writing a reel, and its first line, like the guide's, now names canvas reels and HTML export.
 
 ## 0.8.1

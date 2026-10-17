@@ -7,6 +7,20 @@ A reel can also be a module drawn on a 2D canvas, painted with no browser
 (`kamishibai skill kit`), and any reel can be exported as one HTML file that
 plays with no server (`kamishibai skill export`).
 
+## Which kind of reel
+
+- **Page**: a web page with the DOM, CSS, WebGL and any library. The most
+  freedom and the richest look; needs Chromium.
+- **Kit**: scenes as data, from a kit of parts. The fastest way to many
+  explainers that look alike; layout, timing to the narration and checks come
+  with it. No browser.
+- **Canvas**: your own code on a 2D canvas, painted on the CPU. Any drawing the
+  kit has no part for, still with no browser.
+
+Write a page unless the requester asks for something else. Consider the kit
+when many videos are wanted, and a canvas when it must render with no browser
+but needs more than the kit's parts.
+
 <!-- topics -->
 
 ## Mental model
