@@ -10,6 +10,7 @@ import { build, type Plugin } from "esbuild";
 import { frameTimeMs } from "../protocol.ts";
 import { chunkIndices, type Chunk } from "../segment.ts";
 import { TTS_HOOK } from "../tts/index.ts";
+import { isDataEntry, kitDataPlugin } from "../kit-entry.ts";
 import { isCanvasReel, splitFontWeight, type CanvasReel, type Context2D, type Env, type View } from "./types.ts";
 
 type Skia = typeof import("@napi-rs/canvas");
@@ -78,7 +79,7 @@ export async function loadCanvasEntry(entry: string): Promise<CanvasEntry | null
       jsx: "automatic",
       metafile: true,
       logLevel: "silent",
-      plugins: [externalPackages],
+      plugins: [...(isDataEntry(abs) ? [kitDataPlugin(abs)] : []), externalPackages],
     });
     const out = Object.values(result.metafile.outputs)[0];
     if (!out?.exports.includes("default")) {
@@ -94,7 +95,8 @@ export async function loadCanvasEntry(entry: string): Promise<CanvasEntry | null
   } catch (err) {
     await close();
     // A page entry with a default export may fail to run in Node: it is a page.
-    if (err instanceof Error && /esbuild|Build failed/.test(err.message)) throw err;
+    // A kit reel (a .json / .yaml one above all) is never a page: say what's wrong.
+    if (err instanceof Error && (/esbuild|Build failed/.test(err.message) || err.name === "KitSpecError" || isDataEntry(abs))) throw err;
     return null;
   }
 }

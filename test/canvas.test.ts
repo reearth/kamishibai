@@ -9,6 +9,7 @@ import { parseAspect, parseInsets, resolveView, splitFontWeight, viewKey, type C
 import { readManifest } from "../src/incremental.ts";
 import { exportHtml } from "../src/canvas/export.ts";
 import { optionsFromQuery } from "../src/canvas/browser.ts";
+import { execFileSync } from "node:child_process";
 
 const GEIST = resolve("examples/canvas/fonts/Geist.ttf");
 const BROWSER = resolve("src/canvas/browser.ts");
@@ -28,6 +29,10 @@ describe("resolveView", () => {
   it("rounds to even sizes", () => {
     expect(resolveView(meta, { aspect: "4:3" })).toMatchObject({ width: 1920, height: 1440 });
     expect(resolveView(meta, { size: { width: 1001, height: 999 } })).toMatchObject({ width: 1002, height: 1000 });
+  });
+
+  it("checks the shape before rounding a small size to even numbers", () => {
+    expect(resolveView({ fps: 1, durationMs: 1, width: 16, height: 9 })).toMatchObject({ width: 16, height: 10 });
   });
 
   it("refuses a shape outside meta.aspect", () => {
@@ -240,5 +245,44 @@ describe("optionsFromQuery", () => {
       console.warn = warn;
     }
     expect(seen).toEqual(["kamishibai: ignoring ?controls=maybe", "kamishibai: ignoring ?loop=-2", "kamishibai: ignoring ?t=soon"]);
+  });
+});
+
+describe("export --audio live", () => {
+  let dir: string;
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "kamishibai-live-test-"));
+    // Half a second of tone as WAV, and as AIFF (what macOS say writes), which browsers can't decode.
+    for (const ext of ["wav", "aiff"]) {
+      execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.5", join(dir, `tone.${ext}`)]);
+    }
+    await writeFile(
+      join(dir, "reel.ts"),
+      `import { canvasReel } from ${JSON.stringify(BROWSER)};
+export default canvasReel({
+  meta: { fps: 2, durationMs: 1000, width: 16, height: 9 },
+  audio: [{ src: "tone.wav", atMs: 0 }, { src: "tone.aiff", atMs: 500, gain: -6 }, { src: "tone.wav", atMs: 250 }],
+  setup: () => () => {},
+});
+`,
+    );
+  });
+  afterAll(() => rm(dir, { recursive: true, force: true }));
+
+  it("carries each file once, as a browser can decode it, with the clips' timing", async () => {
+    const out = join(dir, "live.html");
+    await exportHtml({ entry: join(dir, "reel.ts"), out, audio: "live" });
+    const html = await readFile(out, "utf8");
+    const data = JSON.parse(/id="kamishibai-data">(.*?)<\/script>/s.exec(html)![1]!);
+    expect(data.soundtrack).toBeUndefined();
+    expect(Object.keys(data.liveAudio.files)).toEqual(["audio-0.wav", "audio-1.m4a"]);
+    expect(data.liveAudio.files["audio-0.wav"]).toMatch(/^data:audio\/wav;base64,/);
+    expect(data.liveAudio.files["audio-1.m4a"]).toMatch(/^data:audio\/mp4;base64,/);
+    expect(data.liveAudio.clips.map((c: { src: string; atMs: number }) => [c.src, c.atMs])).toEqual([
+      ["audio-0.wav", 0],
+      ["audio-1.m4a", 500],
+      ["audio-0.wav", 250],
+    ]);
+    expect(html).not.toContain(dir);
   });
 });

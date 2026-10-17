@@ -1,0 +1,61 @@
+# Building a picture sentence by sentence, still as data:
+# - cue: a part (or a figure's item) comes in as that sentence of say starts
+# - figure: a drawing as data; an item kept under its id moves to the next scene
+# - uses: modules that define parts, here the route map in route-map.ts
+#
+#   kamishibai render examples/kit/diagram.yaml -o diagram.mp4
+kit: 1
+title: How a coupon is checked
+uses: [route-map.ts]
+fonts:
+  - { family: Geist, src: fonts/Geist.ttf, weight: "100 900" }
+  - { family: Geist Mono, src: fonts/GeistMono.ttf, weight: "100 900" }
+theme:
+  fonts: { sans: Geist, mono: '"Geist Mono"' }
+scenes:
+  - say: A shop scans the coupon. The app asks the server. The server answers yes or no.
+    parts:
+      - { type: title, text: How a coupon is checked }
+      - type: figure
+        width: 1200
+        height: 360
+        items:
+          - { id: shop, rect: [0, 120, 260, 120], r: 16, stroke: rule }
+          - { id: shop.t, text: Shop, pos: [130, 160], align: center, bold: true }
+          - { id: a1, line: [[270, 180], [460, 180]], arrow: true, cue: 1 }
+          - { id: app, rect: [470, 120, 260, 120], r: 16, stroke: rule, cue: 1 }
+          - { id: app.t, text: App, pos: [600, 160], align: center, bold: true, cue: 1 }
+          - { id: a2, line: [[740, 180], [930, 180]], arrow: true, cue: 2 }
+          - { id: server, rect: [940, 120, 260, 120], r: 16, fill: accentTint, stroke: accent, lineWidth: 4, cue: 2 }
+          - { id: server.t, text: Server, pos: [1070, 160], align: center, bold: true, cue: 2 }
+  - say: The bug was in the server, so only the server changes.
+    parts:
+      - { type: title, text: Where the fix goes }
+      - type: figure
+        width: 1200
+        height: 360
+        items:
+          - { id: shop, rect: [0, 150, 200, 90], r: 16, stroke: rule }
+          - { id: shop.t, text: Shop, pos: [100, 175], align: center, bold: true, color: ink3 }
+          - { id: app, rect: [260, 150, 200, 90], r: 16, stroke: rule }
+          - { id: app.t, text: App, pos: [360, 175], align: center, bold: true, color: ink3 }
+          - { id: server, rect: [560, 40, 640, 300], r: 24, fill: accentTint, stroke: accent, lineWidth: 6 }
+          - { id: server.t, text: "Server:\nnow >= nextDay(expires)", pos: [880, 133], align: center, bold: true }
+  - say: Three shops on the A line saw it. All of them are on the new app.
+    parts:
+      - { type: title, text: Shops that saw it }
+      - type: route-map
+        id: map
+        size: large
+        focus: [A3, A5, A6]
+        net:
+          stations:
+            A1: { name: Harbor, x: 0, y: 2 }
+            A3: { name: Central, x: 4, y: 2 }
+            A5: { name: River, x: 8, y: 2 }
+            A6: { name: North, x: 10, y: 0 }
+            B1: { name: City Hall, x: 4, y: 0 }
+          lines:
+            - { id: A, name: A line, color: "#d9662a", stations: [A1, A3, A5, A6] }
+            - { id: B, name: B line, color: "#6e6e69", stations: [B1, A3] }
+      - { type: text, role: note, text: "All three: the new app since Monday", cue: 1 }

@@ -3,8 +3,23 @@
 kamishibai seeks a web page to each moment, screenshots it, and encodes the
 stills into a video. You write a page that draws "the state at time `ms`".
 A reel can also be a module drawn on a 2D canvas, painted with no browser
-(`kamishibai skill canvas`), and any reel can be exported as one HTML file
-that plays with no server (`kamishibai skill export`).
+(`kamishibai skill canvas`), or scenes written as YAML from a kit of parts
+(`kamishibai skill kit`), and any reel can be exported as one HTML file that
+plays with no server (`kamishibai skill export`).
+
+## Which kind of reel
+
+- **Page**: a web page with the DOM, CSS, WebGL and any library. The most
+  freedom and the richest look; needs Chromium.
+- **Kit**: scenes as data, from a kit of parts. The fastest way to many
+  explainers that look alike; layout, timing to the narration and checks come
+  with it. No browser.
+- **Canvas**: your own code on a 2D canvas, painted on the CPU. Any drawing the
+  kit has no part for, still with no browser.
+
+Write a page unless the requester asks for something else. Consider the kit
+when many videos are wanted, and a canvas when it must render with no browser
+but needs more than the kit's parts.
 
 <!-- topics -->
 
@@ -328,6 +343,12 @@ export default canvasReel({
   the reel.
 - Any weight works in `font` for a variable font, and `textBaseline` is placed
   as in a browser.
+- `morph(frames, { env, width, height, theme?, paper? })` from
+  `kamishibai/kit` moves hand-placed items between keyframes as kit scenes do:
+  `frames` is `[{ at: ms, items, transition? }]`, items are a figure's (`rect`,
+  `circle`, `line`, `text` with `pos`; `id` keeps one across keyframes, `delay`
+  brings it in later). In the painter, `m.draw(g, ms)`; `m.check()` lists
+  spills and items off the area.
 
 ```sh
 kamishibai render reel.ts -o out.mp4
@@ -344,6 +365,86 @@ at the frames of every shape you render: a layout that fits 16:9 may not fit
 9:16.
 <!-- /topic -->
 
+<!-- topic: kit | Kit reels: scenes as YAML/JSON/code from a kit of parts (title, card, flow, stat…), laid out for any shape, parts moving between scenes, `kamishibai check` -->
+## Kit reels
+
+The cheapest way to an explainer: write scenes as data, and the kit lays them
+out for any shape, moves parts that keep their id from scene to scene, and
+holds each scene as long as its `say` takes. A canvas reel underneath (no
+browser). Needs `npm i -D @napi-rs/canvas yoga-layout` (and `yaml` for YAML).
+
+```yaml
+kit: 1
+fonts: [{ family: Geist, src: fonts/Geist.ttf, weight: "100 900" }]   # relative to this file
+theme: { fonts: { sans: Geist, mono: Geist } }
+voice: { provider: kokoro, voice: af_heart }   # optional; without it, lengths are estimated
+scenes:
+  - { kata: cover, say: "…", title: "…", kicker: "…", sub: "…" }
+  - { kata: flow, say: "…", title: "…", steps: [A, B, C], at: 1 }
+  - kata: compare
+    say: "…"
+    title: "…"
+    left: { label: Docs, body: "…" }
+    right: { label: Code, code: "src/x.ts#L40-L44", highlight: "now >= t" }
+  - say: "…"
+    parts:
+      - { type: title, text: "…" }
+      - type: row
+        parts: [{ type: card, body: "…" }, { type: arrow }, { type: card, body: "…", tone: accent }]
+```
+
+- Shapes (`kata`): `cover`, `flow`, `compare`, `code`, `stat`, `points`, `picture`.
+  Parts: `title`, `text`, `row`, `col`, `card`, `arrow`, `chip`, `stat`, `list`,
+  `image`. Every field, a line each (`*` required, `#` number, `[..]` list),
+  as `kamishibai schema --brief` prints it (the full JSON Schema is 27 KB):
+
+<!-- fill: kit-fields -->
+
+- Same `id` in the next scene: the part moves there. Without an id, a part's
+  id is its type (`title` stays put across scenes); the shapes' ids are fixed,
+  so moving `at` along a `flow` walks it. Gone parts fade; new ones come in.
+- `code` is text or `"path#L44"` / `"path#L40-L48"` read next to the reel.
+- `say` is spoken a sentence at a time (or give a list of sentences); a part
+  with `cue: n` comes in as sentence n starts (0 = with the scene), so one
+  scene can build up instead of being split.
+- `enter`: `rise` (default), `fade`, `pop`, `draw`, `type`, `count`, `none`,
+  `from-left|right|top|bottom`, `wipe`, `blur`.
+- A scene's `transition`: `morph` (default; same ids move), `cut`, `fade`,
+  `push`, `wipe`. `focus: gate` moves the camera in on a part;
+  `focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]` moves with the
+  sentences (`zoom` caps how close).
+- `{ type: figure, width, height, items }` draws as data: items `rect: [x, y,
+  w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`), `text`
+  with `pos: [x, y]`; colours by theme name (`accent`, `ink3`…). Items keep
+  ids across scenes, so a diagram can change shape; an item can have a `cue`.
+- `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
+- `voice: { provider: say, voice: Samantha }` (macOS), `{ provider: kokoro,
+  voice: af_heart }`, or `openai` / `gemini` / `google` / `elevenlabs` /
+  `polly` with the options of the narration topic. Timing: the voice starts
+  400 ms into a scene, 250 ms between sentences, the scene holds 700 ms after
+  (2.5 s at least); `ms: 4000` holds a scene that long instead.
+- `captions: burn` draws them into the picture (needed for social video and
+  gifs); `true` (default) is a subtitle track + `.srt`; `false` none.
+- `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
+  `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
+  { sans, mono }`, `weights: { body, bold, black }`. Dark: paper `#0b0f1a`,
+  card `#151b2b`, ink `#eef1ff`, ink3 `#8c95bc`, rule `#2e3760`.
+- Tall from the same reel: `render reel.yaml --size 1080x1920 -o tall.mp4`
+  (or `--aspect 9:16`); rows stack and the layout is redone.
+- Loop: `kamishibai check reel.yaml` (overlap, off-stage, overflow, contrast,
+  widow, for 16:9 and 9:16, no frames; `--json` for parsing; exit 1 on any;
+  each issue says what usually fixes it), fix, then `render` and look at a
+  few frames of each shape.
+- Sizes are set for video: a row keeps across a wide stage by wrapping its
+  cards, and the parts under the heading grow (up to 1.6×) to fill a stage
+  they leave mostly empty, so there is rarely a reason to set widths. A
+  scene with `fill: false` keeps its parts at their own size.
+- In code: `export default await kit({ … })` from `kamishibai/kit`, with
+  `title()`, `card()`, `row()`… building the same data; `definePart` adds a part.
+
+Give it font files for every script it draws (a container has few fonts).
+<!-- /topic -->
+
 <!-- topic: export | One HTML file that plays the reel with no server: `kamishibai export`, `--bare`, `--loop`, query parameters -->
 ## One HTML file: `kamishibai export`
 
@@ -353,8 +454,10 @@ kamishibai export reel.tsx --bare --loop 0 -o embed.html   # no controls, autopl
 kamishibai export reel.tsx --bare --no-autoplay -o s.html  # waits for the page: window.kamishibaiPlayer.seek(ms)
 ```
 
-- The file plays offline, with the soundtrack (mixed into one track), the
-  narration and captions. Its URL can change the defaults:
+- The file plays offline, with the sound, the narration and captions. The
+  sound is mixed into one track (`--audio mix`, the default), or each file is
+  carried and the clips are played live with Web Audio (`--audio live`;
+  smaller when a short loop runs under a long reel). Its URL can change the defaults:
   `reel.html?controls=0&autoplay=0&loop=0&t=10&muted=1&cc=0`.
 - A page is seeked through every frame in Chrome once, and every file it reads
   from its own server is embedded (`-p` as for render). Files on other

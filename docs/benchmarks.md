@@ -107,9 +107,36 @@ Each trial is a headless Claude Code session (Opus 5.5) that gets the same brief
 - **Conditions:** each tool with its official agent skills installed in the project (skill) and without them (noskill).
 - **No tool:** a baseline that starts from an empty npm project and may use anything except a tool made for producing video from code, such as kamishibai, Remotion or HyperFrames.
 - **Isolation:** each session starts from a clean home directory, without the user's `CLAUDE.md`, skills, plugins or MCP servers.
-- **Repetitions:** 5 per brief and condition, in a seeded random order.
+- **Repetitions:** 5 per brief and condition (3 for the explainer), in a seeded random order.
 
-Every trial passed. The tables pool the three briefs and show medians, with the interquartile range in brackets. Tokens include cached input. Cost is the API-equivalent price.
+Every trial passed. Unless a section says otherwise, the tables pool the three briefs (`text`, `three` and `scenes`) and show medians, with the interquartile range in brackets. Tokens include cached input. Cost is the API-equivalent price.
+
+### A narrated explainer: 16–17 October 2026
+
+Claude Code 2.1.301 (2.1.302 for the last kit row), Opus 5.5. The `explainer` brief asks for a 30–50 second explainer in five scenes, narrated with macOS `say`, with burned-in captions and things that appear as the narration names them, rendered at 1920×1080 and at 1080×1920 with the same length. Each row is 3 trials, all of which passed. Two kamishibai conditions were added:
+
+- **kit:** a kit reel, written as scenes in YAML or JSON (see [kit.md](kit.md)).
+- **page:** a page reel only, drawn with React or the DOM and captured in Chrome.
+
+The first kamishibai row could use either kind of reel, and in a later run 2 of its 3 trials chose a kit reel. The page condition rules that out.
+
+| Condition | Tokens | Cost | Turns | Minutes |
+|---|---:|---:|---:|---:|
+| Remotion · skill | 392k [347k–461k] | $0.57 | 17 | 3.6 |
+| kamishibai · skill | 663k [587k–685k] | $0.72 | 21 | 4.0 |
+| kamishibai page · skill | 664k [561k–701k] | $0.75 | 20 | 3.8 |
+| HyperFrames · skill | 789k [739k–873k] | $0.90 | 22 | 5.8 |
+| kit · skill, `de9397a` | 2,099k [1,971k–2,126k] | $1.28 | 43 | 4.2 |
+| kit · skill, `7c3509f` | 1,107k | $0.81 | 33 | 3.5 |
+| kit · skill, `3cbf212` | 621k [587k–622k] | $0.60 | 23 | 2.6 |
+
+- **Where the kit's tokens went.** In the first kit run, every agent read the bundled `dist/kit.js` 10 to 15 times, and all three ended up drawing the scenes in code. Then came:
+  - `captions: burn`, and a guide that lists every field, which halved the tokens;
+  - laying a row of cards across a wide stage by wrapping them (it had stacked them into a column), growing the parts of a sparse scene to fill the stage, a larger type scale, and `check` issues that say how to fix them.
+
+  After those, the agents read `dist` once in 3 trials, and the kit took slightly fewer tokens than a page reel, at a lower cost.
+- **Turns.** The kit still takes a few more turns than a page reel (23 against 20). The rest of its edits were choices of look, such as a card with a label or without, and the length of the last scene.
+- **Quality.** Before the last change, the kit's videos were small and mostly empty next to the page reels. The page reels still have more detail in places.
 
 ### Same day: 11 October 2026
 

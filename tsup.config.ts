@@ -16,6 +16,8 @@ export default defineConfig({
     // the worker thread that paints them on the CPU.
     canvas: "src/canvas/browser.ts",
     "canvas-worker": "src/canvas/worker.ts",
+    // Keyframe reels from a kit of parts (kamishibai/kit), in code, JSON or YAML.
+    kit: "src/kit/index.ts",
     // What `kamishibai export` bundles into a page's file: the player, and
     // the module that serves the page its recorded files.
     player: "src/player.ts",
@@ -33,5 +35,5 @@ export default defineConfig({
   // without resolving a file path at runtime.
   loader: { ".md": "text" },
   // React sugar is consumed by the user's bundle, not by us — keep it external.
-  external: ["react", "react-dom", "playwright", "@napi-rs/canvas"],
+  external: ["react", "react-dom", "playwright", "@napi-rs/canvas", "yoga-layout", "yaml"],
 });

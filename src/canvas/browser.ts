@@ -16,10 +16,12 @@ export * from "./types.ts";
 
 /**
  * Load the reel's fonts with the FontFace API. `src` is resolved against
- * `base`, unless `urls` has it (an exported file carries its fonts as data).
+ * `base`, unless `urls` has it (an exported file carries its fonts as data,
+ * and leaves out a font nothing is drawn in: that one isn't loaded).
  */
 export async function loadFonts(reel: CanvasReel, base: string, urls?: Record<string, string>): Promise<void> {
-  const faces = (reel.fonts ?? []).map((f) => {
+  const fonts = (reel.fonts ?? []).filter((f) => !urls || urls[f.src]);
+  const faces = fonts.map((f) => {
     const url = urls?.[f.src] ?? new URL(f.src, base).href;
     const face = new FontFace(f.family, `url(${JSON.stringify(url)})`, {
       weight: String(f.weight ?? 400),

@@ -10,7 +10,9 @@
 //
 // `kamishibai skill` prints the core (everything outside a topic) with each
 // topic replaced by a one-line pointer, and the topic list where the guide
-// has `<!-- topics -->`. `kamishibai skill <topic…>` prints those topics, and
+// has `<!-- topics -->`. A `<!-- fill: name -->` line is replaced by text the
+// CLI makes when it prints (the kit's field reference, from the fields
+// themselves). `kamishibai skill <topic…>` prints those topics, and
 // `kamishibai skill all` the whole document. The core stays well under what
 // an agent's shell tool shows in one go, so it is read once, not paged.
 // ------------------------------------------------------------------
@@ -31,7 +33,11 @@ const OPEN = /^<!-- topic: ([a-z][a-z0-9-]*) \| (.+?) -->$/;
 const CLOSE = "<!-- /topic -->";
 const INDEX = "<!-- topics -->";
 
-export function parseSkill(md: string): SkillGuide {
+const FILL = /^<!-- fill: ([a-z][a-z0-9-]*) -->$/gm;
+
+/** Parse the guide, with each fill line replaced by its text (or by a note that it is left out). */
+export function parseSkill(md: string, fills: Record<string, string> = {}): SkillGuide {
+  md = md.replace(FILL, (_, name: string) => fills[name] ?? `(${name} left out)`);
   const core: string[] = [];
   const all: string[] = [];
   const topics: SkillTopic[] = [];
@@ -80,8 +86,8 @@ export function parseSkill(md: string): SkillGuide {
 }
 
 /** The text for `kamishibai skill [args…]`; throws on an unknown topic. */
-export function skillText(md: string, args: string[]): string {
-  const guide = parseSkill(md);
+export function skillText(md: string, args: string[], fills: Record<string, string> = {}): string {
+  const guide = parseSkill(md, fills);
   if (args.length === 0) return guide.core;
   if (args.includes("all")) return guide.all;
   const unknown = args.filter((a) => !guide.topics.some((t) => t.name === a));

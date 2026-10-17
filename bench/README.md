@@ -7,19 +7,23 @@ The harness behind [docs/benchmarks.md](../docs/benchmarks.md): kamishibai next 
 | `run-edit.ts` | Render again after an edit: an 86-second reel, five edits in a row, each tool rendering after every edit |
 | `run-speed.ts` | Render speed: a reference implementation of each brief per tool, with each tool's defaults and with one capture worker |
 | `run-agents.ts` | Agents: tokens, cost, turns and time for a headless Claude Code session to turn a brief into a passing `out.mp4`, with and without each tool's skills, and with no video tool at all (`bare`) |
+| `run-container.ts` | A kit reel rendered on the CPU in a Linux container with no browser, at a few CPU limits |
+| `lexicon/compare.ts` | Every drawing of the [Lexicon](https://reearth.github.io/kamishibai/lexicon/) on Skia with no browser, against Chromium |
 
 ## Files
 
 | Path | What |
 |---|---|
 | `setup.sh` | Packs kamishibai, builds the agent templates and the warm homes, and installs the projects' dependencies. Everything it builds goes under `.work/`. |
-| `briefs/<task>/` | The three briefs (`text`, `three`, `scenes`), the same for every tool. Agents get these; `run-speed.ts` renders the reference implementations of them. |
+| `briefs/<task>/` | The briefs, the same for every tool. Agents get these; `run-speed.ts` renders the reference implementations of `text`, `three` and `scenes`. `explainer` is for agents only: a narrated explainer in two shapes (see below). |
 | `speed/<tool>/<task>/` | Reference implementations, each with a `speed.json` naming its render commands and noting anything that deviates from the tool's defaults. |
 | `edit/` | The edit reel: `spec.json` describes it, `edit/<tool>/` draws it, and `gen-hyperframes.mjs` writes HyperFrames' HTML from the spec. |
 | `lib.ts` | Paths, the render environment, the automatic check (size, 30 fps, duration ±1 frame, audio) and frame hashes. |
 | `summarize.ts` | Tables for any mix of results files. |
 | `sandbox-check.ts` | Whether each render works inside Claude Code's Bash sandbox. On macOS it doesn't (see below). |
 | `smoke-agent.sh` | A fake "agent" for testing the trial plumbing without an API token. |
+| `container/Dockerfile` | Node, ffmpeg, the packed kamishibai and the kit's optional peers, with `examples/kit`: no browser. |
+| `lexicon/` | The Lexicon comparison: `cpu.ts` draws a term on Skia through kamishibai's canvas host, `browser-entry.ts` the way the site does, and `fonts.ts` the faces both use (Zen Kaku Gothic New is fetched into `.work/fonts` the first time). |
 
 The music in `briefs/scenes/assets/` and `edit/` is a sine-wave chord made with ffmpeg:
 
@@ -59,7 +63,7 @@ To time your own change to kamishibai, run `setup.sh` again on that checkout, an
 claude setup-token                          # in your own terminal: it prints a token
 export CLAUDE_CODE_OAUTH_TOKEN=…            # or save it to a file (chmod 600) and pass --token-file
 node run-agents.ts --dry-run                # the plan: 90 trials by default
-node run-agents.ts --agent-cmd ./smoke-agent.sh --limit 3   # the plumbing, without the API
+node run-agents.ts --agent-cmd "$PWD/smoke-agent.sh" --limit 3   # the plumbing, without the API
 node run-agents.ts                          # resumable with --resume
 node summarize.ts results/agents.jsonl
 ```
@@ -71,6 +75,35 @@ node summarize.ts results/agents.jsonl
 - **Permissions:** trials run with `--permission-mode bypassPermissions`, in their own directories with a throwaway HOME, but as your account. Each trial records every tool call that names a path in your real home (other than the npm cache), and the summary lists them under "Access outside the trial".
 - **No sandbox:** Claude Code's Bash sandbox doesn't work here. On macOS, Seatbelt stops Chromium from registering its Mach rendezvous service, so every tool's render crashes at browser launch. `sandbox.network.allowMachLookup` doesn't help, even with `"*"`. `sandbox-check.ts` reproduces this.
 
+### The explainer brief
+
+`explainer` is a 30–50 second explainer in five scenes, narrated with macOS `say` (voice Samantha), with burned-in captions, things that appear as the narration names them, and the same reel at 1920×1080 (`out.mp4`) and 1080×1920 (`out-tall.mp4`). The narration sets its length, so the automatic check takes a range, and both videos must be the same length.
+
+It runs with a fourth condition, `kit`: the kamishibai project plus the kit's optional dependencies (`@napi-rs/canvas`, `yoga-layout`, `yaml`), with a prompt that asks for a kit reel by name. The plain `kamishibai` condition gets neither, so the agent picks its own way within kamishibai.
+
+```sh
+node run-agents.ts --label explainer --tools kamishibai,kit,remotion,hyperframes --tasks explainer --skills skill --reps 3
+```
+
+It needs macOS for `say`.
+
+### In a container
+
+```sh
+node run-container.ts                       # builds the image, then 1, 2 and 4 CPUs × (1 warm-up + 3)
+node run-container.ts --platform linux/amd64 --cpus 1   # the platform Cloudflare's containers run
+```
+
+The image renders `examples/kit/reel.yaml` at 1080p, so it also shows what a container needs to draw text: the reel's own font files. On an Apple Silicon host, `linux/amd64` runs under emulation and is much slower than on real hardware. Don't run it while other benchmarks are running.
+
+### The Lexicon on the CPU
+
+```sh
+node lexicon/compare.ts                     # results/lexicon/: a sheet per chapter and report.json
+```
+
+Draws each of the Lexicon's 137 terms at three moments of its loop on Skia (the site's paint code runs unchanged; its shape terms are drawn from their CSS fields) and in Chromium, and counts the pixels that differ by more than 40 of 255. It also times each term at 1920×1440. It needs the Chromium that Playwright installs.
+
 ## Fairness decisions
 
 - **Same prompt** for every tool. Only the tool's name changes, and the prompt says the brief is final, so the agent asks no questions.
@@ -81,7 +114,7 @@ node summarize.ts results/agents.jsonl
   - noskill trials also pass `--disable-slash-commands`.
   - The summary's isolation audit lists what each session could see.
 - **Skills** are each tool's official recommendation, installed in the project:
-  - kamishibai: both of its skills, from this checkout.
+  - kamishibai (and kit): its skill, from this checkout.
   - Remotion: all of `remotion-dev/skills`.
   - HyperFrames: the core set from `hyperframes skills update`.
 

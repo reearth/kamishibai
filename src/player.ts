@@ -7,6 +7,8 @@
 // ------------------------------------------------------------------
 import { GLOBAL_KEY, type KamishibaiPage } from "./protocol.ts";
 import { cueAt, type Cue } from "./subtitle.ts";
+import type { AudioClip } from "./audio.ts";
+import { scheduleClip } from "./audio-live.ts";
 
 /** What the player draws on. */
 export interface Surface {
@@ -33,6 +35,8 @@ export interface PlayerOptions {
   muted?: boolean;
   /** one audio file for the whole reel; the player follows its clock while it plays */
   soundtrack?: string;
+  /** or the clips themselves, played live with Web Audio: their files by src, as URLs */
+  liveAudio?: { clips: AudioClip[]; files: Record<string, string> };
   /** subtitle cues to show as captions over the picture */
   subtitles?: Cue[];
   /** show the subtitles (default true when there are any) */
@@ -96,6 +100,117 @@ const PLAYER_CSS = `
 .ksp-bar input{flex:1;accent-color:#d9662a}`;
 const BAR_H = 36;
 
+// ---- sound ------------------------------------------------------------------
+
+/** The reel's sound, as the player drives it. */
+interface Sound {
+  /** the reel's time by the sound's own clock while it plays, else undefined */
+  clock(): number | undefined;
+  play(ms: number): void;
+  pause(): void;
+  /** move to `ms` (while playing, carry on from there) */
+  seek(ms: number): void;
+  muted: boolean;
+}
+
+/** One track, mixed at export: an <audio> element. */
+function trackSound(url: string, muted: boolean): Sound {
+  const audio = new Audio(url);
+  audio.preload = "auto";
+  audio.muted = muted;
+  return {
+    clock: () => (audio.paused ? undefined : audio.currentTime * 1000),
+    play(ms) {
+      audio.currentTime = ms / 1000;
+      // Browsers refuse sound until the viewer has interacted: then play muted.
+      audio.play().catch(() => {
+        audio.muted = true;
+        audio.play().catch(() => {});
+      });
+    },
+    pause: () => audio.pause(),
+    seek: (ms) => void (audio.currentTime = ms / 1000),
+    get muted() {
+      return audio.muted;
+    },
+    set muted(v) {
+      audio.muted = v;
+    },
+  };
+}
+
+/** The clips, decoded once and scheduled with Web Audio from wherever the reel is. */
+function liveSound(clips: AudioClip[], files: Record<string, string>, reelMs: number, muted: boolean): Sound {
+  const ac = new AudioContext();
+  const master = ac.createGain();
+  master.gain.value = muted ? 0 : 1;
+  master.connect(ac.destination);
+  const buffers = Promise.all(
+    [...new Set(clips.map((c) => c.src))].map(async (src) => {
+      try {
+        const bytes = await (await fetch(files[src] ?? src)).arrayBuffer();
+        return [src, await ac.decodeAudioData(bytes)] as const;
+      } catch (e) {
+        console.warn(`kamishibai: can't play ${src}: ${e instanceof Error ? e.message : e}`);
+        return [src, undefined] as const;
+      }
+    }),
+  ).then((pairs) => new Map(pairs));
+  let playing = false;
+  let session = 0;
+  let t0Ctx = 0;
+  let t0Ms = 0;
+  const sources: AudioBufferSourceNode[] = [];
+  const stop = () => {
+    session++;
+    for (const s of sources.splice(0)) {
+      try {
+        s.stop();
+      } catch {
+        /* not started yet */
+      }
+    }
+  };
+  const schedule = (ms: number) => {
+    stop();
+    t0Ctx = ac.currentTime;
+    t0Ms = ms;
+    const s = session;
+    void buffers.then((bufs) => {
+      if (s !== session || !playing) return;
+      const now = t0Ms + (ac.currentTime - t0Ctx) * 1000;
+      for (const c of clips) {
+        const b = bufs.get(c.src);
+        const node = b && scheduleClip(ac, master, c, b, now, reelMs);
+        if (node) sources.push(node);
+      }
+    });
+  };
+  return {
+    // The context is suspended until the viewer interacts: the wall clock leads till then.
+    clock: () => (playing && ac.state === "running" ? t0Ms + (ac.currentTime - t0Ctx) * 1000 : undefined),
+    play(ms) {
+      playing = true;
+      void ac.resume().catch(() => {});
+      schedule(ms);
+    },
+    pause() {
+      playing = false;
+      stop();
+    },
+    seek(ms) {
+      if (playing) schedule(ms);
+    },
+    get muted() {
+      return master.gain.value === 0 || ac.state !== "running";
+    },
+    set muted(v) {
+      master.gain.value = v ? 0 : 1;
+      if (!v) void ac.resume().catch(() => {});
+    },
+  };
+}
+
 /** Play what `surface` draws in `el`, sized to the element and again when it changes. */
 export async function createPlayer(el: HTMLElement, surface: Surface, opts: PlayerOptions = {}): Promise<Player> {
   const { durationMs } = surface;
@@ -123,18 +238,18 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
     pic.appendChild(cc);
   }
   let bar: { el: HTMLElement; btn: HTMLButtonElement; seek: HTMLInputElement; time: HTMLElement; mute?: HTMLButtonElement } | undefined;
-  const audio = opts.soundtrack ? new Audio(opts.soundtrack) : undefined;
-  if (audio) {
-    audio.preload = "auto";
-    audio.muted = !!opts.muted;
-  }
+  const sound: Sound | undefined = opts.soundtrack
+    ? trackSound(opts.soundtrack, !!opts.muted)
+    : opts.liveAudio?.clips.length
+      ? liveSound(opts.liveAudio.clips, opts.liveAudio.files, durationMs, !!opts.muted)
+      : undefined;
   if (controls) {
     const b = document.createElement("div");
     b.className = "ksp-bar";
     b.innerHTML = `<button type="button" aria-label="Play">▶</button><input type="range" min="0" step="1" aria-label="Seek"><span></span>`;
     bar = { el: b, btn: b.querySelector("button")!, seek: b.querySelector("input")!, time: b.querySelector("span")! };
     bar.seek.max = String(durationMs);
-    if (audio) {
+    if (sound) {
       const m = document.createElement("button");
       m.type = "button";
       b.appendChild(m);
@@ -176,14 +291,16 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
       bar.time.textContent = `${fmt(ms)} / ${fmt(durationMs)}`;
       bar.btn.textContent = playing ? "❚❚" : "▶";
       bar.btn.ariaLabel = playing ? "Pause" : "Play";
-      if (bar.mute && audio) bar.mute.textContent = audio.muted ? "🔇" : "🔊";
+      if (bar.mute && sound) bar.mute.textContent = sound.muted ? "🔇" : "🔊";
     }
   }
   let frame = 0;
   function tick(now: number) {
     if (!playing) return;
-    // The soundtrack is the clock while it plays; otherwise the wall clock.
-    ms = audio && !audio.paused ? audio.currentTime * 1000 : clockMs + (now - clockAt);
+    // The sound is the clock while it plays; otherwise the wall clock, carried on from it.
+    const heard = sound?.clock();
+    ms = heard ?? clockMs + (now - clockAt);
+    if (heard !== undefined) (clockMs = ms), (clockAt = now);
     if (ms >= durationMs) {
       if (again()) return void seekTo(0, true);
       ms = durationMs;
@@ -196,7 +313,7 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
     ms = Math.max(0, Math.min(durationMs, t));
     clockMs = ms;
     clockAt = performance.now();
-    if (audio) audio.currentTime = ms / 1000;
+    sound?.seek(ms);
     if (keepPlaying) start();
     else draw();
   }
@@ -206,27 +323,33 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
     playing = true;
     clockMs = ms;
     clockAt = performance.now();
-    // Browsers refuse sound until the viewer has interacted: then play muted.
-    audio?.play().catch(() => {
-      if (!audio) return;
-      audio.muted = true;
-      audio.play().catch(() => {});
-    });
+    sound?.play(ms);
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(tick);
   }
   function pause() {
     playing = false;
-    audio?.pause();
+    sound?.pause();
     cancelAnimationFrame(frame);
     draw();
   }
 
   pic.addEventListener("click", () => (playing ? pause() : start()));
   bar?.btn.addEventListener("click", () => (playing ? pause() : start()));
-  // Scrubbing pauses, as in a video player.
-  bar?.seek.addEventListener("input", () => (pause(), seekTo(Number(bar!.seek.value), false)));
-  bar?.mute?.addEventListener("click", () => audio && ((audio.muted = !audio.muted), draw()));
+  // Scrubbing pauses, as in a video player. The value is read first: pausing
+  // redraws the bar at the time it was paused at.
+  bar?.seek.addEventListener("input", () => {
+    const t = Number(bar!.seek.value);
+    pause();
+    seekTo(t, false);
+  });
+  bar?.mute?.addEventListener("click", () => {
+    if (!sound) return;
+    sound.muted = !sound.muted;
+    // Live sound unmuted after the context was suspended: schedule from here.
+    if (playing) sound.seek(ms);
+    draw();
+  });
   root.addEventListener("keydown", (e) => {
     if (e.key === " ") (playing ? pause() : start()), e.preventDefault();
     else if (e.key === "ArrowRight") seekTo(ms + 1000 / surface.fps, false);

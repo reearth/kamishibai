@@ -420,7 +420,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
   if (canvas && opts.burnSubtitles) {
     setTTSHook(undefined);
     await canvas.close();
-    throw new Error(`--burn-subtitles is for pages; a canvas reel draws its own captions`);
+    throw new Error(`--burn-subtitles is for pages; a canvas reel draws its own captions (a kit reel: \`captions: burn\`)`);
   }
   const served: Served | undefined = canvas
     ? undefined

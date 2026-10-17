@@ -12,6 +12,7 @@ The [README](../README.md) covers the idea, the one contract and a quick start. 
 - [Subtitles](subtitles.md): soft tracks, burn-in, SRT/VTT
 - [Narration (TTS)](narration.md): voice-over synthesized once, before capture, and cached
 - [Canvas reels](canvas.md): a reel drawn on a 2D canvas, painted on the CPU with no browser, at any shape
+- [Kit reels](kit.md): scenes written as data (YAML, JSON or code) from a kit of parts, laid out for any shape, with what stays moving between scenes
 
 **Running it**
 

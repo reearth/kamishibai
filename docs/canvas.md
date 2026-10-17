@@ -31,7 +31,7 @@ export default canvasReel({
 });
 ```
 
-[`examples/canvas/reel.ts`](../examples/canvas/reel.ts) is a complete one.
+[`examples/canvas/reel.ts`](../examples/canvas/reel.ts) is a complete one. To write scenes from a kit of parts instead of drawing code, see [kit reels](kit.md).
 
 - **`meta`** is a page's meta, plus `aspect`: the shapes (width / height) the reel lays out for. Without it, the reel has only its own shape.
 - **`fonts`** are font files, as paths relative to the module. They are registered before `setup` runs, in Node and in a browser alike. A variable font draws at any weight: `650 48px Geist`, or a weight that changes from frame to frame.
@@ -59,6 +59,38 @@ The rules for a page hold here too. A frame is a pure function of `ms` and the v
 - `env.readText(path)`: a text file next to the reel, such as source code it quotes (synchronous, for use in `setup`).
 - `env.loadImage(path)`: an image file next to the reel.
 - `env.createCanvas(w, h)`: an offscreen canvas, for layers and scratch work. Use it instead of `document.createElement("canvas")`, which doesn't exist in Node.
+
+## Moving items between keyframes: `morph`
+
+`morph` from `kamishibai/kit` gives a canvas reel the motion of a [kit reel](kit.md) without its layout. You place the items yourself, in the view's units, in keyframes at times you choose. An item under the same id in the next keyframe moves there, changing size and colour on the way; one that is gone fades out, and a new one comes in with its `enter` verb.
+
+```ts
+import { canvasReel } from "kamishibai/canvas";
+import { morph } from "kamishibai/kit";
+
+export default canvasReel({
+  meta: { fps: 30, durationMs: 4000, width: 1920, height: 1080 },
+  fonts: [{ family: "Geist", src: "fonts/Geist.ttf", weight: "100 900" }],
+  setup(view, env) {
+    const m = morph(
+      [
+        { at: 0, items: [{ id: "box", rect: [200, 400, 400, 200], r: 24, stroke: "rule" }, { id: "t", text: "Before", pos: [400, 470], align: "center", bold: true }] },
+        { at: 2000, items: [{ id: "box", rect: [1200, 400, 500, 200], r: 24, fill: "accentTint", stroke: "accent" }, { id: "t", text: "After", pos: [1450, 470], align: "center", bold: true, delay: 300 }] },
+      ],
+      { env, width: view.width, height: view.height, theme: { fonts: { sans: "Geist", mono: "Geist" } } },
+    );
+    return (g, ms) => {
+      g.fillStyle = "#fafaf7";
+      g.fillRect(0, 0, view.width, view.height);
+      m.draw(g, ms); // and anything drawn after it goes on top
+    };
+  },
+});
+```
+
+The items are a [figure's](kit.md#figures): `rect`, `circle`, `line` and `text`, with the same fields, but `delay` (ms after the keyframe starts) in place of a cue. New items come in together unless they have one. A keyframe's `transition` takes the kit's values (`morph`, `cut`, `fade`, `push`, `wipe`); a push or a wipe needs `paper`, a colour `morph` fills under each keyframe to hide the one before.
+
+`m.draw(g, ms)` draws in `g`'s current units and returns a fingerprint of what it drew: a painter that draws nothing else that changes can return it, so the frames after the items settle are copied. `m.check()` finds an item off the area, text that spills out of a filled rect, and weak contrast, as `kamishibai check` does for a kit reel. [`examples/canvas/morph.ts`](../examples/canvas/morph.ts) is a complete one, laid out for wide and tall views.
 
 ## Rendering
 

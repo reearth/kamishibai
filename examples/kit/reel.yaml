@@ -1,0 +1,54 @@
+# A kit reel: scenes written as data, laid out for any shape, with the parts
+# that stay between scenes moving into place. No code, and no browser.
+#
+#   kamishibai check  examples/kit/reel.yaml                 # layout issues, no frames
+#   kamishibai render examples/kit/reel.yaml -o kit.mp4
+#   kamishibai render examples/kit/reel.yaml --aspect 9:16 -o kit-tall.mp4
+#   kamishibai schema > kit.schema.json                      # for an editor
+kit: 1
+title: The coupon that expired a day early
+# Paths are relative to this file.
+fonts:
+  - { family: Geist, src: fonts/Geist.ttf, weight: "100 900" }
+  - { family: Geist Mono, src: fonts/GeistMono.ttf, weight: "100 900" }
+theme:
+  fonts: { sans: Geist, mono: '"Geist Mono"' }
+# Uncomment for a voice (any provider of kamishibai/tts); without one, each
+# scene holds for an estimate of how long its line takes to say.
+# voice: { provider: kokoro, voice: af_heart }
+scenes:
+  - kata: cover
+    say: Customers said their coupons stopped working on the last day.
+    kicker: Bug review
+    title: The coupon that expired a day early
+  - kata: flow
+    say: A coupon is issued, then used, or it expires.
+    title: A coupon's life
+    steps: [Issued, Used, Expiry day, Expired]
+    at: 2
+  - kata: compare
+    say: The docs and the code disagree about the last day.
+    title: The last day
+    left: { label: The docs, body: Usable through the expiry day }
+    right: { id: code, label: The code, code: "src/coupon.ts#L11", highlight: "now >= expires" }
+  - kata: code
+    say: At midnight on the expiry day, the code already calls it expired.
+    title: Expired at 0:00 on the last day
+    label: src/coupon.ts
+    code: "src/coupon.ts#L8-L12"
+    highlight: "now >= expires"
+    note: startOfDay rounds down to midnight, then >= compares
+  - kata: stat
+    say: So every coupon lost a whole day.
+    title: Time lost per coupon
+    value: 24
+    unit: hours
+    label: from 0:00 to 24:00 on the expiry day
+  - say: The fix compares against the start of the next day.
+    parts:
+      - { type: title, id: title, text: The fix }
+      - type: row
+        parts:
+          - { type: card, id: code, label: Now, code: "now >= startOfDay(expires)", highlight: ">=", tone: dim }
+          - { type: arrow }
+          - { type: card, id: after, label: Fixed, code: "now >= nextDay(expires)", highlight: nextDay, tone: accent }

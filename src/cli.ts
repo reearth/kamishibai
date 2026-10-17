@@ -6,6 +6,8 @@
 //   kamishibai encode  -f <dir> [options]      frames -> video
 //   kamishibai tts     <entry>                 narration pre-pass only
 //   kamishibai dev     <entry>                 live preview in the browser
+//   kamishibai check   <entry>                 a kit reel's layout, checked
+//   kamishibai schema                          the kit reel JSON Schema
 //   kamishibai skill [topic…|all]              print the usage guide
 //
 // HELP below is the option reference; FLAGS_FOR says which subcommand
@@ -35,6 +37,10 @@ Usage:
   kamishibai dev <entry> [options]               live preview in the browser
   kamishibai export <entry> -o reel.html         a reel and its player as one HTML
                                                  file that plays with no server
+  kamishibai check <entry> [--json]              check a kit reel's layout with no frame
+                                                 drawn (overlaps, overflow, contrast…)
+  kamishibai schema [--brief]                    print the JSON Schema of a kit reel, or
+                                                 every field, a line per part and shape
   kamishibai skill [topic…|all]                  print the usage guide: the core and a
                                                  topic list, the named topics, or all
 
@@ -45,7 +51,8 @@ Arguments:
                         narration (TTS) need a script or .html entry.
                         A script whose default export is a canvas reel
                         ({ meta, setup }, kamishibai/canvas) is painted on the
-                        CPU, with no browser.
+                        CPU, with no browser. So is a kit reel (kamishibai/kit),
+                        in code or as a .json / .yaml / .yml file.
 
 Capture options (render, capture):
   -w, --workers <n>     parallel capture pages (default: ~cpus-2, max 8)
@@ -105,6 +112,8 @@ Export options (export):
       --loop <n>        play again from the start, as --gif-loop: 0 = forever,
                         -1 = once (default), n = n more times
       --no-autoplay     wait for the viewer (or the page) to start it
+      --audio <mode>    mix (default): the sound mixed into one track with ffmpeg;
+                        live: each clip's file, played with Web Audio
                         These set the file's defaults; its URL can change them:
                         ?controls=0|1 &autoplay=0|1 &loop=<n> &t=<s> &muted=1
   -p, --public <dir>, --probe-timeout <s>, --tts-adapter <file>
@@ -122,6 +131,12 @@ Dev options (dev):
       --no-open         don't open the browser
                         dev never calls a TTS provider: cached lines play,
                         new ones get an estimated length. Bake them with tts.
+
+Check options (check):
+      --size, --aspect, --inset
+                        check one view, as for render (default: meta's own and
+                        each end of meta.aspect)
+      --json            print { views: [{ width, height, issues }], count }
 
 Other:
       --keep-frames     (render) keep the intermediate PNG frames
@@ -145,6 +160,7 @@ Examples:
   kamishibai tts reel.tsx                                     # synthesize narration first
   kamishibai tts reel.tsx --tts-adapter kokoro.ts             # with a custom TTS adapter
   kamishibai dev reel.tsx -p public                           # preview while editing
+  kamishibai check reel.yaml                                  # a kit reel's layout issues
   kamishibai skill                                            # core guide + topic list
   kamishibai skill audio narration                            # two topics
   kamishibai skill all > kamishibai.md                        # the whole guide
@@ -165,7 +181,9 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   encode: new Set(ENCODE_FLAGS),
   tts: new Set(["public", "probe-timeout", "tts-adapter"]),
   dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
-  export: new Set(["out", "bare", "loop", "no-autoplay", "public", "probe-timeout", "tts-adapter"]),
+  export: new Set(["out", "bare", "loop", "no-autoplay", "audio", "public", "probe-timeout", "tts-adapter"]),
+  check: new Set(["size", "aspect", "inset", "json"]),
+  schema: new Set(["brief"]),
 };
 
 // libx264's speed presets, slowest-compressing last. Validated so a typo fails
@@ -249,7 +267,10 @@ async function main(): Promise<void> {
       renderer: { type: "string" },
       bare: { type: "boolean" },
       "no-autoplay": { type: "boolean" },
+      audio: { type: "string" },
       verbose: { type: "boolean" },
+      json: { type: "boolean" },
+      brief: { type: "boolean" },
       port: { type: "string" },
       mute: { type: "boolean" },
       cc: { type: "string" },
@@ -265,11 +286,19 @@ async function main(): Promise<void> {
   // context: the core and a topic list, or the named topics, or `all`.
   if (command === "skill" || command === "skills") {
     try {
-      process.stdout.write(skillText(SKILL, positionals.slice(1)));
+      // The kit topic carries the field reference, made from the fields themselves.
+      const { kitBrief } = await import("./kit/schema.ts");
+      process.stdout.write(skillText(SKILL, positionals.slice(1), { "kit-fields": "```\n" + kitBrief() + "```" }));
     } catch (e) {
       console.error((e as Error).message);
       process.exit(1);
     }
+    return;
+  }
+
+  if (command === "schema") {
+    const { kitBrief, kitSchema } = await import("./kit/schema.ts");
+    process.stdout.write(values.brief ? kitBrief() : JSON.stringify(kitSchema(), null, 2) + "\n");
     return;
   }
 
@@ -280,7 +309,7 @@ async function main(): Promise<void> {
 
   if (!command || !FLAGS_FOR[command]) {
     process.stderr.write(
-      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / dev / export / encode -f <frames-dir>)\n`,
+      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / dev / export / check / encode -f <frames-dir>)\n`,
     );
     process.exit(1);
   }
@@ -368,6 +397,21 @@ async function main(): Promise<void> {
   const encodeArgs = splitArgs(enc.value);
   const muxArgs = splitArgs(mux.value);
 
+  // `kamishibai check` lays a kit reel out for each shape and lists what the
+  // arithmetic finds wrong; it exits 1 when it finds anything.
+  if (command === "check") {
+    if (!entry) {
+      process.stderr.write(`Missing <entry>.\n\n${HELP}`);
+      process.exit(1);
+    }
+    const { checkEntry, formatCheck } = await import("./kit-check.ts");
+    const one = size || values.aspect !== undefined || insets ? { size, aspect: values.aspect, insets } : undefined;
+    const r = await checkEntry({ entry, view: one });
+    process.stdout.write(values.json ? JSON.stringify(r, null, 2) + "\n" : formatCheck(r));
+    if (r.count > 0) process.exit(1);
+    return;
+  }
+
   // `kamishibai dev` serves the reel with a player and rebuilds it on save,
   // until interrupted.
   if (command === "dev") {
@@ -438,7 +482,11 @@ async function main(): Promise<void> {
     if (htmlLoops !== undefined && (!Number.isInteger(htmlLoops) || htmlLoops < -1)) {
       throw new Error(`--loop must be an integer ≥ -1 (0 = forever, -1 = once), got "${htmlLoop.value}"`);
     }
+    if (values.audio !== undefined && values.audio !== "mix" && values.audio !== "live") {
+      throw new Error(`--audio must be mix or live, got "${values.audio}"`);
+    }
     const r = await exportHtml({
+      audio: values.audio as "mix" | "live" | undefined,
       entry,
       out: values.out ?? "reel.html",
       bare: values.bare,

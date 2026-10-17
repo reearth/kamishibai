@@ -16,12 +16,10 @@ import { build, type Plugin } from "esbuild";
 import { GLOBAL_KEY, frameCount, type KamishibaiMeta } from "./protocol.ts";
 import { launchChrome, waitForReel } from "./renderer.ts";
 import { SCRIPT_EXT, bundleOptions, serveEntry } from "./serve.ts";
-import { assertFfmpeg, mixAudio } from "./ffmpeg.ts";
-import { prepareAudio } from "./render.ts";
 import { mergeCues, type Cue } from "./subtitle.ts";
 import { createTTSEngine } from "./tts/engine.ts";
 import type { AudioClip } from "./audio.ts";
-import { writeExportHtml } from "./export-html.ts";
+import { exportSound, writeExportHtml } from "./export-html.ts";
 import type { ExportOptions, ExportResult } from "./canvas/export.ts";
 
 /** A browser module: built next to this one (dist), or its source. */
@@ -106,21 +104,15 @@ export async function exportPage(opts: ExportOptions): Promise<ExportResult> {
   try {
     for (const path of Object.keys(files)) log(`  ✓ ${path} (${files[path]![0]}, ${(Buffer.from(files[path]![1], "base64").length / 1024).toFixed(1)} KB)`);
 
-    // The soundtrack, mixed into one track as for an mp4.
-    let soundtrack: string | undefined;
-    let audioBytes = 0;
-    if (markers.audio.length) {
-      await assertFfmpeg();
-      const kept = await prepareAudio(markers.audio, opts.publicDir, meta.durationMs, log);
-      if (kept.length) {
-        const m4a = join(tmp, "soundtrack.m4a");
-        log(`Mixing ${kept.length} audio clip(s) into one track…`);
-        await mixAudio({ clips: kept, out: m4a, durationMs: meta.durationMs, bitrate: opts.audioBitrate });
-        const bytes = await readFile(m4a);
-        audioBytes = bytes.length;
-        soundtrack = `data:audio/mp4;base64,${bytes.toString("base64")}`;
-      }
-    }
+    const sound = await exportSound({
+      clips: markers.audio,
+      mode: opts.audio ?? "mix",
+      durationMs: meta.durationMs,
+      publicDir: opts.publicDir,
+      bitrate: opts.audioBitrate,
+      tmp,
+      log,
+    });
 
     const { entryPoints: _, outfile: __, ...base } = bundleOptions(entry, "bundle.js");
     const prelude = moduleFile("export-prelude");
@@ -146,13 +138,13 @@ const data = JSON.parse(document.getElementById("kamishibai-data").textContent);
 // The file's defaults, which the URL's query can change (?controls=0&loop=0&t=10 …).
 const options = optionsFromQuery(location.search, { controls: !data.bare, loop: data.loop, autoplay: data.autoplay });
 window.kamishibaiPlayer = await playPage(document.getElementById("kamishibai"), document.getElementById("kamishibai-root"), {
-  ...options, soundtrack: data.soundtrack, subtitles: data.subtitles,
+  ...options, soundtrack: data.soundtrack, liveAudio: data.liveAudio, subtitles: data.subtitles,
 });`,
         resolveDir: dirname(entry),
         sourcefile: "kamishibai-export.js",
         loader: "js",
       },
-      plugins: [keep],
+      plugins: [...(base.plugins ?? []), keep],
     });
     const js = built.outputFiles[0]!.text;
     const loop = opts.loop === undefined || opts.loop === -1 ? false : opts.loop === 0 ? true : opts.loop;
@@ -160,13 +152,14 @@ window.kamishibaiPlayer = await playPage(document.getElementById("kamishibai"), 
       bare: !!opts.bare,
       loop,
       autoplay: opts.autoplay === false ? false : undefined,
-      soundtrack,
+      soundtrack: sound.soundtrack,
+      liveAudio: sound.liveAudio,
       subtitles: mergeCues(markers.subtitles),
       narration: [...narration],
       files,
     };
     const bytes = await writeExportHtml({ out: opts.out, title: basename(opts.entry), bare: !!opts.bare, data, js, pageRoot: true });
-    return { out: resolve(opts.out), bytes, parts: { script: js.length, fonts: 0, files: fileBytes, soundtrack: audioBytes }, frames: frameCount(meta) };
+    return { out: resolve(opts.out), bytes, parts: { script: js.length, fonts: 0, files: fileBytes, soundtrack: sound.bytes }, frames: frameCount(meta) };
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
