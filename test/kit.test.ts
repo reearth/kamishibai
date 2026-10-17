@@ -316,6 +316,14 @@ describe("filling the stage", () => {
     expect(full.text("points.0").size).toBe(SIZE.body);
   });
 
+  it("numbers a flow's steps, and ticks the ones done", async () => {
+    const { ds } = await lay({ kata: "flow", title: "Steps", steps: ["Detect", "Read", "Check"], at: 1 });
+    const ids = ds.map((d) => d.id);
+    expect(ids).toContain("flow.0.tick");
+    expect(ids).not.toContain("flow.0.n");
+    expect(ids).toEqual(expect.arrayContaining(["flow.1.n", "flow.2.n"]));
+  });
+
   it("keeps a row across a wide stage by wrapping its cards, and stacks it on a tall one", async () => {
     const parts = [row([card({ id: "a", label: "Card", body: "Holds your balance" }), arrow(), card({ id: "b", label: "Gate", body: "Reads it over radio" }), arrow(), card({ id: "c", label: "Station server", body: "Keeps the fare tables" })])];
     const wide = await lay({ parts });

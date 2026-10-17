@@ -56,7 +56,7 @@ defineKata<{ title: string; steps: string[]; at?: number; note?: string }>("flow
     row(
       o.steps.flatMap((s, i) => [
         ...(i ? [arrow({ id: `flow.a${i}` })] : []),
-        chip(s, { id: `flow.${i}`, state: i === o.at ? "active" : o.at !== undefined && i < o.at ? "done" : undefined }),
+        chip(s, { id: `flow.${i}`, n: i + 1, state: i === o.at ? "active" : o.at !== undefined && i < o.at ? "done" : undefined }),
       ]),
       { id: "flow", gap: 20 },
     ),

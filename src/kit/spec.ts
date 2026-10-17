@@ -41,7 +41,7 @@ export type CardSpec = Common & {
   width?: number;
 };
 export type ArrowSpec = Common & { type: "arrow"; kind?: "right" | "down" | "versus" | "equals" };
-export type ChipSpec = Common & { type: "chip"; text: string; state?: "active" | "done" };
+export type ChipSpec = Common & { type: "chip"; text: string; state?: "active" | "done"; n?: number };
 export type StatSpec = Common & { type: "stat"; value: number; unit?: string; label?: string; tone?: "plain" | "accent"; digits?: number };
 export type ListSpec = Common & { type: "list"; items: string[]; mark?: number };
 export type ImageSpec = Common & {

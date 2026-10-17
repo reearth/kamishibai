@@ -321,16 +321,39 @@ definePart<ArrowSpec>("arrow", {
 });
 
 definePart<ChipSpec>("chip", {
-  doc: 'A pill, for a step in a flow. state "active" fills it with the accent; "done" greys it.',
-  fields: { text: f.str("the label", true), state: f.one(["active", "done"]) },
+  doc: 'A pill, for a step in a flow. state "active" fills it with the accent; "done" greys it and ticks it. n numbers it.',
+  fields: { text: f.str("the label", true), state: f.one(["active", "done"]), n: f.num("a number in a badge before the label (a tick once done)") },
   box: (s, ctx) => {
     const T = ctx.theme;
     const on = s.state === "active";
     const done = s.state === "done";
+    const d = Math.round(SIZE.body * 0.95);
+    // A badge: the step's number, or a tick once it is done.
+    const badge: Box[] =
+      s.n !== undefined || done
+        ? [
+            {
+              style: { w: d, h: d, shrink: 0 },
+              paint: (r) => {
+                const cx = r.x + d / 2;
+                const cy = r.y + d / 2;
+                const ring = on ? T.onAccent : done ? T.ink3 : T.accent;
+                const out: Paint[] = [{ t: "circle", id: `${s.id}.badge`, cx, cy, r: d / 2, stroke: ring, sw: 3, o: 1 } as Paint];
+                if (done) {
+                  const u = d / 2;
+                  out.push({ t: "path", id: `${s.id}.tick`, pts: [[cx - u * 0.45, cy + u * 0.02], [cx - u * 0.1, cy + u * 0.36], [cx + u * 0.48, cy - u * 0.34]], stroke: ring, sw: 5, prog: 1, head: "none", o: 1, enter: "draw" } as Paint);
+                } else {
+                  out.push({ t: "text", id: `${s.id}.n`, x: r.x, y: cy - SIZE.small * 0.62, w: d, h: SIZE.small * 1.24, lines: [String(s.n)], font: "bold", size: SIZE.small, lh: 1.24, track: 0, color: on ? T.onAccent : T.accentText, align: "center", o: 1, need: 0 } as Paint);
+                }
+                return out;
+              },
+            },
+          ]
+        : [];
     return {
-      style: { pad: [22, 40], shrink: 0 },
+      style: { dir: "row", align: "center", gap: 16, pad: [22, badge.length ? 32 : 40], shrink: 0 },
       paint: (r) => [rect(s.id, r, { r: r.h / 2, fill: on ? T.accent : done ? T.well : T.card, stroke: on ? T.accent : T.rule, sw: 2, ground: true, enter: s.enter })],
-      kids: [textBox(`${s.id}.t`, s.text, ctx, { font: "bold", size: SIZE.body, color: on ? T.onAccent : done ? T.ink3 : T.ink })],
+      kids: [...badge, textBox(`${s.id}.t`, s.text, ctx, { font: "bold", size: SIZE.body, color: on ? T.onAccent : done ? T.ink2 : T.ink })],
     };
   },
 });

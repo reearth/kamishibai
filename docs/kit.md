@@ -73,7 +73,7 @@ A scene has a `say` (the narration, and its captions) and either a `kata`, a sce
 | Shape | Fields (* required) | |
 |---|---|---|
 | `cover` | `title`\*, `kicker`, `sub` | The opening: a big title, with a line above and below. |
-| `flow` | `title`\*, `steps`\*, `at`, `note` | Steps as pills with arrows; `at` is the current one, those before it are done. Move `at` from scene to scene to walk the flow. |
+| `flow` | `title`\*, `steps`\*, `at`, `note` | Numbered steps as pills with arrows; `at` is the current one, those before it are done and ticked. Move `at` from scene to scene to walk the flow. |
 | `compare` | `title`\*, `left`\*, `right`\*, `kind` | Two cards side by side (stacked on a tall stage) with ≠, = or → between. `left` and `right` take a card's fields. |
 | `code` | `title`\*, `code`\*, `mark`, `label`, `note` | A code excerpt with one part marked. |
 | `stat` | `title`\*, `value`\*, `unit`, `label` | One big number that counts up. |
@@ -91,7 +91,7 @@ Every part is `{ type, … }`, with an optional `id`, `enter` and `cue`.
 | `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row is held to the stage's width, its cards wrapping their text to fit; one that still doesn't fit (a word would be cut, or a card would go under 360 units) stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), or stays a row (`keep`). |
 | `card` | `label`, `body`, `code`, `mark`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. |
 | `arrow` | `kind` (`right`, `down`, `versus`, `equals`) | An arrow between parts; in a column it points down. |
-| `chip` | `text`\*, `state` (`active`, `done`) | A pill, for a step. |
+| `chip` | `text`\*, `state` (`active`, `done`), `n` | A pill, for a step. `n` puts a number in a badge before the label, a tick once it is done. |
 | `stat` | `value`\*, `unit`, `label`, `tone`, `digits` | A big number that counts up from its previous value. |
 | `list` | `items`\*, `mark` | A bulleted list. |
 | `image` | `src`\*, `width`, `height`, `caption` | A picture, fitted to the room it gets. |
