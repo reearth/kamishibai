@@ -379,7 +379,7 @@ scenes:
     say: "…"
     title: "…"
     left: { label: Docs, body: "…" }
-    right: { label: Code, code: "src/x.ts#L40-L44", mark: "now >= t" }
+    right: { label: Code, code: "src/x.ts#L40-L44", highlight: "now >= t" }
   - say: "…"
     parts:
       - { type: title, text: "…" }
@@ -409,7 +409,7 @@ scenes:
   sentences (`zoom` caps how close).
 - `{ type: figure, width, height, items }` draws as data: items `rect: [x, y,
   w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`), `text`
-  with `at: [x, y]`; colours by theme name (`accent`, `ink3`…). Items keep
+  with `pos: [x, y]`; colours by theme name (`accent`, `ink3`…). Items keep
   ids across scenes, so a diagram can change shape; an item can have a `cue`.
 - `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
 - `voice: { provider: say, voice: Samantha }` (macOS), `{ provider: kokoro,

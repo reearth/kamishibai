@@ -141,15 +141,15 @@ definePart<TitleSpec>("title", {
 });
 
 definePart<TextSpec>("text", {
-  doc: 'Plain text. tone "display" is a cover\'s title, "lead" is large, "note" is small and grey.',
-  fields: { text: f.str("the text", true), tone: f.one(["display", "lead", "body", "note"]), align: f.one(["start", "center"]) },
+  doc: 'Plain text. role "display" is a cover\'s title, "lead" is large, "note" is small and grey.',
+  fields: { text: f.str("the text", true), role: f.one(["display", "lead", "body", "note"]), align: f.one(["start", "center"]) },
   box: (s, ctx) => {
-    const tone = s.tone ?? "body";
-    if (tone === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter });
+    const role = s.role ?? "body";
+    if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter });
     return textBox(s.id, s.text, ctx, {
-      font: tone === "lead" ? "bold" : "sans",
-      size: tone === "lead" ? SIZE.h2 : tone === "note" ? SIZE.small : SIZE.body,
-      color: tone === "note" ? ctx.theme.ink3 : ctx.theme.ink,
+      font: role === "lead" ? "bold" : "sans",
+      size: role === "lead" ? SIZE.h2 : role === "note" ? SIZE.small : SIZE.body,
+      color: role === "note" ? ctx.theme.ink3 : ctx.theme.ink,
       enter: s.enter,
       align: s.align,
       balance: s.align === "center",
@@ -225,7 +225,7 @@ function readCode(ref: string, ctx: Ctx): { file?: string; lines: string[]; firs
   return { file: `${m[1]}:${at}`, lines: all.slice(a - 1, b), first: a };
 }
 
-function codeBlock(id: string, ref: string, mark: string | undefined, ctx: Ctx): Box {
+function codeBlock(id: string, ref: string, highlight: string | undefined, ctx: Ctx): Box {
   const { file, lines, first } = readCode(ref, ctx);
   const T = ctx.theme;
   const F = ctx.fonts;
@@ -247,10 +247,10 @@ function codeBlock(id: string, ref: string, mark: string | undefined, ctx: Ctx):
               lines.forEach((l, i) => {
                 const y = r.y + i * size * lh;
                 if (first) out.push({ t: "text", id: `${id}.n${first + i}`, x: r.x, y, w: gutter - 28, h: size * lh, lines: [String(first + i)], font: "mono", size, lh, track: 0, color: T.ink3, align: "end", o: 1, need: 0 } as Paint);
-                const at = mark ? l.indexOf(mark) : -1;
+                const at = highlight ? l.indexOf(highlight) : -1;
                 if (at >= 0) {
                   const x0 = r.x + gutter + F.measure(l.slice(0, at), "mono", size);
-                  out.push(rect(`${id}.mark`, { x: x0 - 6, y: y + 4, w: F.measure(mark!, "mono", size) + 12, h: size * lh - 8 }, { fill: T.accentTint, r: 6, enter: "pop" }));
+                  out.push(rect(`${id}.mark`, { x: x0 - 6, y: y + 4, w: F.measure(highlight!, "mono", size) + 12, h: size * lh - 8 }, { fill: T.accentTint, r: 6, enter: "pop" }));
                 }
               });
               // One drawable per source line, keyed by its line number, so a line
@@ -274,7 +274,7 @@ definePart<CardSpec>("card", {
     label: f.str("a small line on top"),
     body: f.str("a sentence"),
     code: f.str('code as text, or "path#L44" / "path#L40-48"'),
-    mark: f.str("a substring of the code to highlight"),
+    highlight: f.str("a substring of the code to highlight"),
     tone: f.one(["plain", "accent", "dim"]),
     width: f.num("its width on a wide stage"),
   },
@@ -290,7 +290,7 @@ definePart<CardSpec>("card", {
       kids: [
         ...(s.label ? [textBox(`${s.id}.label`, s.label, ctx, { font: "bold", size: SIZE.small, color: tone === "accent" ? T.accentText : tone === "dim" ? T.ink2 : T.ink3 })] : []),
         ...(s.body ? [textBox(`${s.id}.body`, s.body, ctx, { font: "bold", size: SIZE.h2 - 4, lh: 1.35, color: tone === "dim" ? T.ink3 : T.ink })] : []),
-        ...(s.code ? [codeBlock(`${s.id}.code`, s.code, s.mark, ctx)] : []),
+        ...(s.code ? [codeBlock(`${s.id}.code`, s.code, s.highlight, ctx)] : []),
       ],
     };
   },
@@ -383,8 +383,8 @@ definePart<StatSpec>("stat", {
 });
 
 definePart<ListSpec>("list", {
-  doc: "A bulleted list; mark picks one item to stress. Each item keeps its own id, so an item still there slides.",
-  fields: { items: f.strs("the items", true), mark: f.num("the index of the item to stress") },
+  doc: "A bulleted list; at picks one item to stress. Each item keeps its own id, so an item still there slides.",
+  fields: { items: f.strs("the items", true), at: f.num("the index of the item to stress") },
   box: (s, ctx) => {
     const T = ctx.theme;
     return {
@@ -394,9 +394,9 @@ definePart<ListSpec>("list", {
         kids: [
           {
             style: { w: 18, h: SIZE.body * 1.45, shrink: 0 },
-            paint: (r) => [{ t: "circle", id: `${s.id}.${i}.dot`, cx: r.x + 9, cy: r.y + r.h / 2, r: 9, fill: s.mark === i ? T.accent : T.ink, o: 1 } as Paint],
+            paint: (r) => [{ t: "circle", id: `${s.id}.${i}.dot`, cx: r.x + 9, cy: r.y + r.h / 2, r: 9, fill: s.at === i ? T.accent : T.ink, o: 1 } as Paint],
           },
-          textBox(`${s.id}.${i}`, item, ctx, { font: s.mark === i ? "bold" : "sans", size: SIZE.body, color: s.mark === undefined || s.mark === i ? T.ink : T.ink3, style: { shrink: 1 } }),
+          textBox(`${s.id}.${i}`, item, ctx, { font: s.at === i ? "bold" : "sans", size: SIZE.body, color: s.at === undefined || s.at === i ? T.ink : T.ink3, style: { shrink: 1 } }),
         ],
       })),
     };
@@ -460,11 +460,11 @@ type FigureItem = {
   line?: [number, number][];
   text?: string;
   /** a text's anchor */
-  at?: [number, number];
+  pos?: [number, number];
   fill?: string;
   stroke?: string;
   /** a line's or an outline's width */
-  width?: number;
+  lineWidth?: number;
   r?: number;
   arrow?: boolean;
   size?: number;
@@ -475,6 +475,7 @@ type FigureItem = {
 type FigureSpec = { id: string; type: "figure"; width: number; height: number; items: FigureItem[]; caption?: string };
 
 const SHAPES = ["rect", "circle", "line", "text"] as const;
+const ITEM_KEYS = [...SHAPES, "id", "enter", "cue", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "align"];
 const isNums = (v: unknown, n?: number) => Array.isArray(v) && (n === undefined || v.length === n) && v.every((x) => typeof x === "number" && isFinite(x));
 const itemId = (s: { id: string }, it: FigureItem, i: number) => `${s.id}.${it.id ?? i}`;
 
@@ -490,7 +491,7 @@ definePart<FigureSpec>("figure", {
   fields: {
     width: f.num("its units across", true),
     height: f.num("its units down", true),
-    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, at: [x, y], size?, bold?, align? }, with fill, stroke, width, r, color (a theme colour name or CSS), id, enter, cue', true),
+    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue', true),
     caption: f.str("a small line under it"),
   },
   check: (s, at) => {
@@ -499,12 +500,14 @@ definePart<FigureSpec>("figure", {
     s.items.forEach((it, i) => {
       const where = `${at}.items[${i}]`;
       if (!it || typeof it !== "object") return void out.push(`${where}: expected an item ({ rect | circle | line | text, … })`);
+      const unknown = Object.keys(it).filter((k) => !ITEM_KEYS.includes(k));
+      if (unknown.length) out.push(`${where}: unknown field${unknown.length === 1 ? "" : "s"} ${unknown.map((k) => `"${k}"`).join(", ")}; an item takes ${ITEM_KEYS.join(", ")}`);
       const kinds = SHAPES.filter((k) => it[k] !== undefined);
       if (kinds.length !== 1) return void out.push(`${where}: give one of ${SHAPES.join(", ")} (got ${kinds.length ? kinds.join(" and ") : "none"})`);
       if (it.rect !== undefined && !isNums(it.rect, 4)) out.push(`${where}.rect: expected [x, y, w, h]`);
       if (it.circle !== undefined && !isNums(it.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
       if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p) => isNums(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
-      if (it.text !== undefined && (typeof it.text !== "string" || !isNums(it.at, 2))) out.push(`${where}: a text needs text and at: [x, y]`);
+      if (it.text !== undefined && (typeof it.text !== "string" || !isNums(it.pos, 2))) out.push(`${where}: a text needs text and pos: [x, y]`);
     });
     const ids = s.items.map((it, i) => (it && typeof it === "object" ? (it.id ?? String(i)) : String(i)));
     for (const id of new Set(ids.filter((x, i) => ids.indexOf(x) !== i))) out.push(`${at}.items: the id "${id}" is used twice`);
@@ -530,14 +533,14 @@ definePart<FigureSpec>("figure", {
           const base = { id: itemId(s, it, i), ...(it.cue ? { turn: itemId(s, it, i) } : {}), o: 1, enter: it.enter };
           if (it.rect) {
             const [x, y, w, h] = it.rect;
-            return { ...base, t: "rect", x: X(x), y: Y(y), w: w * k, h: h * k, r: (it.r ?? 0) * k, fill: it.fill || it.stroke ? (it.fill ? colour(it.fill, T, T.card) : undefined) : T.card, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.width ?? 2) * k, ground: !!it.fill };
+            return { ...base, t: "rect", x: X(x), y: Y(y), w: w * k, h: h * k, r: (it.r ?? 0) * k, fill: it.fill || it.stroke ? (it.fill ? colour(it.fill, T, T.card) : undefined) : T.card, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k, ground: !!it.fill };
           }
           if (it.circle) {
             const [cx, cy, rad] = it.circle;
-            return { ...base, t: "circle", cx: X(cx), cy: Y(cy), r: rad * k, fill: it.fill || !it.stroke ? colour(it.fill, T, T.ink) : undefined, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.width ?? 2) * k };
+            return { ...base, t: "circle", cx: X(cx), cy: Y(cy), r: rad * k, fill: it.fill || !it.stroke ? colour(it.fill, T, T.ink) : undefined, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k };
           }
           if (it.line) {
-            return { ...base, t: "path", pts: it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]), stroke: colour(it.stroke, T, T.ink), sw: (it.width ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none" };
+            return { ...base, t: "path", pts: it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]), stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none" };
           }
           const size = (it.size ?? SIZE.body) * k;
           const font: FontRole = it.bold ? "bold" : "sans";
@@ -545,9 +548,9 @@ definePart<FigureSpec>("figure", {
           const w = Math.max(...lines.map((l) => ctx.fonts.measure(l, font, size)));
           const h = lines.length * size * 1.3;
           const align = it.align ?? "start";
-          const x = X(it.at![0]) - (align === "center" ? w / 2 : align === "end" ? w : 0);
-          // at is the text's top-left (or top-centre, top-right) corner
-          return { ...base, t: "text", x, y: Y(it.at![1]), w, h, lines, font, size, lh: 1.3, track: 0, color: colour(it.color, T, T.ink), align, need: w };
+          const x = X(it.pos![0]) - (align === "center" ? w / 2 : align === "end" ? w : 0);
+          // pos is the text's top-left (or top-centre, top-right) corner
+          return { ...base, t: "text", x, y: Y(it.pos![1]), w, h, lines, font, size, lh: 1.3, track: 0, color: colour(it.color, T, T.ink), align, need: w };
         });
       },
     };

@@ -42,7 +42,7 @@ export default await kit({
       parts: [
         title("What they had in common", { id: "title" }),
         row([card({ label: "Before", body: "Paper coupons" }), arrow(), card({ label: "That week", body: "The new coupon code", tone: "accent" })]),
-        text("The map stays in the corner while the rest changes.", { tone: "note" }),
+        text("The map stays in the corner while the rest changes.", { role: "note" }),
         routeMap({ id: "map", net, focus: ["A3", "A5", "A6"], size: "small", at: "corner" }),
       ],
     },

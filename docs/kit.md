@@ -36,7 +36,7 @@ scenes:
         parts:
           - { type: card, label: Now, code: "now >= startOfDay(expires)", tone: dim }
           - { type: arrow }
-          - { type: card, label: Fixed, code: "now >= nextDay(expires)", mark: nextDay, tone: accent }
+          - { type: card, label: Fixed, code: "now >= nextDay(expires)", highlight: nextDay, tone: accent }
 ```
 
 ```sh
@@ -75,9 +75,9 @@ A scene has a `say` (the narration, and its captions) and either a `kata`, a sce
 | `cover` | `title`\*, `kicker`, `sub` | The opening: a big title, with a line above and below. |
 | `flow` | `title`\*, `steps`\*, `at`, `note` | Numbered steps as pills with arrows; `at` is the current one, those before it are done and ticked. Move `at` from scene to scene to walk the flow. |
 | `compare` | `title`\*, `left`\*, `right`\*, `kind` | Two cards side by side (stacked on a tall stage) with ≠, = or → between. `left` and `right` take a card's fields. |
-| `code` | `title`\*, `code`\*, `mark`, `label`, `note` | A code excerpt with one part marked. |
+| `code` | `title`\*, `code`\*, `highlight`, `label`, `note` | A code excerpt with one part highlighted. |
 | `stat` | `title`\*, `value`\*, `unit`, `label` | One big number that counts up. |
-| `points` | `title`\*, `items`\*, `mark` | A bulleted list; `mark` stresses one item. |
+| `points` | `title`\*, `items`\*, `at` | A bulleted list; `at` stresses one item. |
 | `picture` | `title`\*, `src`\*, `caption` | One picture from a file next to the reel. |
 
 ## Parts
@@ -87,13 +87,13 @@ Every part is `{ type, … }`, with an optional `id`, `enter` and `cue`.
 | Part | Fields (* required) | |
 |---|---|---|
 | `title` | `text`\*, `kicker` | The scene's heading, pinned to the top. |
-| `text` | `text`\*, `tone` (`display`, `lead`, `body`, `note`), `align` | Plain text. |
+| `text` | `text`\*, `role` (`display`, `lead`, `body`, `note`), `align` | Plain text, sized by what it is for: a cover's title, a large line, a sentence (the default), or a small grey note. |
 | `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row is held to the stage's width, its cards wrapping their text to fit; one that still doesn't fit (a word would be cut, or a card would go under 360 units) stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), or stays a row (`keep`). |
-| `card` | `label`, `body`, `code`, `mark`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. |
+| `card` | `label`, `body`, `code`, `highlight`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. |
 | `arrow` | `kind` (`right`, `down`, `versus`, `equals`) | An arrow between parts; in a column it points down. |
 | `chip` | `text`\*, `state` (`active`, `done`), `n` | A pill, for a step. `n` puts a number in a badge before the label, a tick once it is done. |
 | `stat` | `value`\*, `unit`, `label`, `tone`, `digits` | A big number that counts up from its previous value. |
-| `list` | `items`\*, `mark` | A bulleted list. |
+| `list` | `items`\*, `at` | A bulleted list; `at` stresses one item. |
 | `image` | `src`\*, `width`, `height`, `caption` | A picture, fitted to the room it gets. |
 | `figure` | `width`\*, `height`\*, `items`\*, `caption` | A drawing as data (see below). |
 | `paint` | `width`\*, `height`\*, `fn`\*, `key` | A box drawn by code, `fn(g, ms, w, h)`, on the reel's clock. Only in a code reel. |
@@ -108,13 +108,13 @@ A `figure` draws in its own units, `width` × `height`, and is fitted to the roo
   height: 360
   items:
     - { id: app, rect: [0, 120, 260, 120], r: 16, stroke: rule }
-    - { id: app.t, text: App, at: [130, 160], align: center, bold: true }
+    - { id: app.t, text: App, pos: [130, 160], align: center, bold: true }
     - { id: a1, line: [[270, 180], [460, 180]], arrow: true }
-    - { id: server, rect: [470, 120, 260, 120], r: 16, fill: accentTint, stroke: accent, width: 4 }
+    - { id: server, rect: [470, 120, 260, 120], r: 16, fill: accentTint, stroke: accent, lineWidth: 4 }
     - { id: dot, circle: [600, 300, 20], fill: accent }
 ```
 
-Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `at: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default) and `bold`. `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `width` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
+Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `pos: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default) and `bold`. `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `lineWidth` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
 
 `code` is the code itself, or a reference to a file next to the reel: `"src/coupon.ts#L44"` shows lines 43 to 45, and `"src/coupon.ts#L40-L48"` that range, with line numbers.
 
@@ -196,7 +196,7 @@ kamishibai check reel.yaml --json     # { views: [{ width, height, issues }], co
 The layout already knows every box, so these are found with no frame drawn:
 
 - `off-stage`: something reaches outside the safe area (the stage less 48 units and the insets).
-- `overflow`: a word too long to break in the width it has, or text that spills out of its card.
+- `overflow`: a word too long to break in the width it has, or text that spills out of what it sits on (a card, or a figure's filled rect).
 - `overlap`: two parts overlap.
 - `contrast`: text below WCAG contrast on what it sits on (3:1 for large text, 4.5:1 otherwise).
 - `widow`: one or two characters alone on a paragraph's last line.
@@ -250,7 +250,7 @@ export const badge = (label: string, o: { id?: string } = {}) => ({ type: "badge
 
 A JSON or YAML reel uses such a module by naming it in `uses`; then `{ type: "badge", label: "new" }` is a part of the reel like any other. Its `import … from "kamishibai/kit"` is the same kit the reel is made with.
 
-`box` returns a tree of boxes that Yoga lays out (`style` is flexbox: `dir`, `gap`, `pad`, `grow`, `align`, `w`, `h`, …), and each box's `paint(rect)` returns the drawables in its rectangle: rects, text, paths, circles and images, each with an id. Drawables with the same id move between scenes, so give them ids from the part's. `corner(spec)` pins a part to the top-right corner on a wide stage, and `fields` are checked and go into the schema. [`examples/kit/route-map.ts`](../examples/kit/route-map.ts) is a complete one. `defineKata(name, { doc, fields, parts })` adds a scene shape the same way.
+`box` returns a tree of boxes that Yoga lays out (`style` is flexbox: `dir`, `gap`, `pad`, `grow`, `align`, `w`, `h`, …), and each box's `paint(rect)` returns the drawables in its rectangle: rects, text, paths, circles and images, each with an id. Drawables with the same id move between scenes, so give them ids from the part's. `corner(spec)` pins a part to the top-right corner on a wide stage, and `fields` are checked and go into the schema. [`examples/kit/route-map.ts`](../examples/kit/route-map.ts) is a complete one. `defineKata(name, { doc, fields, parts })` adds a scene shape the same way; its fields sit beside the scene's own, so it can't take `id`, `say`, `ms`, `kata`, `parts`, `transition`, `focus` or `fill`.
 
 Import something the module exports (`badge` above), not only the file for its side effect: a bundler may drop an import that only runs code when the package says it has no side effects.
 

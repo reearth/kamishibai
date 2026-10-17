@@ -30,13 +30,13 @@ scenes:
     say: The docs and the code disagree about the last day.
     title: The last day
     left: { label: The docs, body: Usable through the expiry day }
-    right: { id: code, label: The code, code: "src/coupon.ts#L11", mark: "now >= expires" }
+    right: { id: code, label: The code, code: "src/coupon.ts#L11", highlight: "now >= expires" }
   - kata: code
     say: At midnight on the expiry day, the code already calls it expired.
     title: Expired at 0:00 on the last day
     label: src/coupon.ts
     code: "src/coupon.ts#L8-L12"
-    mark: "now >= expires"
+    highlight: "now >= expires"
     note: startOfDay rounds down to midnight, then >= compares
   - kata: stat
     say: So every coupon lost a whole day.
@@ -49,6 +49,6 @@ scenes:
       - { type: title, id: title, text: The fix }
       - type: row
         parts:
-          - { type: card, id: code, label: Now, code: "now >= startOfDay(expires)", mark: ">=", tone: dim }
+          - { type: card, id: code, label: Now, code: "now >= startOfDay(expires)", highlight: ">=", tone: dim }
           - { type: arrow }
-          - { type: card, id: after, label: Fixed, code: "now >= nextDay(expires)", mark: nextDay, tone: accent }
+          - { type: card, id: after, label: Fixed, code: "now >= nextDay(expires)", highlight: nextDay, tone: accent }

@@ -3,7 +3,7 @@
 // here, with every problem named by its place, before anything is drawn.
 // ------------------------------------------------------------------
 import { checkFields, closest, f, type Fields } from "./fields.ts";
-import { kataDef, kataNames } from "./kata.ts";
+import { kataDef, kataNames, SCENE_FIELDS } from "./kata.ts";
 import { COMMON, partDef, partTypes, type Placed } from "./parts.ts";
 import { KIT_VERSION, type KitReelSpec, type PartSpec, type Transition } from "./spec.ts";
 import { sentences } from "./text.ts";
@@ -27,8 +27,6 @@ export type NormScene = {
 /** The camera on a part from a sentence on, at a zoom (or as close as fits). */
 export type Focus = { on: string; cue: number; zoom?: number };
 
-const TRANSITIONS = ["morph", "cut", "fade", "push", "wipe"] as const;
-
 export const REEL_FIELDS: Fields = {
   kit: f.num(`the layout rules' version: ${KIT_VERSION}`, true),
   uses: f.strs("modules that define parts and shapes, relative to the reel (a JSON or YAML reel)"),
@@ -46,16 +44,6 @@ export const REEL_FIELDS: Fields = {
   scenes: f.any("the scenes, in order", true),
 };
 
-export const SCENE_FIELDS: Fields = {
-  id: f.str("a name for messages and the scene list"),
-  say: f.text("the narration, and its captions: a text split into sentences, or a list of sentences"),
-  ms: f.num("hold this long instead of the narration's length"),
-  kata: f.str("a scene shape, filled in with the fields beside it"),
-  parts: f.parts("parts, after the shape's"),
-  transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
-  focus: f.any("move the camera in on a part: its id, { on, cue?, zoom? }, or a list of those"),
-  fill: f.bool("grow the parts under the heading, up to 1.6×, when they leave the stage mostly empty (default true)"),
-};
 
 const FOCUS_FIELDS: Fields = {
   on: f.str("the id of the part to frame", true),

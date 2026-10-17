@@ -72,7 +72,7 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
       const lastLen = [...last].length;
       if (d.lines.length > 1 && lastLen > 0 && lastLen <= 2 && !/^\d+$/.test(last)) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
       const g = groundOf(k.ds, k.ds.indexOf(d));
-      if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words or give ${g.id} a width` });
+      if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
       const bg = g?.fill ?? theme.paper;
       const need = d.size >= 40 || (d.size >= 30 && d.font !== "sans") ? 3 : 4.5;
       const c = contrast(d.color, bg);

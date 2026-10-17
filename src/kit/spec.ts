@@ -20,7 +20,13 @@ type Common = {
 };
 
 export type TitleSpec = Common & { type: "title"; text: string; kicker?: string };
-export type TextSpec = Common & { type: "text"; text: string; tone?: "display" | "lead" | "body" | "note"; align?: "start" | "center" };
+export type TextSpec = Common & {
+  type: "text";
+  text: string;
+  /** what the text is for, which sets its size: a cover's title, a large line, a sentence, or a small grey note */
+  role?: "display" | "lead" | "body" | "note";
+  align?: "start" | "center";
+};
 export type GroupSpec = Common & {
   type: "row" | "col";
   parts: PartSpec[];
@@ -36,14 +42,19 @@ export type CardSpec = Common & {
   /** code as text, or "path#L44" / "path#L40-48" read from the reel's folder */
   code?: string;
   /** a substring of the code to highlight */
-  mark?: string;
+  highlight?: string;
   tone?: "plain" | "accent" | "dim";
   width?: number;
 };
 export type ArrowSpec = Common & { type: "arrow"; kind?: "right" | "down" | "versus" | "equals" };
 export type ChipSpec = Common & { type: "chip"; text: string; state?: "active" | "done"; n?: number };
 export type StatSpec = Common & { type: "stat"; value: number; unit?: string; label?: string; tone?: "plain" | "accent"; digits?: number };
-export type ListSpec = Common & { type: "list"; items: string[]; mark?: number };
+export type ListSpec = Common & {
+  type: "list";
+  items: string[];
+  /** the index of the item to stress */
+  at?: number;
+};
 export type ImageSpec = Common & {
   type: "image";
   /** a path relative to the reel */

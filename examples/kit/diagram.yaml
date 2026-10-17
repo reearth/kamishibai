@@ -21,13 +21,13 @@ scenes:
         height: 360
         items:
           - { id: shop, rect: [0, 120, 260, 120], r: 16, stroke: rule }
-          - { id: shop.t, text: Shop, at: [130, 160], align: center, bold: true }
+          - { id: shop.t, text: Shop, pos: [130, 160], align: center, bold: true }
           - { id: a1, line: [[270, 180], [460, 180]], arrow: true, cue: 1 }
           - { id: app, rect: [470, 120, 260, 120], r: 16, stroke: rule, cue: 1 }
-          - { id: app.t, text: App, at: [600, 160], align: center, bold: true, cue: 1 }
+          - { id: app.t, text: App, pos: [600, 160], align: center, bold: true, cue: 1 }
           - { id: a2, line: [[740, 180], [930, 180]], arrow: true, cue: 2 }
-          - { id: server, rect: [940, 120, 260, 120], r: 16, fill: accentTint, stroke: accent, width: 4, cue: 2 }
-          - { id: server.t, text: Server, at: [1070, 160], align: center, bold: true, cue: 2 }
+          - { id: server, rect: [940, 120, 260, 120], r: 16, fill: accentTint, stroke: accent, lineWidth: 4, cue: 2 }
+          - { id: server.t, text: Server, pos: [1070, 160], align: center, bold: true, cue: 2 }
   - say: The bug was in the server, so only the server changes.
     parts:
       - { type: title, text: Where the fix goes }
@@ -36,11 +36,11 @@ scenes:
         height: 360
         items:
           - { id: shop, rect: [0, 150, 200, 90], r: 16, stroke: rule }
-          - { id: shop.t, text: Shop, at: [100, 175], align: center, bold: true, color: ink3 }
+          - { id: shop.t, text: Shop, pos: [100, 175], align: center, bold: true, color: ink3 }
           - { id: app, rect: [260, 150, 200, 90], r: 16, stroke: rule }
-          - { id: app.t, text: App, at: [360, 175], align: center, bold: true, color: ink3 }
-          - { id: server, rect: [560, 40, 640, 300], r: 24, fill: accentTint, stroke: accent, width: 6 }
-          - { id: server.t, text: "Server: now >= nextDay(expires)", at: [880, 170], align: center, bold: true }
+          - { id: app.t, text: App, pos: [360, 175], align: center, bold: true, color: ink3 }
+          - { id: server, rect: [560, 40, 640, 300], r: 24, fill: accentTint, stroke: accent, lineWidth: 6 }
+          - { id: server.t, text: "Server:\nnow >= nextDay(expires)", pos: [880, 133], align: center, bold: true }
   - say: Three shops on the A line saw it. All of them are on the new app.
     parts:
       - { type: title, text: Shops that saw it }
@@ -58,4 +58,4 @@ scenes:
           lines:
             - { id: A, name: A line, color: "#d9662a", stations: [A1, A3, A5, A6] }
             - { id: B, name: B line, color: "#6e6e69", stations: [B1, A3] }
-      - { type: text, tone: note, text: "All three: the new app since Monday", cue: 1 }
+      - { type: text, role: note, text: "All three: the new app since Monday", cue: 1 }

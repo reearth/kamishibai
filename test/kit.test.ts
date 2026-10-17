@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
-import { kit, kitBrief, kitSchema, normalize, KitSpecError, card, row, title, arrow, scene, definePart, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
+import { kit, kitBrief, kitSchema, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
 import { camAt, frameAt, layersAt, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences } from "../src/kit/text.ts";
@@ -184,7 +184,7 @@ describe("kit", () => {
       fonts,
       theme,
       scenes: [
-        { ms: 2000, parts: [{ type: "figure", width: 400, height: 100, items: [box(0, "accent"), { text: "a", at: [200, 30], align: "center" }] }] },
+        { ms: 2000, parts: [{ type: "figure", width: 400, height: 100, items: [box(0, "accent"), { text: "a", pos: [200, 30], align: "center" }] }] },
         { ms: 2000, parts: [{ type: "figure", width: 400, height: 100, items: [box(300, "ink3")] }] },
       ],
     });
@@ -193,6 +193,15 @@ describe("kit", () => {
       "scenes[0].parts[0] (figure).items[0].rect: expected [x, y, w, h]",
       "scenes[0].parts[0] (figure).items[1]: give one of rect, circle, line, text (got circle and line)",
     ]);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ line: [[0, 0], [1, 1]], width: 4 }] }] }] })).toEqual([
+      expect.stringMatching(/^scenes\[0\]\.parts\[0\] \(figure\)\.items\[0\]: unknown field "width"; an item takes .*lineWidth/),
+    ]);
+  });
+
+  it("keeps a shape's fields apart from the scene's", () => {
+    expect(() => defineKata<{ title: string; focus: string }>("spot", { doc: "", fields: { title: f.str(), focus: f.str() }, parts: (o) => [title(o.title)] })).toThrow(
+      'defineKata("spot"): "focus" is a scene field',
+    );
   });
 
   it("takes a part defined with definePart", async () => {
@@ -364,7 +373,7 @@ fonts: [{ family: Geist, src: ${JSON.stringify(GEIST)}, weight: "100 900" }]
 theme: { fonts: { sans: Geist, mono: Geist } }
 scenes:
   - { kata: cover, title: Hello, say: hello there }
-  - { kata: code, title: The code, code: "code.ts#L3-L5", mark: line4 }
+  - { kata: code, title: The code, code: "code.ts#L3-L5", highlight: line4 }
 `;
     await writeFile(join(dir, "reel.yaml"), yaml);
     await writeFile(join(dir, "wide.json"), JSON.stringify({

@@ -2,8 +2,8 @@
 // for an editor's completion, and for an agent to write a reel against.
 // ------------------------------------------------------------------
 import { fieldSchema, type Field, type Fields } from "./fields.ts";
-import { kataDef, kataNames } from "./kata.ts";
-import { REEL_FIELDS, SCENE_FIELDS } from "./normalize.ts";
+import { kataDef, kataNames, SCENE_FIELDS } from "./kata.ts";
+import { REEL_FIELDS } from "./normalize.ts";
 import { COMMON, partDef, partTypes } from "./parts.ts";
 
 function objectSchema(fields: Fields, part: object, extra: Record<string, unknown> = {}, required: string[] = []) {
