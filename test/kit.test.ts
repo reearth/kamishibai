@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
-import { kit, kitBrief, kitSchema, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
+import { kit, kitBrief, kitSchema, morph, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
 import { camAt, frameAt, layersAt, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences } from "../src/kit/text.ts";
@@ -415,5 +415,65 @@ definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 
 
   it("says what a JSON file without kit is", async () => {
     await expect(loadCanvasEntry(join(dir, "plain.json"))).rejects.toThrow(/not a kit reel/);
+  });
+});
+
+describe("morph", () => {
+  // A context that records the rects it fills, by where they are.
+  const recorder = () => {
+    const filled: { x: number; y: number; w: number; fill: string }[] = [];
+    const g = patchContext(createCanvas(400, 200).getContext("2d") as never) as Context2D;
+    const roundRect = g.roundRect.bind(g);
+    let last = { x: 0, y: 0, w: 0 };
+    g.roundRect = ((x: number, y: number, w: number, h: number, r: number) => ((last = { x, y, w }), roundRect(x, y, w, h, r))) as never;
+    const fill = g.fill.bind(g);
+    g.fill = (() => (filled.push({ ...last, fill: String(g.fillStyle) }), fill())) as never;
+    return { g, filled };
+  };
+
+  it("moves an item kept under its id from one keyframe to the next", async () => {
+    const env = await nodeEnv(".");
+    const m = morph(
+      [
+        { at: 0, items: [{ id: "box", rect: [0, 50, 100, 40], fill: "accent" }] },
+        { at: 1000, items: [{ id: "box", rect: [300, 50, 100, 40], fill: "accent" }] },
+      ],
+      { env, width: 400, height: 200 },
+    );
+    const xAt = (ms: number) => {
+      const { g, filled } = recorder();
+      m.draw(g, ms);
+      return filled.at(-1)!.x;
+    };
+    expect(xAt(900)).toBe(0);
+    expect(xAt(1000 + 375)).toBeGreaterThan(100);
+    expect(xAt(1000 + 375)).toBeLessThan(200);
+    expect(xAt(3000)).toBe(300);
+    // Nothing changes once it has settled, so the painter can say so.
+    expect(m.draw(recorder().g, 3000)).toBe(m.draw(recorder().g, 4000));
+  });
+
+  it("names what is wrong with its keyframes", async () => {
+    const env = await nodeEnv(".");
+    const bad = () => morph([{ at: 500, items: [{ rect: [0, 0, 1, 1], cue: 1 } as never] }, { at: 500, items: [{ text: "a" }] }], { env, width: 10, height: 10 });
+    expect(bad).toThrow(KitSpecError);
+    try {
+      bad();
+    } catch (e) {
+      expect((e as KitSpecError).problems).toEqual([
+        expect.stringMatching(/^frames\[0\]\.items\[0\]: unknown field "cue"; an item takes .*delay/),
+        "frames[1].at: 500 is not after the keyframe before (500)",
+        "frames[1].items[0]: a text needs text and pos: [x, y]",
+      ]);
+    }
+  });
+
+  it("checks its keyframes with no frame drawn", async () => {
+    const env = await nodeEnv(".");
+    const m = morph(
+      [{ at: 0, items: [{ id: "box", rect: [140, 10, 100, 60], fill: "card" }, { id: "t", text: "a long label", pos: [190, 20], align: "center" }, { id: "far", circle: [395, 100, 20] }] }],
+      { env, width: 400, height: 200 },
+    );
+    expect(m.check().map((i) => `${i.kind} ${i.msg.split(":")[0]}`)).toEqual(["overflow t spills out of box", "off-stage far reaches outside the safe area (375,80 40×40)"]);
   });
 });

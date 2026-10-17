@@ -233,7 +233,7 @@ export default await kit({
 });
 ```
 
-The functions build the same objects a YAML reel holds, and `kit()` checks them the same way. A code reel can also use `paint` parts and parts of its own.
+The functions build the same objects a YAML reel holds, and `kit()` checks them the same way. A code reel can also use `paint` parts and parts of its own. A canvas reel can have the kit's motion without its layout, from [`morph`](canvas.md#moving-items-between-keyframes-morph).
 
 ### Parts of your own
 

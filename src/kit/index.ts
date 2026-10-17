@@ -7,6 +7,7 @@ export { kit, type KitReel, type SceneTiming } from "./reel.ts";
 export { arrow, card, chip, col, definePart, figure, image, list, paint, row, stat, text, textBox, title, rect, isTall, type FigureItem } from "./parts.ts";
 export type { Ctx, Frame, PartDef, Placed, Stage, TextOpts } from "./parts.ts";
 export { defineKata, type KataDef } from "./kata.ts";
+export { morph, type Morph, type MorphFrame, type MorphItem, type MorphOptions } from "./morph.ts";
 export { f, type Field, type Fields } from "./fields.ts";
 export { KitSpecError, normalize } from "./normalize.ts";
 export { kitBrief, kitSchema } from "./schema.ts";

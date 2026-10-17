@@ -343,6 +343,12 @@ export default canvasReel({
   the reel.
 - Any weight works in `font` for a variable font, and `textBaseline` is placed
   as in a browser.
+- `morph(frames, { env, width, height, theme?, paper? })` from
+  `kamishibai/kit` moves hand-placed items between keyframes as kit scenes do:
+  `frames` is `[{ at: ms, items, transition? }]`, items are a figure's (`rect`,
+  `circle`, `line`, `text` with `pos`; `id` keeps one across keyframes, `delay`
+  brings it in later). In the painter, `m.draw(g, ms)`; `m.check()` lists
+  spills and items off the area.
 
 ```sh
 kamishibai render reel.ts -o out.mp4
