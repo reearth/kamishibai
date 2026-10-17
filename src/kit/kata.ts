@@ -33,7 +33,7 @@ defineKata<{ kicker?: string; title: string; sub?: string }>("cover", {
   parts: (o) => [
     col(
       [
-        ...(o.kicker ? [text(o.kicker, { id: "cover.kicker", tone: "note", align: "center" })] : []),
+        ...(o.kicker ? [text(o.kicker, { id: "cover.kicker", tone: "lead", align: "center" })] : []),
         text(o.title, { id: "cover.title", tone: "display" }),
         ...(o.sub ? [text(o.sub, { id: "cover.sub", tone: "lead", align: "center" })] : []),
       ],

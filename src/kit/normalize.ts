@@ -20,6 +20,8 @@ export type NormScene = {
   transition: Transition;
   /** where the camera moves in, in order of their sentences */
   focus: Focus[];
+  /** grow the parts below the heading to fill the room they leave */
+  fill: boolean;
 };
 
 /** The camera on a part from a sentence on, at a zoom (or as close as fits). */
@@ -52,6 +54,7 @@ export const SCENE_FIELDS: Fields = {
   parts: f.parts("parts, after the shape's"),
   transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
   focus: f.any("move the camera in on a part: its id, { on, cue?, zoom? }, or a list of those"),
+  fill: f.bool("grow the parts under the heading, up to 1.6×, when they leave the stage mostly empty (default true)"),
 };
 
 const FOCUS_FIELDS: Fields = {
@@ -90,7 +93,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], parts: [], cues: new Map(), transition: "morph", focus: [] };
+      return { id: `s${i}`, say: [], parts: [], cues: new Map(), transition: "morph", focus: [], fill: true };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -189,6 +192,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       cues,
       transition: (sc.transition as Transition | undefined) ?? "morph",
       focus,
+      fill: sc.fill !== false,
     };
   });
   if (problems.length) throw new KitSpecError(problems);

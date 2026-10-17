@@ -88,6 +88,8 @@ export type SceneSpec = {
   transition?: Transition;
   /** move the camera in on a part, or a list of those, each with a cue */
   focus?: FocusSpec | FocusSpec[];
+  /** grow the parts under the heading when they leave the stage mostly empty (default true) */
+  fill?: boolean;
   [field: string]: unknown;
 };
 

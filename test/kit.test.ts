@@ -10,6 +10,13 @@ import { tokens, speechMs, sentences } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
 import { resolveView, type Context2D } from "../src/canvas/types.ts";
 import { checkEntry } from "../src/kit-check.ts";
+import { layoutScene, partBox, stageFrame } from "../src/kit/stage.ts";
+import { loadYoga } from "../src/kit/layout.ts";
+import { Fonts } from "../src/kit/text.ts";
+import { mergeTheme, SIZE } from "../src/kit/theme.ts";
+import type { Ctx } from "../src/kit/parts.ts";
+import type { Bounds, Drawable } from "../src/kit/model.ts";
+import type { PartSpec, SceneSpec } from "../src/kit/spec.ts";
 
 const GEIST = resolve("examples/canvas/fonts/Geist.ttf");
 const fonts = [{ family: "Geist", src: GEIST, weight: "100 900" }];
@@ -277,6 +284,48 @@ describe("transitions and the camera", () => {
   });
 });
 
+describe("filling the stage", () => {
+  // A scene laid out on a stage, with Geist measured the way a render measures it.
+  const lay = async (sc: SceneSpec, W = 1920, H = 1080) => {
+    const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [sc] });
+    await registerFonts(reel, ".");
+    await loadYoga();
+    const [s] = normalize({ kit: 1, scenes: [sc] });
+    const stage = { W, H };
+    const ctx: Ctx = {
+      stage,
+      frame: stageFrame(stage, { top: 0, right: 0, bottom: 0, left: 0 }, false),
+      fonts: new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), mergeTheme(theme)),
+      theme: mergeTheme(theme),
+      readText: () => "",
+      image: () => undefined,
+      child: (p, flow) => partBox(p as PartSpec & { id: string }, { ...ctx, flow }),
+    };
+    const boxes = new Map<string, Bounds>();
+    const ds = layoutScene(s!, ctx, boxes);
+    return { ds, boxes, text: (id: string) => ds.find((d) => d.id === id) as Extract<Drawable, { t: "text" }> };
+  };
+
+  it("grows a few short parts to fill the room under the heading, and leaves a full scene be", async () => {
+    const sparse = await lay({ kata: "points", title: "Why", items: ["One", "Two"] });
+    expect(sparse.text("points.0").size).toBeCloseTo(SIZE.body * 1.6);
+    expect(sparse.text("title").size).toBe(SIZE.h1);
+    const off = await lay({ kata: "points", title: "Why", items: ["One", "Two"], fill: false });
+    expect(off.text("points.0").size).toBe(SIZE.body);
+    const full = await lay({ kata: "points", title: "Why", items: Array.from({ length: 9 }, (_, i) => `Item number ${i}`) });
+    expect(full.text("points.0").size).toBe(SIZE.body);
+  });
+
+  it("keeps a row across a wide stage by wrapping its cards, and stacks it on a tall one", async () => {
+    const parts = [row([card({ id: "a", label: "Card", body: "Holds your balance" }), arrow(), card({ id: "b", label: "Gate", body: "Reads it over radio" }), arrow(), card({ id: "c", label: "Station server", body: "Keeps the fare tables" })])];
+    const wide = await lay({ parts });
+    expect(wide.boxes.get("a")!.y).toBeCloseTo(wide.boxes.get("c")!.y);
+    expect(wide.boxes.get("c")!.x + wide.boxes.get("c")!.w).toBeLessThanOrEqual(1920 - 96);
+    const tall = await lay({ parts }, 1080, 1920);
+    expect(tall.boxes.get("c")!.y).toBeGreaterThan(tall.boxes.get("a")!.y);
+  });
+});
+
 describe("schema", () => {
   it("lists every part and shape, and leaves code-only parts out", () => {
     const s = kitSchema() as { required: string[]; $defs: { part: { oneOf: { properties: { type: { const: string } } }[] }; scene: { oneOf: unknown[] } } };
@@ -339,7 +388,7 @@ definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 
   it("is checked for every shape, and a row kept too wide is caught", async () => {
     const r = await checkEntry({ entry: join(dir, "wide.json") });
     expect(r.views.map((v) => `${v.width}x${v.height}`)).toEqual(["1920x1080", "1080x1920"]);
-    expect(r.views[1]!.issues.some((i) => i.kind === "off-stage")).toBe(true);
+    expect(r.views[1]!.issues.some((i) => i.kind === "overflow")).toBe(true);
   });
 
   it("runs the modules uses names, with the kit the reel is made with", async () => {

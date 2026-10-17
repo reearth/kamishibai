@@ -44,6 +44,14 @@ function groundOf(ds: Drawable[], i: number): RectD | null {
   return best;
 }
 
+/** Which theme keys to change for a contrast that is too weak. */
+function tweak(theme: Theme, fg: string, bg: string): string {
+  const keys = (c: string) => Object.entries(theme).filter(([, v]) => typeof v === "string" && v.toLowerCase() === c.toLowerCase()).map(([k]) => `theme.${k}`);
+  const [f, b] = [keys(fg), keys(bg)];
+  if (!f.length && !b.length) return "use a colour further from the background";
+  return `move ${[...f, ...b].join(" or ")} further apart`;
+}
+
 const box = (b: Bounds) => `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}×${Math.round(b.h)}`;
 
 /** The issues of every keyframe, for one stage. */
@@ -56,19 +64,19 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
     const ds = k.ds.filter((d) => d.id !== "stage");
     for (const d of ds) {
       const b = bbox(d);
-      if (!inside(b, safe)) out.push({ scene: s, kind: "off-stage", msg: `${d.id} reaches outside the safe area (${box(b)})` });
+      if (!inside(b, safe)) out.push({ scene: s, kind: "off-stage", msg: `${d.id} reaches outside the safe area (${box(b)}): use fewer words, set a width, or split the scene` });
       if (d.t !== "text") continue;
-      if (d.need > d.w + 1) out.push({ scene: s, kind: "overflow", msg: `${d.id} needs ${Math.round(d.need)} but has ${Math.round(d.w)}: a word too long to break` });
+      if (d.need > d.w + 1) out.push({ scene: s, kind: "overflow", msg: `${d.id} needs ${Math.round(d.need)} but has ${Math.round(d.w)}: a word too long to break; shorten it, or give it more room (fewer parts beside it)` });
       // One or two characters left alone on the last line of a paragraph.
       const last = d.lines.at(-1) ?? "";
       const lastLen = [...last].length;
-      if (d.lines.length > 1 && lastLen > 0 && lastLen <= 2 && !/^\d+$/.test(last)) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line` });
+      if (d.lines.length > 1 && lastLen > 0 && lastLen <= 2 && !/^\d+$/.test(last)) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
       const g = groundOf(k.ds, k.ds.indexOf(d));
-      if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}` });
+      if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words or give ${g.id} a width` });
       const bg = g?.fill ?? theme.paper;
       const need = d.size >= 40 || (d.size >= 30 && d.font !== "sans") ? 3 : 4.5;
       const c = contrast(d.color, bg);
-      if (c !== null && c < need) out.push({ scene: s, kind: "contrast", msg: `${d.id} is ${c.toFixed(2)}:1 on ${bg} (needs ${need}:1)` });
+      if (c !== null && c < need) out.push({ scene: s, kind: "contrast", msg: `${d.id} is ${c.toFixed(2)}:1 on ${bg} (needs ${need}:1): ${tweak(theme, d.color, bg)}` });
     }
 
     // Overlaps between different parts, each by its outer box.
@@ -87,7 +95,7 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
     for (let a = 0; a < names.length; a++)
       for (let b = a + 1; b < names.length; b++) {
         const hit = inter(parts.get(names[a]!)!, parts.get(names[b]!)!);
-        if (hit) out.push({ scene: s, kind: "overlap", msg: `${names[a]} and ${names[b]} overlap by ${Math.round(hit.w)}×${Math.round(hit.h)}` });
+        if (hit) out.push({ scene: s, kind: "overlap", msg: `${names[a]} and ${names[b]} overlap by ${Math.round(hit.w)}×${Math.round(hit.h)}: put them in one row or col, or move one to another scene` });
       }
   }
   return out;

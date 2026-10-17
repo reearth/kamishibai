@@ -56,13 +56,13 @@ export function mergeTheme(over: Partial<Theme> | undefined): Theme {
 
 /** The type scale and spacing, in layout units of a 1920-long stage. */
 export const SIZE = {
-  display: 112,
-  h1: 72,
-  h2: 48,
-  body: 36,
-  small: 28,
+  display: 120,
+  h1: 76,
+  h2: 56,
+  body: 44,
+  small: 32,
   code: 30,
-  stat: 168,
+  stat: 200,
 } as const;
 
 /** The long side every layout is made at; other sizes are drawn scaled. */

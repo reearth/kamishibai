@@ -2,8 +2,8 @@
 // same id in the next scene moves there, one that is gone fades out, and a
 // new one comes in with its verb. definePart adds a part of your own.
 // ------------------------------------------------------------------
-import type { RectD, Verb } from "./model.ts";
-import { intrinsic, type Box, type Paint, type Rect } from "./layout.ts";
+import { bbox, type RectD, type Verb } from "./model.ts";
+import { intrinsic, layout, type Box, type Paint, type Rect } from "./layout.ts";
 import { f, type Fields } from "./fields.ts";
 import { SIZE, type FontRole, type Theme } from "./theme.ts";
 import type { Fonts } from "./text.ts";
@@ -168,7 +168,20 @@ function groupBox(dir: "row" | "col", s: Placed<GroupSpec>, ctx: Ctx): Box {
   const gap = s.gap ?? 48;
   const room = ctx.stage.W - ctx.frame.left - ctx.frame.right;
   const narrowAs = s.narrow ?? "stack";
-  const fits = () => intrinsic({ style: { dir: "row", gap }, kids: s.parts.map((p) => ctx.child(p, "row")) }).w <= room;
+  // A row fits when its parts, each allowed to wrap down to its narrowest, sit
+  // across the room with no word cut and nothing past the edge.
+  const fits = () => {
+    const kids = s.parts.map((p) => {
+      const b = ctx.child(p, "row");
+      return { ...b, style: { ...b.style, shrink: 1 } };
+    });
+    if (intrinsic({ style: { dir: "row", gap }, kids }).w <= room) return true;
+    const ds = layout({ style: { w: room }, kids: [{ style: { dir: "row", gap, align: "center" }, kids }] }, room, ctx.stage.H);
+    return ds.every((d) => {
+      const b = bbox(d);
+      return b.x + b.w <= room + 1 && (d.t !== "text" || d.need <= d.w + 1);
+    });
+  };
   const narrow = dir === "row" && narrowAs !== "keep" && !fits() ? narrowAs : null;
   const d = narrow === "stack" ? "col" : dir;
   return {
@@ -178,6 +191,8 @@ function groupBox(dir: "row" | "col", s: Placed<GroupSpec>, ctx: Ctx): Box {
       align: s.align ?? (dir === "row" ? "center" : "stretch"),
       justify: "center",
       shrink: 1,
+      // A centred row is as wide as its parts want: held to the room, they wrap instead.
+      maxW: room,
       ...(narrow ? { self: "stretch" as const } : {}),
       ...(narrow === "wrap" ? { wrap: true, align: "start" as const } : {}),
     },

@@ -68,7 +68,7 @@ The reel's fields:
 
 ## Scenes
 
-A scene has a `say` (the narration, and its captions) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)).
+A scene has a `say` (the narration, and its captions) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)). When the parts under the heading leave most of the stage empty, they grow together, up to 1.6 times, to fill the room; `fill: false` keeps them at their own size.
 
 | Shape | Fields (* required) | |
 |---|---|---|
@@ -88,7 +88,7 @@ Every part is `{ type, … }`, with an optional `id`, `enter` and `cue`.
 |---|---|---|
 | `title` | `text`\*, `kicker` | The scene's heading, pinned to the top. |
 | `text` | `text`\*, `tone` (`display`, `lead`, `body`, `note`), `align` | Plain text. |
-| `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row that doesn't fit across the stage stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), or stays a row (`keep`). |
+| `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row is held to the stage's width, its cards wrapping their text to fit; one that still doesn't fit (a word would be cut, or a card would go under 360 units) stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), or stays a row (`keep`). |
 | `card` | `label`, `body`, `code`, `mark`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. |
 | `arrow` | `kind` (`right`, `down`, `versus`, `equals`) | An arrow between parts; in a column it points down. |
 | `chip` | `text`\*, `state` (`active`, `done`) | A pill, for a step. |
@@ -114,7 +114,7 @@ A `figure` draws in its own units, `width` × `height`, and is fitted to the roo
     - { id: dot, circle: [600, 300, 20], fill: accent }
 ```
 
-Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `at: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (36 by default) and `bold`. `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `width` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
+Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `at: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default) and `bold`. `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `width` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
 
 `code` is the code itself, or a reference to a file next to the reel: `"src/coupon.ts#L44"` shows lines 43 to 45, and `"src/coupon.ts#L40-L48"` that range, with line numbers.
 
@@ -201,7 +201,7 @@ The layout already knows every box, so these are found with no frame drawn:
 - `contrast`: text below WCAG contrast on what it sits on (3:1 for large text, 4.5:1 otherwise).
 - `widow`: one or two characters alone on a paragraph's last line.
 
-It exits 1 when it finds anything. What it can't judge is whether the result looks good: look at the frames of each shape you render.
+Each issue ends with what usually fixes it. It exits 1 when it finds anything. What it can't judge is whether the result looks good: look at the frames of each shape you render.
 
 ## Theme
 
