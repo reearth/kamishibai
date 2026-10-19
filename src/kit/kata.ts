@@ -26,7 +26,7 @@ export const SCENE_FIELDS: Fields = {
   parts: f.parts("parts, after the shape's"),
   transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
   focus: f.any("move the camera in on a part, or a figure's item (figure.item): its id, { on, cue?, zoom? }, or a list of those in sentence order; as close as frames it, 2.5× at most"),
-  fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows), or false'),
+  fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows, up to 4×), or false'),
   place: f.one(PLACES, 'where the parts under the heading sit in their room: "center" (default), "left", "right", "top" or "bottom"'),
 };
 

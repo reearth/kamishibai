@@ -211,15 +211,17 @@ Components and hooks (times in ms):
 - `useClock()` → `{ ms, durationMs, fps, epochMs }`; `ms` is local to the
   enclosing `<Cue>` or scene.
 - `<Stage background style>`: the root surface.
-- `<Cue at hold>`: children only from `at` for `hold`, with a clock restarting at 0.
-- `<Enter at dur lift ease>`: fade and rise in.
+- `<Cue at hold>`: children only from `at` for `hold` (default: to the end of
+  the enclosing scene), with a clock restarting at 0.
+- `<Enter at dur lift ease>`: fade and rise in (defaults `at` 0, `dur` 700,
+  `lift` 26 px, `eases.smooth`).
 - `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>`: scenes back
   to back, each with its own clock, optionally crossfading. Or from data:
   `<Series scenes={[{ durationMs, crossfadeMs, content }]} />`, with
   `seriesDuration(scenes)` for `meta.durationMs`.
 - `<Audio src delayMs atMs gain fadeInMs fadeOutMs loop trimStartMs durationMs>`:
-  a sound from the scene's start (+`delayMs`). `src` is a file path read by
-  ffmpeg, not a URL. `gain` is in dB.
+  a sound from the scene's start (+`delayMs`). `src` is read by ffmpeg: a
+  file path, a path under `-p`, or an http(s) URL. `gain` is in dB.
 - `<Bgm src gain fadeInMs fadeOutMs duck>`: background music from 0 s, looped
   and cut to the reel's length, with `fadeOutMs` ending at the reel's end.
   `duck` dips it under other sounds.
@@ -435,10 +437,15 @@ scenes:
   as sentence n starts (0 = with the scene), so one scene can build up instead
   of being split. Without a `voice`, a sentence's length is estimated (7.5
   wide characters or 14 others a second).
-- `enter`: `rise` (default), `fade`, `pop`, `draw`, `type`, `count`, `none`,
-  `from-left|right|top|bottom`, `wipe`, `blur`.
-- A scene's `transition`: `morph` (default; same ids move), `cut`, `fade`,
-  `push`, `wipe`. `focus: gate` moves the camera in on a part;
+- `enter`: `rise` (default; fades in, lifting 24 units), `fade`, `pop`
+  (scales in), `draw` (traces a line; the default for lines), `type` (types
+  text out), `count` (counts a number up), `none`, `from-left|right|top|bottom`
+  (slides in 160 units from that side), `wipe` (uncovered from the left),
+  `blur` (comes into focus).
+- A scene's `transition`: `morph` (default; same ids move over 750 ms, gone
+  ones fade, new ones come in after), `cut` (at once), `fade` (through the
+  paper), `push` (slides in from the right), `wipe` (uncovers left to right).
+  A camera move takes 900 ms. `focus: gate` moves the camera in on a part;
   `focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]` moves with the
   sentences (`zoom` caps how close). `focus: map.gate` aims at item `gate`
   of figure `map`.
@@ -449,7 +456,10 @@ scenes:
   Within a scene an item moves by `then: [{ cue: 1, circle: [600, 300, 20] },
   …]`: each step gives the fields that change (same shape; `ms` for the
   move, 750 default) at its sentence `cue`, plus `delay` ms after it; the
-  next scene starts from the last.
+  next scene starts from the last. Each step needs `cue` or `delay`, steps
+  go in order, and a step can change only its shape's own field (a line
+  keeps its number of points), `pos`, `fill`, `stroke`, `color`,
+  `lineWidth`, `r` (a rect's corners) and `size`.
 - `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
 - `voice: { provider: say, voice: Samantha }` (macOS), `{ provider: kokoro,
   voice: af_heart }`, or `openai` / `gemini` / `google` / `elevenlabs` /
@@ -469,17 +479,22 @@ scenes:
   `#2e3760`. Colour fields anywhere take these names or any CSS colour.
 - Tall from the same reel: `render reel.yaml --size 1080x1920 -o tall.mp4`
   (or `--aspect 9:16`); rows stack and the layout is redone.
-- Loop: `kamishibai check reel.yaml` (overlap, off-stage, overflow, contrast,
-  widow, characters no font has; at meta's size and each end of `aspect`, no
+- Loop: `kamishibai check reel.yaml` (kinds `overlap`, `off-stage`,
+  `overflow`, `contrast`, `widow`, and `glyph` for characters no font has; at
+  meta's size and each end of `aspect`, no
   frames; `--json` for parsing; exit 1 on any; each issue says what usually
   fixes it), fix, then `render` and look at a few frames of each shape.
 - Sizes are set for video: a row keeps across a wide stage by wrapping its
   cards, and the parts under the heading grow (up to 1.6×) to fill a stage
   they leave mostly empty, so there is rarely a reason to set widths. A
   scene with `fill: false` keeps its parts at their own size; `fill: max`
-  grows them as large as the room allows (a full-frame figure). `place:
-  left|right|top|bottom` puts them at that edge of the room (default
-  center). No `title`: no heading, and the room is the whole stage.
+  grows them as large as the room allows, up to 4× (a full-frame figure).
+  Neither grows a scene with a `paint` part. `place: left|right|top|bottom`
+  puts them at that edge of the room (default center). The room is the stage
+  less its margins: 96 at the sides and 88 at the top on a wide stage (72 and
+  120 on a tall one), and at the foot 200 (360 tall) kept for captions, or 96
+  (120) with `captionRoom: false` or no captions, plus any `--inset`. A scene
+  with no `title` has no heading, so the room runs from the top margin.
 - In code: `export default await kit({ … })` from `kamishibai/kit`, with
   `title()`, `card()`, `row()`… building the same data. Only in code:
   `paint({ width, height, fn: (g, ms, w, h) => … })` draws a box by code on
@@ -905,7 +920,8 @@ await render({ entry: "reel.tsx", out: "reel.mp4", publicDir: "public", onLog: c
 
 `capture`, `encode`, `synthesize` (what `kamishibai tts` does) and `dev` take
 the CLI's options in camelCase (`framesDir`, `burnSubtitles`, `ttsAdapters`,
-`ttsCacheDir`, `probeTimeoutMs`); `render` also takes `size`, `aspect`,
+`ttsCacheDir`, `probeTimeoutMs`; for `dev`, `--no-sweep` is `sweep: false`
+and `--mute` is `mute: true`); `render` also takes `size`, `aspect`,
 `insets` and `renderer` for a canvas reel. `play(reel, el, opts)` from
 `kamishibai/canvas` plays a canvas reel in your own page. `skill(topics?)` and
 `skillTopics()` from `kamishibai/skill` return this guide, as `kamishibai skill`
