@@ -252,6 +252,8 @@ A JSON or YAML reel uses such a module by naming it in `uses`; then `{ type: "ba
 
 `box` returns a tree of boxes that Yoga lays out (`style` is flexbox: `dir`, `gap`, `pad`, `grow`, `align`, `w`, `h`, …), and each box's `paint(rect)` returns the drawables in its rectangle: rects, text, paths, circles and images, each with an id. Drawables with the same id move between scenes, so give them ids from the part's. `corner(spec)` pins a part to the top-right corner on a wide stage, and `fields` are checked and go into the schema. [`examples/kit/route-map.ts`](../examples/kit/route-map.ts) is a complete one. `defineKata(name, { doc, fields, parts })` adds a scene shape the same way; its fields sit beside the scene's own, so it can't take `id`, `say`, `ms`, `kata`, `parts`, `transition`, `focus` or `fill`.
 
+A leaf box with no `kids` gets its size from `measure(maxW)`, which returns `{ w, h }` for the widest it may be. A `col` and the body are as wide as their widest child, so a leaf that returns `w: 0` makes them 0 wide, and `self: "stretch"` then stretches it to nothing. Return `maxW` for a part that should take the room it is given, and its natural width for one that should not.
+
 Import something the module exports (`badge` above), not only the file for its side effect: a bundler may drop an import that only runs code when the package says it has no side effects.
 
 ## The schema
