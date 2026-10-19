@@ -24,6 +24,21 @@ function lum(hex: string): number | null {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
   return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
 }
+/**
+ * The last line of a paragraph left alone: one or two characters, or one
+ * latin word under a line of several more than twice its length (a short
+ * phrase broken in two, "Count grapheme / clusters", is not). A line that is
+ * only a number is not.
+ */
+export function widow(lines: string[]): string | null {
+  const last = lines.at(-1) ?? "";
+  const len = [...last].length;
+  if (lines.length < 2 || len === 0 || /^\d+$/.test(last)) return null;
+  const prev = lines.at(-2) ?? "";
+  const loneWord = /^[\p{Script=Latin}\d'’.,!?:;)-]+$/u.test(last) && / /.test(prev) && len * 2.5 < [...prev].length;
+  return len <= 2 || loneWord ? last : null;
+}
+
 /** The WCAG contrast ratio of two #rrggbb colours (null for any other form). */
 export function contrast(a: string, b: string): number | null {
   const [la, lb] = [lum(a), lum(b)];
@@ -70,11 +85,8 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
       if (!inside(b, safe)) out.push({ scene: s, kind: "off-stage", msg: `${d.id} reaches outside the safe area (${box(b)}): use fewer words, set a width, or split the scene` });
       if (d.t !== "text") continue;
       if (d.need > d.w + 1) out.push({ scene: s, kind: "overflow", msg: `${d.id} needs ${Math.round(d.need)} but has ${Math.round(d.w)}: a word too long to break; shorten it, or give it more room (fewer parts beside it)` });
-      // One or two characters, or one latin word after a line of several, left alone on the last line.
-      const last = d.lines.at(-1) ?? "";
-      const lastLen = [...last].length;
-      const loneWord = /^[\p{Script=Latin}\d'’.,!?:;)-]+$/u.test(last) && / /.test(d.lines.at(-2) ?? "");
-      if (d.lines.length > 1 && lastLen > 0 && !/^\d+$/.test(last) && (lastLen <= 2 || loneWord)) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
+      const last = widow(d.lines);
+      if (last) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
       const g = groundOf(k.ds, k.ds.findIndex((x) => x.id === d.id));
       if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
       const bg = g?.fill ?? theme.paper;

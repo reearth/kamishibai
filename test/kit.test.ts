@@ -449,7 +449,7 @@ describe("check", () => {
   });
 
   it("finds a word or a character or two left alone on a last line", () => {
-    expect(widows(["Make every", "layer."], ["期限切れの判定が逆で", "す"], ["Server:", "nextDay"], ["Make every", "layer count"], ["It costs", "10"])).toEqual(["t0", "t1"]);
+    expect(widows(["It draws the map again for every", "layer."], ["期限切れの判定が逆で", "す"], ["Server:", "nextDay"], ["Make every", "layer count"], ["It costs", "10"], ["Count grapheme", "clusters"])).toEqual(["t0", "t1"]);
   });
 });
 

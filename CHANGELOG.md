@@ -23,8 +23,8 @@ can contain breaking changes, and they are called out under **Changed**.
 - A kit reel in YAML reads merge keys (`<<: *anchor`).
 - Text that unquoted YAML read as a map (`say: - Note: it moves`) is reported with a hint to quote it.
 - Japanese text keeps a number with its counter (「4文字」), and a no-break space holds the words on either side together.
-- A chip keeps its label on one line; a row of chips with no room narrows instead of wrapping each label.
-- `kamishibai check` reports one word alone on a paragraph's last line as a widow, not only one or two characters.
+- A chip keeps a label on one line while it fits across the stage, so a row of chips with no room narrows instead of wrapping each label; a sentence-long label still wraps, evenly. A card's label and body are balanced, so a narrow card doesn't leave its last word alone where it can help it.
+- `kamishibai check` reports one word alone on a paragraph's last line as a widow when the line above is more than 2.5 times as long, not only one or two characters. A short phrase broken in two ("Count grapheme / clusters") is not one.
 
 ### Docs
 

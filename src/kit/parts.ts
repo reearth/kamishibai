@@ -94,8 +94,8 @@ export type TextOpts = {
   style?: Box["style"];
   /** even out the lines, so none ends with a word or two alone */
   balance?: boolean;
-  /** keep it on one line (breaking only at "\n"): a label too wide for its room overflows, and a row that holds it narrows */
-  nowrap?: boolean;
+  /** stay on one line while no wider than this (breaking only at "\n"), so a row that holds it narrows instead; longer text wraps */
+  nowrap?: number;
 };
 
 /** A run of text that wraps to the width it gets. */
@@ -105,7 +105,8 @@ export function textBox(id: string, s: string, ctx: Ctx, o: TextOpts = {}): Box 
   const lh = o.lh ?? 1.45;
   const track = o.track ?? 0;
   const F = ctx.fonts;
-  const lines = (w: number) => (o.nowrap ? s.split("\n") : o.balance ? F.balance(s, font, size, w, track) : F.wrap(s, font, size, w, track));
+  const oneLine = o.nowrap !== undefined && Math.max(...s.split("\n").map((l) => F.measure(l, font, size, track))) <= o.nowrap;
+  const lines = (w: number) => (oneLine ? s.split("\n") : o.balance ? F.balance(s, font, size, w, track) : F.wrap(s, font, size, w, track));
   const widest = (ls: string[]) => Math.max(0, ...ls.map((l) => F.measure(l, font, size, track)));
   return {
     style: o.style,
@@ -295,8 +296,9 @@ definePart<CardSpec>("card", {
         rect(s.id, r, { fill: tone === "dim" ? T.well : T.card, stroke: tone === "accent" ? T.accent : T.rule, sw: tone === "accent" ? 4 : 2, r: 20, ground: true, enter: s.enter }),
       ],
       kids: [
-        ...(s.label ? [textBox(`${s.id}.label`, s.label, ctx, { font: "bold", size: SIZE.small, color: tone === "accent" ? T.accentText : tone === "dim" ? T.ink2 : T.ink3 })] : []),
-        ...(s.body ? [textBox(`${s.id}.body`, s.body, ctx, { font: "bold", size: SIZE.h2 - 4, lh: 1.35, color: tone === "dim" ? T.ink3 : T.ink })] : []),
+        // Balanced, so a narrow card never leaves its last word alone.
+        ...(s.label ? [textBox(`${s.id}.label`, s.label, ctx, { font: "bold", size: SIZE.small, color: tone === "accent" ? T.accentText : tone === "dim" ? T.ink2 : T.ink3, balance: true })] : []),
+        ...(s.body ? [textBox(`${s.id}.body`, s.body, ctx, { font: "bold", size: SIZE.h2 - 4, lh: 1.35, color: tone === "dim" ? T.ink3 : T.ink, balance: true })] : []),
         ...(s.code ? [codeBlock(`${s.id}.code`, s.code, s.highlight, ctx)] : []),
       ],
     };
@@ -360,7 +362,14 @@ definePart<ChipSpec>("chip", {
     return {
       style: { dir: "row", align: "center", gap: 16, pad: [22, badge.length ? 32 : 40], shrink: 0 },
       paint: (r) => [rect(s.id, r, { r: r.h / 2, fill: on ? T.accent : done ? T.well : T.card, stroke: on ? T.accent : T.rule, sw: 2, ground: true, enter: s.enter })],
-      kids: [...badge, textBox(`${s.id}.t`, s.text, ctx, { font: "bold", size: SIZE.body, color: on ? T.onAccent : done ? T.ink2 : T.ink, nowrap: true })],
+      kids: [...badge, textBox(`${s.id}.t`, s.text, ctx, {
+        font: "bold",
+        size: SIZE.body,
+        color: on ? T.onAccent : done ? T.ink2 : T.ink,
+        // A label on one line while it fits across the room inside the pill; a sentence wraps, evenly.
+        nowrap: ctx.stage.W - ctx.frame.left - ctx.frame.right - 2 * (badge.length ? 32 : 40) - (badge.length ? d + 16 : 0),
+        balance: true,
+      })],
     };
   },
 });
