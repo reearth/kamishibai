@@ -444,7 +444,10 @@ scenes:
 - Sizes are set for video: a row keeps across a wide stage by wrapping its
   cards, and the parts under the heading grow (up to 1.6×) to fill a stage
   they leave mostly empty, so there is rarely a reason to set widths. A
-  scene with `fill: false` keeps its parts at their own size.
+  scene with `fill: false` keeps its parts at their own size; `fill: max`
+  grows them as large as the room allows (a full-frame figure). `place:
+  left|right|top|bottom` puts them at that edge of the room (default
+  center). No `title`: no heading, and the room is the whole stage.
 - In code: `export default await kit({ … })` from `kamishibai/kit`, with
   `title()`, `card()`, `row()`… building the same data; `definePart` adds a part.
 

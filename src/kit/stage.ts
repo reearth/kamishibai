@@ -55,18 +55,22 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
   const root: Box = {
     style: { w: W, h: H, pad: [fr.top, fr.right, fr.bottom, fr.left], gap: 56 },
     paint: (r) => [rect("stage", r, { fill: ctx.theme.paper, ground: true, enter: "none" })],
-    kids: [...top, { style: { grow: 1, justify: "center", align: "center", gap: 48 }, kids: body.map(own), owner: BODY }],
+    kids: [...top, { style: { grow: 1, gap: 48, ...PLACE[scene.place] }, kids: body.map(own), owner: BODY }],
   };
   const room = new Map<string, Bounds>();
   const ds = layout(root, W, H, room);
   const area = room.get(BODY)!;
   room.delete(BODY);
   const inBody = new Set(body.flatMap(ids));
-  const k = scene.fill ? fillScale(ds, inBody, area) : 1;
+  const k = scene.fill ? fillScale(ds, inBody, area, scene.fill === "max") : 1;
   if (k > 1) {
-    // Grown about the middle of the room, so it stays centred in it.
+    // Grown about where it is placed in the room, so it stays there: its middle, or an edge.
     const c = bounds(ds.filter((d) => inBody.has(d.owner)).map(bbox));
-    const at = { x: area.x + area.w / 2, y: area.y + area.h / 2 };
+    const pl = scene.place;
+    const at = {
+      x: pl === "left" ? area.x + (c.w * k) / 2 : pl === "right" ? area.x + area.w - (c.w * k) / 2 : area.x + area.w / 2,
+      y: pl === "top" ? area.y + (c.h * k) / 2 : pl === "bottom" ? area.y + area.h - (c.h * k) / 2 : area.y + area.h / 2,
+    };
     const move = (x: number, y: number): [number, number] => [at.x + (x - c.x - c.w / 2) * k, at.y + (y - c.y - c.h / 2) * k];
     for (let i = 0; i < ds.length; i++) if (inBody.has(ds[i]!.owner)) ds[i] = grow(ds[i]!, k, move);
     for (const [id, b] of room) {
@@ -92,12 +96,25 @@ const FILL_MAX = 1.6;
 const FILL_W = 0.9;
 const FILL_H = 0.9;
 
+/** How far the body parts grow with fill: "max": as large as fits the room. */
+const MAX_FILL = 4;
+
+/** Where the body sits in its room, as its box's flexbox style. */
+const PLACE = {
+  center: { justify: "center", align: "center" },
+  left: { justify: "center", align: "start" },
+  right: { justify: "center", align: "end" },
+  top: { justify: "start", align: "center" },
+  bottom: { justify: "end", align: "center" },
+} as const;
+
 /** How much the body parts may grow to fill `area` (1 when they nearly do, or draw by code). */
-function fillScale(ds: Drawable[], own: Set<string>, area: Bounds): number {
+function fillScale(ds: Drawable[], own: Set<string>, area: Bounds, max = false): number {
   const mine = ds.filter((d) => own.has(d.owner));
   if (!mine.length || mine.some((d) => d.t === "paint")) return 1;
   const c = bounds(mine.map(bbox));
-  const k = Math.min(FILL_MAX, (area.w * FILL_W) / Math.max(1, c.w), (area.h * FILL_H) / Math.max(1, c.h));
+  const [most, fw, fh] = max ? [MAX_FILL, 1, 1] : [FILL_MAX, FILL_W, FILL_H];
+  const k = Math.min(most, (area.w * fw) / Math.max(1, c.w), (area.h * fh) / Math.max(1, c.h));
   return k > 1.05 ? k : 1;
 }
 

@@ -20,8 +20,10 @@ export type NormScene = {
   transition: Transition;
   /** where the camera moves in, in order of their sentences */
   focus: Focus[];
-  /** grow the parts below the heading to fill the room they leave */
-  fill: boolean;
+  /** grow the parts below the heading to fill the room they leave: some, as much as fits, or not */
+  fill: boolean | "max";
+  /** where the parts below the heading sit in their room */
+  place: "center" | "left" | "right" | "top" | "bottom";
 };
 
 /** The camera on a part from a sentence on, at a zoom (or as close as fits). */
@@ -82,7 +84,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], parts: [], cues: new Map(), transition: "morph", focus: [], fill: true };
+      return { id: `s${i}`, say: [], parts: [], cues: new Map(), transition: "morph", focus: [], fill: true, place: "center" };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -104,6 +106,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     }
     // With a shape, the fields beside it were checked against the shape's.
     problems.push(...checkFields(sc, SCENE_FIELDS, where, sc.kata !== undefined ? Object.keys(sc) : []));
+    if (sc.fill !== undefined && typeof sc.fill !== "boolean" && sc.fill !== "max") problems.push(`${where}.fill: expected true, false or "max", got ${JSON.stringify(sc.fill)}`);
     if (sc.kata === undefined && !sc.parts) problems.push(`${where}: a scene needs kata or parts`);
 
     const say = typeof sc.say === "string" ? sentences(sc.say) : Array.isArray(sc.say) ? sc.say.filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];
@@ -187,7 +190,8 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       cues,
       transition: (sc.transition as Transition | undefined) ?? "morph",
       focus,
-      fill: sc.fill !== false,
+      fill: sc.fill === "max" ? "max" : sc.fill !== false,
+      place: (sc.place as NormScene["place"] | undefined) ?? "center",
     };
   });
   if (problems.length) throw new KitSpecError(problems);

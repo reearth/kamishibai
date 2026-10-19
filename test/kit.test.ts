@@ -395,6 +395,25 @@ describe("filling the stage", () => {
     expect(full.text("points.0").size).toBe(SIZE.body);
   });
 
+  it("places the parts under the heading at an edge of their room, and grows them as large as fits with fill: max", async () => {
+    const parts = [{ type: "card", id: "c", body: "A short card" }];
+    // the room under the heading: 96 in from each side, 96 up from the foot (no captions here)
+    const left = await lay({ parts, place: "left" });
+    expect(left.boxes.get("c")!.x).toBeCloseTo(96, 0);
+    const right = await lay({ parts, place: "right" });
+    expect(right.boxes.get("c")!.x + right.boxes.get("c")!.w).toBeCloseTo(1920 - 96, 0);
+    const bottom = await lay({ parts, place: "bottom" });
+    expect(bottom.boxes.get("c")!.y + bottom.boxes.get("c")!.h).toBeCloseTo(1080 - 96, 0);
+    // A wide figure: true stops at 90% of the room's width, max takes all of it.
+    const fig = [{ type: "figure", id: "f", width: 1200, height: 300, items: [{ rect: [0, 0, 1200, 300] }] }];
+    expect((await lay({ parts: fig })).boxes.get("f")!.w).toBeCloseTo((1920 - 192) * 0.9, 0);
+    expect((await lay({ parts: fig, fill: "max" })).boxes.get("f")!.w).toBeCloseTo(1920 - 192, 0);
+    expect(problems({ kit: 1, scenes: [{ parts, fill: "most", place: "middle" }] })).toEqual([
+      'scenes[0].place: "middle" is not one of "center", "left", "right", "top", "bottom"',
+      'scenes[0].fill: expected true, false or "max", got "most"',
+    ]);
+  });
+
   it("numbers a flow's steps, and ticks the ones done", async () => {
     const { ds } = await lay({ kata: "flow", title: "Steps", steps: ["Detect", "Read", "Check"], at: 1 });
     const ids = ds.map((d) => d.id);

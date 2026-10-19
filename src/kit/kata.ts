@@ -15,6 +15,8 @@ export interface KataDef {
 
 const TRANSITIONS = ["morph", "cut", "fade", "push", "wipe"] as const;
 
+export const PLACES = ["center", "left", "right", "top", "bottom"] as const;
+
 /** A scene's own fields. A shape's fields sit beside them, so a shape can't take these names. */
 export const SCENE_FIELDS: Fields = {
   id: f.str("a name for messages and the scene list"),
@@ -24,7 +26,8 @@ export const SCENE_FIELDS: Fields = {
   parts: f.parts("parts, after the shape's"),
   transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
   focus: f.any("move the camera in on a part: its id, { on, cue?, zoom? }, or a list of those"),
-  fill: f.bool("grow the parts under the heading, up to 1.6×, when they leave the stage mostly empty (default true)"),
+  fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows), or false'),
+  place: f.one(PLACES, 'where the parts under the heading sit in their room: "center" (default), "left", "right", "top" or "bottom"'),
 };
 
 const registry = new Map<string, KataDef>();

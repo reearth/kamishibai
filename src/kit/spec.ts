@@ -99,8 +99,10 @@ export type SceneSpec = {
   transition?: Transition;
   /** move the camera in on a part, or a list of those, each with a cue */
   focus?: FocusSpec | FocusSpec[];
-  /** grow the parts under the heading when they leave the stage mostly empty (default true) */
-  fill?: boolean;
+  /** grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6×), "max" (as large as the room allows), or false */
+  fill?: boolean | "max";
+  /** where the parts under the heading sit in their room (default "center") */
+  place?: "center" | "left" | "right" | "top" | "bottom";
   [field: string]: unknown;
 };
 
