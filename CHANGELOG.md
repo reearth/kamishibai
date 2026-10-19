@@ -13,6 +13,8 @@ can contain breaking changes, and they are called out under **Changed**.
 - **`kamishibai check` finds characters no font has** (`glyph`), which would draw as an empty box, such as ✗ or ↻ missing from a CJK font.
 - **`focus` can aim at an item inside a figure**, by the figure's id and the item's (`focus: map.gate`), so a diagram drawn as one figure can be looked at a piece at a time.
 
+- **TTS asks each provider for a few lines at a time, and asks again after a dropped connection.** At most 4 at once (2 for `say` and Kokoro, which share the machine with the render), set for all with `KAMISHIBAI_TTS_CONCURRENCY` or per adapter with `concurrency`. A dropped connection, a 429 or a 5xx is retried twice, after 1 s and 2 s. Before, every line went out at once, which could stall a local Kokoro, and one dropped connection failed its line.
+
 ### Fixed
 
 - A kit reel in YAML reads merge keys (`<<: *anchor`).

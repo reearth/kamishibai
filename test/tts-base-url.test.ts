@@ -128,7 +128,8 @@ describe("TTS base URL", () => {
 
   it("says how to start Kokoro when nothing listens", async () => {
     vi.stubEnv("KOKORO_BASE_URL", "");
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
+    // What undici throws when the connection is refused.
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed", { cause: Object.assign(new AggregateError([]), { code: "ECONNREFUSED" }) }); }));
     const engine = createTTSEngine({ cacheDir: await mkdtemp(join(tmpdir(), "kamishibai-baseurl-")) });
     await expect(engine.handle({ adapter: kokoroAdapter(), items: { a: "Hello" } })).rejects.toThrow(
       /no Kokoro server at http:\/\/localhost:8880\/v1 .*docker run/,

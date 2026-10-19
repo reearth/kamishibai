@@ -36,6 +36,48 @@ describe("TTS engine", () => {
     expect(b.k.src).toBe(a.k.src);
   });
 
+  it("asks a provider for so many lines at once, and the rest in turn", async () => {
+    let now = 0;
+    let most = 0;
+    const slow: TTSAdapter = {
+      provider: "fake",
+      concurrency: 2,
+      async synthesize() {
+        most = Math.max(most, ++now);
+        await new Promise((r) => setTimeout(r, 20));
+        now--;
+        return { audio: pcmToWav(new Uint8Array(4800), 24000), format: "wav" };
+      },
+    };
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const items = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`k${i}`, `line ${i}`]));
+    const out = await createTTSEngine({ adapters: [slow], cacheDir }).handle({ adapter: ref, items });
+    expect(Object.keys(out)).toHaveLength(6);
+    expect(most).toBe(2);
+  });
+
+  it("asks again after a dropped connection or a 5xx, but not after a 4xx", async () => {
+    const tries: string[] = [];
+    const flaky: TTSAdapter = {
+      provider: "fake",
+      async synthesize(text) {
+        tries.push(text);
+        const n = tries.filter((t) => t === text).length;
+        if (text === "drop" && n === 1) throw new TypeError("terminated");
+        if (text === "busy" && n < 3) throw new Error("Fake TTS 503: busy");
+        if (text === "bad") throw new Error("Fake TTS 400: 500 characters at most");
+        return { audio: pcmToWav(new Uint8Array(4800), 24000), format: "wav" };
+      },
+    };
+    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const engine = createTTSEngine({ adapters: [flaky], cacheDir, retryDelayMs: 1 });
+    await engine.handle({ adapter: ref, items: { a: "drop", b: "busy" } });
+    await expect(engine.handle({ adapter: ref, items: { c: "bad" } })).rejects.toThrow("400");
+    expect(tries.filter((t) => t === "drop")).toHaveLength(2);
+    expect(tries.filter((t) => t === "busy")).toHaveLength(3);
+    expect(tries.filter((t) => t === "bad")).toHaveLength(1);
+  });
+
   it("reports progress for cache misses only", async () => {
     const spoken: string[] = [];
     const events: TTSStats[] = [];

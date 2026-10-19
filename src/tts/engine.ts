@@ -57,6 +57,8 @@ export interface TTSAdapter {
     text: string,
     opts: Record<string, unknown>,
   ): Promise<{ audio: Uint8Array; format: TTSFormat }>;
+  /** how many lines it is asked for at once (default 4; the local say and Kokoro take 2) */
+  concurrency?: number;
 }
 
 export interface TTSEngineOptions {
@@ -73,6 +75,12 @@ export interface TTSEngineOptions {
    * bakes the real audio when the lines are settled.
    */
   cacheOnly?: boolean;
+  /** how many lines each provider is asked for at once, for every provider (default: $KAMISHIBAI_TTS_CONCURRENCY, else the adapter's own) */
+  concurrency?: number;
+  /** how many times a line is asked for again after a dropped connection, a 429 or a 5xx (default 2) */
+  retries?: number;
+  /** the wait before the first retry, doubled for each one after (default 1000 ms) */
+  retryDelayMs?: number;
 }
 
 /** Running totals of the synthesis work. `total` / `done` / `failed` count
@@ -136,6 +144,7 @@ function apiKey(envVars: string[], base: string, publicBase: string): string | u
 
 const sayAdapter: TTSAdapter = {
   provider: "say",
+  concurrency: 2,
   async synthesize(text, opts) {
     if (process.platform !== "darwin") {
       throw new Error(
@@ -200,13 +209,16 @@ const KOKORO_BASE_URL = "http://localhost:8880/v1";
 
 const kokoroAdapter: TTSAdapter = {
   provider: "kokoro",
+  // On the same machine as the render: more at once only fights for its CPU.
+  concurrency: 2,
   async synthesize(text, opts) {
     const base = resolveBaseUrl(opts, "KOKORO_BASE_URL", KOKORO_BASE_URL);
     try {
       return await openaiSpeech("Kokoro", base, undefined, text, opts, { model: "kokoro", voice: "af_heart" });
     } catch (err) {
-      // fetch fails with a bare "fetch failed" when nothing listens there.
-      if (err instanceof TypeError) {
+      // fetch fails with a bare "fetch failed" when nothing listens there; any
+      // other dropped connection (a busy server's "terminated") is asked again.
+      if (err instanceof TypeError && (err.cause as { code?: string } | undefined)?.code === "ECONNREFUSED") {
         throw new Error(
           `no Kokoro server at ${base} — start one, e.g. \`docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu\`, or set KOKORO_BASE_URL`,
         );
@@ -425,6 +437,14 @@ const pollyAdapter: TTSAdapter = {
 
 // ---- engine -------------------------------------------------------
 
+/** A failure worth asking again: the connection dropped, or the service was busy or failing. */
+function retryable(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  // The adapters' own errors: "OpenAI TTS 503: …", "AWS Polly 429: …".
+  return /\b(?:TTS|Polly) (?:429|5\d\d):/.test(msg);
+}
+
 /** Build a TTS engine with the built-in adapters plus any custom ones. */
 export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
   const cacheDir = resolve(opts.cacheDir ?? ".kamishibai-tts");
@@ -441,6 +461,36 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
   ];
   for (const a of [...builtins, ...(opts.adapters ?? [])]) {
     registry.set(a.provider, a);
+  }
+
+  // One queue per provider, so a local server is not asked for every line at once.
+  const slots = new Map<string, { busy: number; waiting: Array<() => void> }>();
+  async function inTurn<T>(adapter: TTSAdapter, run: () => Promise<T>): Promise<T> {
+    const env = Number(process.env.KAMISHIBAI_TTS_CONCURRENCY) || undefined;
+    const max = Math.max(1, opts.concurrency ?? env ?? adapter.concurrency ?? 4);
+    let q = slots.get(adapter.provider);
+    if (!q) slots.set(adapter.provider, (q = { busy: 0, waiting: [] }));
+    if (q.busy >= max) await new Promise<void>((go) => q.waiting.push(go));
+    else q.busy += 1;
+    try {
+      return await run();
+    } finally {
+      const next = q.waiting.shift();
+      if (next) next();
+      else q.busy -= 1;
+    }
+  }
+  /** Ask again after a dropped connection (fetch's TypeError, e.g. "terminated"), a 429 or a 5xx. */
+  async function withRetries<T>(run: () => Promise<T>): Promise<T> {
+    const retries = opts.retries ?? 2;
+    for (let i = 0; ; i++) {
+      try {
+        return await run();
+      } catch (err) {
+        if (i >= retries || !retryable(err)) throw err;
+        await new Promise((r) => setTimeout(r, (opts.retryDelayMs ?? 1000) * 2 ** i));
+      }
+    }
   }
 
   const inflight = new Map<string, Promise<NarrationClip>>();
@@ -548,7 +598,7 @@ export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
         const adapter = registry.get(ref.provider);
         if (!adapter) throw new Error(`no TTS adapter registered for provider "${ref.provider}"`);
         const effectiveOpts = { ...(ref.opts ?? {}), ...ov };
-        const { audio, format } = await adapter.synthesize(text, effectiveOpts);
+        const { audio, format } = await inTurn(adapter, () => withRetries(() => adapter.synthesize(text, effectiveOpts)));
         await mkdir(cacheDir, { recursive: true });
         const file = join(cacheDir, `${hash}.${format}`);
         // Write to a temp name then rename, so a half-written file can never be
