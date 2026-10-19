@@ -380,6 +380,13 @@ describe("check", () => {
     return check(ks, { W: 1920, H: 1080 }, { top: 0, right: 0, bottom: 0, left: 0 }, mergeTheme(theme)).filter((i) => i.kind === "widow").map((i) => i.msg.split(" ")[0]);
   };
 
+  it("finds characters no font has", async () => {
+    const reel = await kit({ kit: 1, fonts, theme, scenes: [{ parts: [title("Done ✗ é ²"), { type: "text", text: "↻ again ✗" }] }] });
+    await registerFonts(reel, ".");
+    const issues = await reel.check(resolveView(reel.meta), await nodeEnv("."));
+    expect(issues.filter((i) => i.kind === "glyph").map((i) => i.msg.split(", which")[0])).toEqual(['title draws "✗" (U+2717)', 'text draws "↻" (U+21BB)']);
+  });
+
   it("finds a word or a character or two left alone on a last line", () => {
     expect(widows(["Make every", "layer."], ["期限切れの判定が逆で", "す"], ["Server:", "nextDay"], ["Make every", "layer count"], ["It costs", "10"])).toEqual(["t0", "t1"]);
   });

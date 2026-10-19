@@ -433,7 +433,7 @@ scenes:
 - Tall from the same reel: `render reel.yaml --size 1080x1920 -o tall.mp4`
   (or `--aspect 9:16`); rows stack and the layout is redone.
 - Loop: `kamishibai check reel.yaml` (overlap, off-stage, overflow, contrast,
-  widow, for 16:9 and 9:16, no frames; `--json` for parsing; exit 1 on any;
+  widow, characters no font has, for 16:9 and 9:16, no frames; `--json` for parsing; exit 1 on any;
   each issue says what usually fixes it), fix, then `render` and look at a
   few frames of each shape.
 - Sizes are set for video: a row keeps across a wide stage by wrapping its

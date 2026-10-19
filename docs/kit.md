@@ -193,13 +193,14 @@ kamishibai check reel.yaml --aspect 1:1
 kamishibai check reel.yaml --json     # { views: [{ width, height, issues }], count }
 ```
 
-The layout already knows every box, so these are found with no frame drawn:
+The layout already knows every box, so these are found with no frame drawn (the characters are drawn once each, off screen):
 
 - `off-stage`: something reaches outside the safe area (the stage less 48 units and the insets).
 - `overflow`: a word too long to break in the width it has, or text that spills out of what it sits on (a card, or a figure's filled rect).
 - `overlap`: two parts overlap.
 - `contrast`: text below WCAG contrast on what it sits on (3:1 for large text, 4.5:1 otherwise).
 - `widow`: one or two characters, or one word, alone on a paragraph's last line.
+- `glyph`: a character no font has, which would show as an empty box (the parts' text, and burned captions).
 
 Each issue ends with what usually fixes it. It exits 1 when it finds anything. What it can't judge is whether the result looks good: look at the frames of each shape you render.
 

@@ -17,7 +17,7 @@ import {
   type NarrationClip,
   type TTSAdapterRef,
 } from "../tts/index.ts";
-import { check, type Issue } from "./check.ts";
+import { check, missingGlyphs, type Issue } from "./check.ts";
 import { drawLayers } from "./draw.ts";
 import { keyframeAt, layersAt, settleMs, type Cam, type Keyframe, type Shot } from "./engine.ts";
 import { bbox, type Bounds } from "./model.ts";
@@ -175,8 +175,12 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     subtitles,
     timing,
     async check(view, env) {
-      const { ks, stage, insets } = await prepare(view, env);
-      return check(ks, stage, insets, theme);
+      const { ks, stage, insets, fonts } = await prepare(view, env);
+      // What is drawn as text: the parts', and the captions when they are burned in.
+      const texts = ks.flatMap((k) => k.ds.flatMap((d) => (d.t === "text" ? [{ s: d.lines.join(""), font: d.font, scene: k.id, id: d.id }] : [])));
+      if (burn) timing.forEach((t) => t.say.forEach((l, i) => texts.push({ s: l.text, font: "bold", scene: t.id, id: `caption ${i}` })));
+      const g = env.createCanvas(64, 64).getContext("2d");
+      return [...check(ks, stage, insets, theme), ...missingGlyphs(texts, fonts, g)];
     },
     async setup(view, env) {
       const { k, ks, fonts, images, anchor, stage, insets, frame } = await prepare(view, env);

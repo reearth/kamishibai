@@ -2,13 +2,14 @@
 // things off the stage, text spilling out of its card and weak contrast are
 // arithmetic. An agent can fix a reel from these without looking at a frame.
 // ------------------------------------------------------------------
-import type { Insets } from "../canvas/types.ts";
+import type { Context2D, Insets } from "../canvas/types.ts";
 import type { Keyframe } from "./engine.ts";
 import { bbox, type Bounds, type Drawable, type RectD } from "./model.ts";
 import type { Stage } from "./parts.ts";
-import type { Theme } from "./theme.ts";
+import type { Fonts } from "./text.ts";
+import type { FontRole, Theme } from "./theme.ts";
 
-export type IssueKind = "off-stage" | "overflow" | "overlap" | "contrast" | "widow";
+export type IssueKind = "off-stage" | "overflow" | "overlap" | "contrast" | "widow" | "glyph";
 export type Issue = { scene: string; kind: IssueKind; msg: string };
 
 const inter = (a: Bounds, b: Bounds) => {
@@ -98,6 +99,39 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
         const hit = inter(parts.get(names[a]!)!, parts.get(names[b]!)!);
         if (hit) out.push({ scene: s, kind: "overlap", msg: `${names[a]} and ${names[b]} overlap by ${Math.round(hit.w)}×${Math.round(hit.h)}: put them in one row or col, or move one to another scene` });
       }
+  }
+  return out;
+}
+
+/**
+ * Characters no font has, which draw as an empty box: each is drawn on `g`
+ * (64 × 64 or larger) and compared with a code point no font has. `texts`
+ * are the strings drawn, each with its font, the scene and what draws it.
+ */
+export function missingGlyphs(texts: Array<{ s: string; font: FontRole; scene: string; id: string }>, fonts: Fonts, g: Context2D): Issue[] {
+  const draw = (ch: string, font: FontRole) => {
+    g.clearRect(0, 0, 64, 64);
+    g.font = fonts.css(font, 48);
+    g.letterSpacing = "0px";
+    g.textBaseline = "alphabetic";
+    g.fillStyle = "#000";
+    g.fillText(ch, 4, 50);
+    return g.getImageData(0, 0, 64, 64).data.join();
+  };
+  const box = new Map<FontRole, string>();
+  const seen = new Set<string>();
+  const out: Issue[] = [];
+  for (const t of texts) {
+    for (const ch of new Set(t.s)) {
+      // Once per family: the weights of one family have the same characters.
+      const key = `${t.font === "mono" ? fonts.theme.fonts.mono : fonts.theme.fonts.sans}|${ch}`;
+      if (/\s/u.test(ch) || seen.has(key)) continue;
+      seen.add(key);
+      if (!box.has(t.font)) box.set(t.font, draw("\u{10FFFD}", t.font));
+      if (draw(ch, t.font) !== box.get(t.font)) continue;
+      const code = `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
+      out.push({ scene: t.scene, kind: "glyph", msg: `${t.id} draws "${ch}" (${code}), which no font has: it shows as an empty box. Use another character, or add a font that has it` });
+    }
   }
   return out;
 }
