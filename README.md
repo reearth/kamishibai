@@ -63,40 +63,31 @@ There's no GUI editor; you're the editor. The loop is **edit → look → render
 
 ---
 
+## Kinds of reel
+
+A reel is the thing kamishibai turns into a video. It comes in three kinds:
+
+| | What you write | Drawn by | Write one when |
+|---|---|---|---|
+| **Page** | a web page that sets `window.kamishibai`: React, plain DOM, canvas, WebGL | headless Chrome | you want anything a browser can show. The default |
+| [**Canvas**](https://github.com/reearth/kamishibai/blob/main/docs/canvas.md) | a module that paints each frame on a 2D canvas | Skia on the CPU, no browser | it must render with no browser. One reel lays itself out as 16:9 and as 9:16 |
+| [**Kit**](https://github.com/reearth/kamishibai/blob/main/docs/kit.md) | scenes as data, in YAML, JSON or code: titles, cards, flows, numbers | the kit, as a canvas reel | you want many videos fast. Parts move from scene to scene, and each scene is timed to its narration |
+
+`kamishibai export` makes a reel of any kind one HTML file that plays with no server ([more](https://github.com/reearth/kamishibai/blob/main/docs/export.md)).
+
+---
+
 ## Agent skills
 
-Building videos with an AI coding agent? An installable skill teaches it kamishibai.
-
-As of October 2026, we recommend Claude Opus 5.5 for making videos: it brings its own directing and motion design, so the skill only covers kamishibai itself.
-
-Using the [`skills`](https://github.com/vercel-labs/skills) CLI:
+Building videos with an AI coding agent? Install the skill (as of October 2026 we recommend Claude Opus 5.5):
 
 ```sh
 npx skills add reearth/kamishibai --skill kamishibai
-npx skills add reearth/kamishibai --all     # all agents, no prompts
-```
-
-Or with [`gh skills`](https://cli.github.com/manual/gh_skill) — the GitHub CLI's built-in skill manager (`gh skill`, alias `gh skills`):
-
-```sh
+# or
 gh skills install reearth/kamishibai kamishibai
-
-# pick the target agent and scope (default: project scope, github-copilot)
-gh skills install reearth/kamishibai kamishibai --agent claude-code --scope user
-
-gh skills search kamishibai     # find skills across GitHub
-gh skills update --all          # update installed skills
 ```
 
-The skill points the agent at `kamishibai skill`, which prints the authoring guide (the contract, the React sugar, the render CLI, determinism) with a list of topics, such as audio and TTS narration, to print as needed. It always matches the installed version.
-
-Or pipe the guide straight into your agent's context yourself:
-
-```sh
-kamishibai skill all > kamishibai.md
-```
-
-A program that runs an agent can take the same text from `kamishibai/skill` ([library](https://github.com/reearth/kamishibai/blob/main/docs/library.md#the-guide-for-an-agent)).
+It points the agent at `kamishibai skill`, which prints the guide for the installed version. A program can take the same text from [`kamishibai/skill`](https://github.com/reearth/kamishibai/blob/main/docs/library.md#the-guide-for-an-agent).
 
 ---
 
@@ -127,8 +118,6 @@ frames 0–684     → page #1 ┐
 frames 685–1369  → page #2 ├ run at once → PNG sequence → ffmpeg → mp4
 frames 1370–…    → page #3 ┘
 ```
-
-A reel can also be a module that draws on a 2D canvas instead of a page: a [**canvas reel**](https://github.com/reearth/kamishibai/blob/main/docs/canvas.md) is painted on the CPU with Skia, with no browser, and lays itself out for any shape, so one reel renders as 16:9 and as a 9:16 vertical video. A [**kit reel**](https://github.com/reearth/kamishibai/blob/main/docs/kit.md) is a canvas reel written as scenes in YAML, JSON or code: a title, cards, a flow of steps, a number. The kit lays them out, moves what stays from one scene to the next, and times each scene to its narration. `kamishibai export` makes any reel one HTML file that plays with no server ([more](https://github.com/reearth/kamishibai/blob/main/docs/export.md)); a canvas reel's also lays itself out for the window's shape.
 
 `seek` can also say a frame is **the same as the one before**, by returning `false` or a fingerprint of its content. The renderer then copies the previous still instead of capturing it, and with `--incremental` it reuses frames from the last run whose fingerprint didn't change, so after an edit only the changed frames are captured again. `kamishibai/react` returns the fingerprint for you. See [Skipping frames & incremental builds](https://github.com/reearth/kamishibai/blob/main/docs/performance.md).
 
