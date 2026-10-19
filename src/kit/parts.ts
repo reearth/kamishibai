@@ -149,7 +149,7 @@ definePart<TitleSpec>("title", {
 
 definePart<TextSpec>("text", {
   doc: 'Plain text. role "display" is a cover\'s title, "lead" is large, "note" is small and grey.',
-  fields: { text: f.str("the text", true), role: f.one(["display", "lead", "body", "note"]), align: f.one(["start", "center"]) },
+  fields: { text: f.str("the text", true), role: f.one(["display", "lead", "body", "note"], 'its size: "display" a cover title, "lead" large, "body" (default), "note" small and grey'), align: f.one(["start", "center"], "default start") },
   box: (s, ctx) => {
     const role = s.role ?? "body";
     if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter });
@@ -167,7 +167,7 @@ definePart<TextSpec>("text", {
 const groupFields: Fields = {
   parts: f.parts("the parts in it", true),
   gap: f.num("space between them"),
-  align: f.one(["start", "center", "end", "stretch"]),
+  align: f.one(["start", "center", "end", "stretch"], "how the parts line up across it (default: center in a row, stretch in a col)"),
   narrow: f.one(["stack", "wrap", "keep"], 'a row that does not fit across: "stack" into a column (default), "wrap" like tiles, or "keep"'),
 };
 
@@ -280,10 +280,10 @@ definePart<CardSpec>("card", {
   fields: {
     label: f.str("a small line on top"),
     body: f.str("a sentence"),
-    code: f.str('code as text, or "path#L44" / "path#L40-48"'),
+    code: f.str('code as text, or "path#L44" (lines 43–45) / "path#L40-L48" read next to the reel'),
     highlight: f.str("a substring of the code to highlight"),
-    tone: f.one(["plain", "accent", "dim"]),
-    width: f.num("its width on a wide stage"),
+    tone: f.one(["plain", "accent", "dim"], '"accent" outlines it in the accent, "dim" greys it (default "plain")'),
+    width: f.num("its width in layout units (at least 360); a column on a tall stage gives it the full width instead"),
   },
   box: (s, ctx) => {
     const T = ctx.theme;
@@ -305,7 +305,7 @@ definePart<CardSpec>("card", {
 
 definePart<ArrowSpec>("arrow", {
   doc: 'An arrow between parts in a row (it turns down in a column), or "versus" (≠) / "equals" (=) between two to compare.',
-  fields: { kind: f.one(["right", "down", "versus", "equals"]) },
+  fields: { kind: f.one(["right", "down", "versus", "equals"], 'default "right"; in a column a right arrow turns down') },
   box: (s, ctx) => {
     const T = ctx.theme;
     const kind = (s.kind ?? "right") === "right" && ctx.flow === "col" ? "down" : (s.kind ?? "right");
@@ -329,7 +329,7 @@ definePart<ArrowSpec>("arrow", {
 
 definePart<ChipSpec>("chip", {
   doc: 'A pill, for a step in a flow. state "active" fills it with the accent; "done" greys it and ticks it. n numbers it.',
-  fields: { text: f.str("the label", true), state: f.one(["active", "done"]), n: f.num("a number in a badge before the label (a tick once done)") },
+  fields: { text: f.str("the label", true), state: f.one(["active", "done"], '"active" filled with the accent, "done" greyed and ticked'), n: f.num("a number in a badge before the label (a tick once done)") },
   box: (s, ctx) => {
     const T = ctx.theme;
     const on = s.state === "active";
@@ -367,7 +367,7 @@ definePart<ChipSpec>("chip", {
 
 definePart<StatSpec>("stat", {
   doc: "A big number that counts up from its previous value (or 0).",
-  fields: { value: f.num("the number", true), unit: f.str(), label: f.str("a line under it"), tone: f.one(["plain", "accent"]), digits: f.num("decimals shown (default: as many as the value has)") },
+  fields: { value: f.num("the number", true), unit: f.str("set small after the number"), label: f.str("a line under it"), tone: f.one(["plain", "accent"], '"accent" sets the number in the accent'), digits: f.num("decimals shown (default: as many as the value has)") },
   box: (s, ctx) => {
     const T = ctx.theme;
     // As many decimals as the value is written with, unless told.
@@ -412,7 +412,7 @@ definePart<ListSpec>("list", {
 
 definePart<ImageSpec>("image", {
   doc: "A picture from a file next to the reel, fitted to the room it gets.",
-  fields: { src: f.str("a path relative to the reel", true), width: f.num(), height: f.num(), caption: f.str("a small line under it") },
+  fields: { src: f.str("a path relative to the reel", true), width: f.num("at most this wide, in layout units (default its pixel width)"), height: f.num("at most this tall (default half the stage)"), caption: f.str("a small line under it") },
   images: (s) => [s.src],
   box: (s, ctx) => {
     const im = ctx.image(s.src);
@@ -467,7 +467,7 @@ definePart<FigureSpec>("figure", {
   fields: {
     width: f.num("its units across", true),
     height: f.num("its units down", true),
-    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, mono?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue, then: [{ cue, ms?, …the fields that change }]', true),
+    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, mono?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue, then: [{ cue?, delay?, ms?, …the fields that change }]. pos is the top-left of a text (top-centre with align: center); size defaults to 44', true),
     caption: f.str("a small line under it"),
   },
   check: (s, at) => checkItems(s.items, `${at}.items`, ["cue"]),

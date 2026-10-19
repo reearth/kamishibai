@@ -28,6 +28,7 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ### Docs
 
+- **The guide answers more without the source.** `kamishibai skill kit-fields` prints every kit field with what it means and its default, made from the fields themselves. The core has a "Find it by what you want" list, every CLI flag a reel needs, and the library; the topics now cover the kit's units, ids and errors, `definePart`/`defineKata`/`paint`, canvas view details, TTS adapters' defaults, concurrency and retries, and the export player's API.
 - How a part of your own gets its width (`measure`), and that `speed` works on `gpt-4o-mini-tts`.
 
 ## 0.9.0

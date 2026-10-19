@@ -21,11 +21,11 @@ export const PLACES = ["center", "left", "right", "top", "bottom"] as const;
 export const SCENE_FIELDS: Fields = {
   id: f.str("a name for messages and the scene list"),
   say: f.text("the narration, and its captions: a text split into sentences, or a list of sentences"),
-  ms: f.num("hold this long instead of the narration's length"),
+  ms: f.num("hold this long instead of the narration's length (a scene with no say holds 3000)"),
   kata: f.str("a scene shape, filled in with the fields beside it"),
   parts: f.parts("parts, after the shape's"),
   transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
-  focus: f.any("move the camera in on a part: its id, { on, cue?, zoom? }, or a list of those"),
+  focus: f.any("move the camera in on a part, or a figure's item (figure.item): its id, { on, cue?, zoom? }, or a list of those in sentence order; as close as frames it, 2.5× at most"),
   fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows), or false'),
   place: f.one(PLACES, 'where the parts under the heading sit in their room: "center" (default), "left", "right", "top" or "bottom"'),
 };
@@ -63,7 +63,7 @@ defineKata<{ kicker?: string; title: string; sub?: string }>("cover", {
 
 defineKata<{ title: string; left: CardSpec; right: CardSpec; kind?: "versus" | "equals" | "right" }>("compare", {
   doc: 'Two cards side by side (stacked on a tall stage), with ≠, = or → between. left and right take a card\'s fields.',
-  fields: { title: f.str("the heading", true), left: f.obj("a card's fields", true), right: f.obj("a card's fields", true), kind: f.one(["versus", "equals", "right"]) },
+  fields: { title: f.str("the heading", true), left: f.obj("a card's fields", true), right: f.obj("a card's fields", true), kind: f.one(["versus", "equals", "right"], 'what goes between: "versus" ≠ (default), "equals" =, "right" →') },
   parts: (o) => [title(o.title, { id: "title" }), row([side(o.left, "left", o.right), arrow({ id: "vs", kind: o.kind ?? "versus" }), side(o.right, "right", o.left)], { id: "cmp" })],
 });
 
@@ -85,7 +85,7 @@ defineKata<{ title: string; steps: string[]; at?: number; note?: string }>("flow
 
 defineKata<{ title: string; value: number; unit?: string; label?: string }>("stat", {
   doc: "One big number that counts up, under a heading.",
-  fields: { title: f.str("the heading", true), value: f.num("the number", true), unit: f.str(), label: f.str("a line under it") },
+  fields: { title: f.str("the heading", true), value: f.num("the number", true), unit: f.str("set small after the number"), label: f.str("a line under it") },
   parts: (o) => [title(o.title, { id: "title" }), stat(o.value, { id: "stat", unit: o.unit, label: o.label, tone: "accent" })],
 });
 
@@ -97,7 +97,7 @@ defineKata<{ title: string; items: string[]; at?: number }>("points", {
 
 defineKata<{ title: string; code: string; highlight?: string; label?: string; note?: string }>("code", {
   doc: 'A heading and a code excerpt ("path#L40-48" from the reel\'s folder, or the code itself), with one part marked. Lines still shown in the next scene slide.',
-  fields: { title: f.str("the heading", true), code: f.str('"path#L40-48" or the code', true), highlight: f.str("a substring to highlight"), label: f.str("a small line on the card"), note: f.str("a small line under") },
+  fields: { title: f.str("the heading", true), code: f.str('the code, or "path#L44" (lines 43–45) / "path#L40-L48" read next to the reel', true), highlight: f.str("a substring to highlight"), label: f.str("a small line on the card"), note: f.str("a small line under") },
   parts: (o) => [
     title(o.title, { id: "title" }),
     card({ id: "code", label: o.label, code: o.code, highlight: o.highlight, tone: "accent" }),

@@ -2,12 +2,12 @@
 // hands it to an agent itself (a system prompt, a tool's result) instead of
 // running the CLI. It is the installed version's guide, as the CLI's is.
 // ------------------------------------------------------------------
-import { kitBrief } from "./kit/schema.ts";
+import { kitBrief, kitReference } from "./kit/schema.ts";
 import SKILL from "./skill.md";
 import { parseSkill, skillText } from "./skill.ts";
 
-// The kit topic carries the field reference, made from the fields themselves.
-const fills = () => ({ "kit-fields": "```\n" + kitBrief() + "```" });
+// The kit topics carry the field list and what each field means, made from the fields themselves.
+const fills = () => ({ "kit-fields": "```\n" + kitBrief() + "```", "kit-reference": "```\n" + kitReference() + "```" });
 
 /**
  * The guide as `kamishibai skill [topics…]` prints it: with no topics, the

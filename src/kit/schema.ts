@@ -51,6 +51,33 @@ export function kitBrief(): string {
   return out.join("\n") + "\n";
 }
 
+/** One field and what it means: `name* (a|b): doc`. */
+function described(name: string, fd: Field): string {
+  return `    ${brief(name, fd)}${fd.doc ? `: ${fd.doc}` : ""}`;
+}
+const lines = (fields: Fields, skip: string[] = []) =>
+  Object.entries(fields)
+    .filter(([k, fd]) => fd.kind !== "function" && !skip.includes(k))
+    .map(([k, fd]) => described(k, fd));
+
+/**
+ * Every field with what it means, from the same docs the schema carries: the
+ * reference `kamishibai skill kit-fields` prints, so an agent never has to
+ * read the parts' source to learn what a field does.
+ */
+export function kitReference(): string {
+  const { kata: _, parts: __, ...scene } = SCENE_FIELDS;
+  const out = ["Reel:", ...lines(REEL_FIELDS), "Scene (and kata or parts):", ...lines(scene), "Every part:", ...lines(COMMON), "Shapes (kata: name, with these fields beside the scene's):"];
+  for (const n of kataNames()) out.push(`  ${n}: ${kataDef(n)!.doc}`, ...lines(kataDef(n)!.fields));
+  out.push("Parts ({ type: name, … }):");
+  for (const t of partTypes()) {
+    const def = partDef(t)!;
+    if (Object.values(def.fields).some((fd) => fd.kind === "function" && fd.required)) continue;
+    out.push(`  ${t}: ${def.doc}`, ...lines(def.fields));
+  }
+  return out.join("\n") + "\n";
+}
+
 /** The schema, with the parts and shapes defined so far (definePart and defineKata add to it). */
 export function kitSchema(): Record<string, unknown> {
   const part = { $ref: "#/$defs/part" };

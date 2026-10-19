@@ -130,14 +130,17 @@ so both need a persisted `--frames-dir`:
   the previous run's (stored in `<frames-dir>/.kamishibai-cache.json`). Unchanged
   frames keep their PNG (the screenshot is skipped, but the page is still seeked
   to compute the print); only changed frames are re-captured. The cache
-  auto-invalidates if the output geometry (fps / size / scale) changes. Use it
+  auto-invalidates if the output geometry (fps / size / scale, a canvas reel's
+  view) or `--burn-subtitles` changes, so give each shape its own `-f` dir:
+  rendering 9:16 into the 16:9 dir captures every frame again over it. Use it
   when the change is **scattered** and you don't know which frames moved.
 - `--only 0-30,90,120-150` — render just the named frames, leaving every other
   PNG untouched (needs a prior full render to fill the gaps). It never visits the
   other frames at all, so when you know exactly what changed — especially a
   **tail-only edit** — it's far faster than `-i`, which still has to walk the
   whole reel to fingerprint it. It refuses a dir captured at a different
-  fps / size / scale, and a range starting past the last frame is an error.
+  fps / size / scale / `--burn-subtitles`, and a range starting past the last
+  frame is an error.
   Audio and captions come from the prior full render's mux sidecar
   (`kamishibai skill capture-encode`).
 
@@ -180,6 +183,10 @@ window.kamishibai = {
 };
 ```
 
+A raw page declares sound in `window.kamishibai.audio` (`kamishibai skill
+audio`) and captions by pushing `{ start, end, text }` (reel ms) onto
+`window.kamishibai.subtitles`.
+
 ### React (`kamishibai/react`)
 
 ```tsx
@@ -219,7 +226,8 @@ Components and hooks (times in ms):
 - `<Subtitle src | cues | children delayMs bottom style>`: captions from an
   SRT/VTT file, `cues` (`{ start, end, text }[]`), or text timed by the
   enclosing `<Cue>`. Times count from the scene. By default a soft track (an
-  mp4 text track and a sidecar `.srt`), and that is enough: burn captions into
+  mp4 text track and `<out>.srt` beside it; a gif gets only the `.srt`), and
+  that is enough: burn captions into
   the picture only when asked to, or for a gif. With `--burn-subtitles` they are
   drawn into the frames: centred, `bottom` px (80) up, white 40 px text on a
   `rgba(0,0,0,0.62)` box; `style` overrides any of it, e.g.
@@ -343,12 +351,21 @@ export default canvasReel({
   the reel.
 - Any weight works in `font` for a variable font, and `textBaseline` is placed
   as in a browser.
+- `g` comes scaled to layout units and cleared for every frame. `view.medium`
+  is `video`, `player` (export, dev) or `embed` (`--bare`).
+- Without `meta.aspect` the reel has only its own shape, and `--aspect` stops
+  with an error; `aspect: { min: 9 / 16, max: 16 / 9 }` allows the range.
+- `audio` and `subtitles` take the same markers as a page's; audio paths are
+  relative to the module. Narration: `await prepareNarration(...)` at the top
+  of the module, as on a page.
 - `morph(frames, { env, width, height, theme?, paper? })` from
   `kamishibai/kit` moves hand-placed items between keyframes as kit scenes do:
   `frames` is `[{ at: ms, items, transition? }]`, items are a figure's (`rect`,
   `circle`, `line`, `text` with `pos`; `id` keeps one across keyframes, `delay`
-  brings it in later). In the painter, `m.draw(g, ms)`; `m.check()` lists
-  spills and items off the area.
+  ms brings it in later, `then: [{ delay, …changes }]` moves it within its
+  keyframe). A `push` or `wipe` keyframe needs `paper` (a colour filled under
+  each keyframe). In the painter, `m.draw(g, ms)` draws and returns a
+  fingerprint; `m.check()` lists spills, items off the area and weak contrast.
 
 ```sh
 kamishibai render reel.ts -o out.mp4
@@ -395,18 +412,29 @@ scenes:
 
 - Shapes (`kata`): `cover`, `flow`, `compare`, `code`, `stat`, `points`, `picture`.
   Parts: `title`, `text`, `row`, `col`, `card`, `arrow`, `chip`, `stat`, `list`,
-  `image`. Every field, a line each (`*` required, `#` number, `[..]` list),
-  as `kamishibai schema --brief` prints it (the full JSON Schema is 27 KB):
+  `image`, `figure`. Every field, a line each (`*` required, `#` number, `[..]`
+  list), as `kamishibai schema --brief` prints it; `kamishibai skill
+  kit-fields` gives what each one means and its default:
 
 <!-- fill: kit-fields -->
 
+- Units: sizes (`width`, `gap`) are layout units of a stage whose long side
+  is 1920, whatever the output size; a figure has its own `width × height`
+  units; times are ms. Defaults: 30 fps, 1920×1080, shapes from 9:16 to 16:9.
 - Same `id` in the next scene: the part moves there. Without an id, a part's
-  id is its type (`title` stays put across scenes); the shapes' ids are fixed,
-  so moving `at` along a `flow` walks it. Gone parts fade; new ones come in.
+  id is its type, numbered when it repeats (`card`, `card.2`), so `title`
+  stays put across scenes; the shapes' ids are fixed, so moving `at` along a
+  `flow` walks it. Gone parts fade; new ones come in one after another.
+- Mistakes stop the reel before anything is drawn, each with its place (and
+  a likely fix for a typo): an unknown field or part, an id twice in a scene,
+  a `cue` that is not a sentence of the scene's `say`, a `focus` on no part,
+  and so on. `check` and `render` exit 1 on them.
 - `code` is text or `"path#L44"` / `"path#L40-L48"` read next to the reel.
-- `say` is spoken a sentence at a time (or give a list of sentences); a part
-  with `cue: n` comes in as sentence n starts (0 = with the scene), so one
-  scene can build up instead of being split.
+- `say` is spoken a sentence at a time, split after 。！？ and after . ! ?
+  before a space (or give a list of sentences); a part with `cue: n` comes in
+  as sentence n starts (0 = with the scene), so one scene can build up instead
+  of being split. Without a `voice`, a sentence's length is estimated (7.5
+  wide characters or 14 others a second).
 - `enter`: `rise` (default), `fade`, `pop`, `draw`, `type`, `count`, `none`,
   `from-left|right|top|bottom`, `wipe`, `blur`.
 - A scene's `transition`: `morph` (default; same ids move), `cut`, `fade`,
@@ -434,14 +462,17 @@ scenes:
   parts (the captions then sit over them).
 - `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
   `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
-  { sans, mono }`, `weights: { body, bold, black }`. Dark: paper `#0b0f1a`,
-  card `#151b2b`, ink `#eef1ff`, ink3 `#8c95bc`, rule `#2e3760`.
+  { sans, mono }`, `weights: { body, bold, black }`. The default is light
+  (paper `#fafaf7`, card `#ffffff`, ink `#121212`, ink3 `#6e6e69`, rule
+  `#d8d6cf`, accent `#d9662a`); there is no dark mode, so set the colours,
+  e.g. paper `#0b0f1a`, card `#151b2b`, ink `#eef1ff`, ink3 `#8c95bc`, rule
+  `#2e3760`. Colour fields anywhere take these names or any CSS colour.
 - Tall from the same reel: `render reel.yaml --size 1080x1920 -o tall.mp4`
   (or `--aspect 9:16`); rows stack and the layout is redone.
 - Loop: `kamishibai check reel.yaml` (overlap, off-stage, overflow, contrast,
-  widow, characters no font has, for 16:9 and 9:16, no frames; `--json` for parsing; exit 1 on any;
-  each issue says what usually fixes it), fix, then `render` and look at a
-  few frames of each shape.
+  widow, characters no font has; at meta's size and each end of `aspect`, no
+  frames; `--json` for parsing; exit 1 on any; each issue says what usually
+  fixes it), fix, then `render` and look at a few frames of each shape.
 - Sizes are set for video: a row keeps across a wide stage by wrapping its
   cards, and the parts under the heading grow (up to 1.6×) to fill a stage
   they leave mostly empty, so there is rarely a reason to set widths. A
@@ -450,9 +481,30 @@ scenes:
   left|right|top|bottom` puts them at that edge of the room (default
   center). No `title`: no heading, and the room is the whole stage.
 - In code: `export default await kit({ … })` from `kamishibai/kit`, with
-  `title()`, `card()`, `row()`… building the same data; `definePart` adds a part.
+  `title()`, `card()`, `row()`… building the same data. Only in code:
+  `paint({ width, height, fn: (g, ms, w, h) => … })` draws a box by code on
+  the reel's clock.
+- `definePart(type, { doc, fields, box(spec, ctx) })` adds a part (in a module
+  named in `uses`, or in a code reel). `box` returns flexbox boxes (`style: {
+  dir, gap, pad, grow, align, self, w, h }`, `kids`); a leaf sizes itself with
+  `measure(maxW) → { w, h }` (return `maxW` to take the room it gets; a col is
+  as wide as its widest child) and draws with `paint(rect) → drawables`, each
+  with an id from the part's. `textBox(id, text, ctx, opts)` is a text leaf.
+  `defineKata(name, { doc, fields, parts(o) })` adds a scene shape; its fields
+  can't reuse a scene field (`id`, `say`, `ms`, `kata`, `parts`, `transition`,
+  `focus`, `fill`, `place`). `schema` lists only the built-in ones.
+- YAML anchors and merge keys (`<<: *base`) work.
 
 Give it font files for every script it draws (a container has few fonts).
+<!-- /topic -->
+
+<!-- topic: kit-fields | Every kit field with what it means and its default, made from the kit itself -->
+## Kit fields
+
+`name*` is required, `#` a number, `[..]` a list, `(a|b)` the values it takes.
+Colours take a theme colour's name or any CSS colour.
+
+<!-- fill: kit-reference -->
 <!-- /topic -->
 
 <!-- topic: export | One HTML file that plays the reel with no server: `kamishibai export`, `--bare`, `--loop`, query parameters -->
@@ -474,6 +526,10 @@ kamishibai export reel.tsx --bare --no-autoplay -o s.html  # waits for the page:
   servers stay links. It plays at its meta size, scaled to the window.
 - A canvas reel's fonts are cut to the glyphs it draws (`npm i -D subset-font`),
   and it is laid out for the window's shape.
+- `t` is in seconds. A browser may refuse sound before the viewer has clicked;
+  the file then plays muted until the sound button is pressed.
+  `window.kamishibaiPlayer` has `play()`, `pause()`, `seek(ms)`, `ms`,
+  `playing` and `durationMs`.
 - Open the file and play it through before handing it over.
 <!-- /topic -->
 
@@ -498,9 +554,16 @@ directory is served), or a URL you serve.
 | `--scale` | `-s` | device scale: output px = meta size × scale |
 | `--fps` | | re-sample the reel at another frame rate |
 | `--preview` | | a fast, larger encode, for checking |
+| `--size` / `--aspect` / `--inset` | | canvas and kit reels only: another shape (`1080x1920`, `9:16`), and room for an app's controls |
+| `--renderer` | | `auto` (default), `node` (a canvas reel with Skia), `chrome` |
+| `--keep-frames` | | keep the PNGs when there is no `-f` |
 
 `kamishibai render --help` lists the rest (quality, gif, raw ffmpeg arguments).
-Resolution comes from `meta.width`/`meta.height`, not a flag.
+Resolution comes from `meta.width`/`meta.height`, not a flag. A page has one
+shape: `--size`/`--aspect` stop with an error, so for a page at 9:16 write a
+second entry that mounts the same tree with `{ width: 1080, height: 1920 }` and
+lay it out for both. `kamishibai -v` prints the version. Every command exits 1
+on an error; `check` and `tts` also exit 1 when they find a problem.
 
 <!-- topic: dev | `kamishibai dev`, the live player for the person you work with -->
 ### Live preview for people: `kamishibai dev`
@@ -547,7 +610,8 @@ To **look at a few frames without making a video**, use `capture` with
 (the ducked audio clips, srcs resolved to absolute paths so `encode` works from
 any cwd, and the soft subtitle cues) into the dir. It
 takes the capture-time flags: `-w`, `--fps`, `-s/--scale`, `-p/--public`, `-i`,
-`--only`, `--burn-subtitles`, `--probe-timeout`.
+`--only`, `--burn-subtitles`, `--probe-timeout`, `--tts-adapter`, and for a
+canvas reel `--size`, `--aspect`, `--inset`, `--renderer`.
 
 **`encode`** rebuilds the video from that dir — **no browser, no probe, no TTS,
 just ffmpeg** — and replays the sidecar, so audio and captions come back without
@@ -567,8 +631,8 @@ want different encode/mux settings (a new `--crf`/`--preset`, a `--max-width`,
   unreadable, or from another version.
 - `encode` honors `--out`, `--fps`, `--crf`, `--preset`/`--preview`,
   `--max-width`, `--gif-loop`, `--encode-args`, `--mux-args`, `--verbose`.
-- `tts` honors only `-p/--public` and `--probe-timeout`. Any subcommand warns
-  about (and ignores) flags it doesn't use.
+- `tts` honors `-p/--public`, `--probe-timeout` and `--tts-adapter`. Any
+  subcommand warns about (and ignores) flags it doesn't use.
 
 ```
 kamishibai render reel.tsx -f frames -o reel.mp4        # capture once (writes the sidecar)
@@ -622,9 +686,10 @@ sensible defaults (−12 dB, 250 ms attack, 600 ms release, bridging short gaps)
 tune with `duck={{ amountDb: -16, attackMs: 200, releaseMs: 500 }}`. Explicit
 `gainKeyframes` override it.
 
-`src` is read **from the filesystem by ffmpeg** (relative to the render's working
-directory, or absolute) — unlike `<Video>` / `staticFile` paths, which the
-*browser* fetches and so must be served via `--public`. Run the render from a
+`src` is read **by ffmpeg**: an `http(s)` URL as is, a file relative to the
+render's working directory (or absolute), or else a path under `-p`
+(`/music.mp3`). Unlike `<Video>` and images, which the *browser* fetches and
+so must be served with `-p`. Run the render from a
 stable cwd: relative audio paths **and** the `.kamishibai-tts/` cache resolve
 against it, so running from elsewhere silently misses the cache (and re-bills
 TTS).
@@ -658,9 +723,10 @@ const clip = await loadVideo("/clip.mp4");
 // in seek(ms): const f = await clip.frameAtMs(ms); if (f) ctx.drawImage(f, 0, 0);
 ```
 
-With React, just use `<Video src startMs />` inside a scene; the clip's own
+With React, just use `<Video src startMs />` inside a scene; `startMs` is when
+the clip starts on the scene's clock, not a trim into the clip. The clip's own
 audio is muxed automatically (trimmed to the scene, with optional gain/fades) —
-pass `muted` to drop it. WebCodecs works because kamishibai serves on localhost
+pass `muted` to drop it, or `audioSrc` to read the sound from another file. WebCodecs works because kamishibai serves on localhost
 (secure context). Codecs: VP9/AV1 are portable; H.264 is platform-dependent.
 Frames decode on demand (one GOP at a time), so long clips stay memory-bounded.
 <!-- /topic -->
@@ -752,6 +818,12 @@ once ffprobe works. `--probe-timeout <s>`
 Show the requester the whole script before the first paid synthesis: an
 edited line is billed again and re-times its scene.
 
+**Requests at once, and retries.** Each provider is asked for at most 4 lines
+at a time, `say` and Kokoro for 2 (they share the machine with the render);
+`KAMISHIBAI_TTS_CONCURRENCY=n` sets it for all, and a custom adapter sets
+`concurrency`. The limit is per process. A dropped connection, a 429 or a 5xx
+is asked again twice, after 1 s and 2 s; any other error fails the line.
+
 Free voices: prefer `kokoroAdapter({ voice, speed })` — Kokoro through a local
 Kokoro-FastAPI server (`docker run -p 8880:8880
 ghcr.io/remsky/kokoro-fastapi-cpu`; `KOKORO_BASE_URL` to move it), on any OS,
@@ -763,13 +835,20 @@ terms when you pick it, not at ship time: commercial use (often not on a free
 tier), a required credit, AI-voice disclosure, and for a local model the
 license of its weights (some are non-commercial). Even where nothing requires
 it, suggest saying the voice is AI ("Narration: AI voice (Kokoro)"), in the
-video or outside it, such as the description. Adapters: `openaiAdapter({ model, voice })`
-(`OPENAI_API_KEY`), `googleAdapter({ name })` (`GOOGLE_API_KEY`),
-`geminiAdapter({ voice, model, instructions })` (`GEMINI_API_KEY`, falling
-back to `GOOGLE_API_KEY`),
-`pollyAdapter({ voiceId, engine })` (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`,
-`AWS_REGION`; signed with a built-in SigV4, no AWS SDK), or
-`elevenLabsAdapter({ voiceId, model })` (`ELEVENLABS_API_KEY`). Each
+video or outside it, such as the description. Adapters, with their defaults:
+`kokoroAdapter({ voice: "af_heart", speed })`;
+`openaiAdapter({ model: "tts-1", voice: "alloy", speed, instructions })`
+(`OPENAI_API_KEY`; `speed` 0.25–4 works on every model, `instructions` steers
+gpt-4o-mini-tts); `googleAdapter({ name, languageCode: "en-US", ssmlGender })`
+(`GOOGLE_API_KEY` or `GOOGLE_TTS_API_KEY`);
+`geminiAdapter({ voice: "Kore", model, instructions })` (`GEMINI_API_KEY`,
+falling back to `GOOGLE_API_KEY`);
+`pollyAdapter({ voiceId: "Joanna", engine: "neural", languageCode, region })`
+(`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`
+default `us-east-1`; signed with a built-in SigV4, no AWS SDK); or
+`elevenLabsAdapter({ voiceId, model: "eleven_multilingual_v2" })`
+(`ELEVENLABS_API_KEY`). A kit reel's `voice: { provider, …opts }` passes the
+same options. Each
 network adapter takes a `baseUrl` (a proxy or a compatible server), else reads
 `OPENAI_BASE_URL` / `GOOGLE_TTS_BASE_URL` / `GEMINI_BASE_URL` /
 `ELEVENLABS_BASE_URL` / `AWS_ENDPOINT_URL_POLLY`; it is not part of the cache
@@ -823,3 +902,33 @@ visuals** (those are free) — text and voice changes cost money.
 import { render } from "kamishibai";
 await render({ entry: "reel.tsx", out: "reel.mp4", publicDir: "public", onLog: console.log });
 ```
+
+`capture`, `encode`, `synthesize` (what `kamishibai tts` does) and `dev` take
+the CLI's options in camelCase (`framesDir`, `burnSubtitles`, `ttsAdapters`,
+`ttsCacheDir`, `probeTimeoutMs`); `render` also takes `size`, `aspect`,
+`insets` and `renderer` for a canvas reel. `play(reel, el, opts)` from
+`kamishibai/canvas` plays a canvas reel in your own page. `skill(topics?)` and
+`skillTopics()` from `kamishibai/skill` return this guide, as `kamishibai skill`
+prints it.
+
+## Find it by what you want
+
+- Something comes in → `<Enter>` (page), `enter:` (kit)
+- A value over time → `ramp`, `track`, `spring`
+- Scenes one after another → `<Series>` (`skill scenes`); kit scenes
+- A camera move → `<Camera shots>` (page), `focus:` (kit), `morph` (canvas)
+- Motion inside a kit scene → a figure item's `then:` (`skill kit`)
+- Frames that hold still, rendered faster → return `false` or a fingerprint (`skill incremental`)
+- Re-render after an edit → `-f dir -i`, or `--only a-b`; `--preview` to encode fast
+- Look at frames without a video → `capture -f frames --only a-b`
+- 9:16 from one reel → canvas or kit: `--aspect 9:16`; page: a second entry
+- Music under everything → `<Bgm duck>` (page), `music:` (kit)
+- A sound at 3.2 s → `<Audio src atMs={3200}>`
+- Voice-over → `prepareNarration` + `<Narration>` (`skill narration`), `voice:` (kit)
+- Captions → a soft track by default; `--burn-subtitles`, `captions: burn` for social video or a gif
+- A video clip → `<Video>`, served with `-p` (`skill video`)
+- No browser → canvas or kit (`skill canvas`, `skill kit`)
+- Layout problems without rendering → `kamishibai check` (kit)
+- One offline HTML file → `kamishibai export` (`skill export`)
+- The person watches while you edit → `kamishibai dev` (`skill dev`)
+- Pay for the voice once, up front → `kamishibai tts`
