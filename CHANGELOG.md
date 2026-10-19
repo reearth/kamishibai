@@ -9,6 +9,19 @@ can contain breaking changes, and they are called out under **Changed**.
 ### Added
 
 - **`kamishibai --version`** (`-v`) prints the installed version.
+- A figure's (and `morph`'s) text item takes **`mono: true`**, for code in a diagram.
+
+### Fixed
+
+- A kit reel in YAML reads merge keys (`<<: *anchor`).
+- Text that unquoted YAML read as a map (`say: - Note: it moves`) is reported with a hint to quote it.
+- Japanese text keeps a number with its counter (「4文字」), and a no-break space holds the words on either side together.
+- A chip keeps its label on one line; a row of chips with no room narrows instead of wrapping each label.
+- `kamishibai check` reports one word alone on a paragraph's last line as a widow, not only one or two characters.
+
+### Docs
+
+- How a part of your own gets its width (`measure`), and that `speed` works on `gpt-4o-mini-tts`.
 
 ## 0.9.0
 
