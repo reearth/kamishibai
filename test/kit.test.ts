@@ -15,6 +15,7 @@ import { loadYoga } from "../src/kit/layout.ts";
 import { Fonts } from "../src/kit/text.ts";
 import { mergeTheme, SIZE } from "../src/kit/theme.ts";
 import { itemPaint } from "../src/kit/items.ts";
+import { check } from "../src/kit/check.ts";
 import type { Ctx } from "../src/kit/parts.ts";
 import type { Bounds, Drawable } from "../src/kit/model.ts";
 import type { PartSpec, SceneSpec } from "../src/kit/spec.ts";
@@ -355,6 +356,18 @@ describe("filling the stage", () => {
     expect(wide.boxes.get("c")!.x + wide.boxes.get("c")!.w).toBeLessThanOrEqual(1920 - 96);
     const tall = await lay({ parts }, 1080, 1920);
     expect(tall.boxes.get("c")!.y).toBeGreaterThan(tall.boxes.get("a")!.y);
+  });
+});
+
+describe("check", () => {
+  const widows = (...texts: string[][]) => {
+    const ds = texts.map((lines, i) => ({ t: "text", id: `t${i}`, owner: `t${i}`, x: 200, y: 200 + i * 200, w: 800, h: 120, lines, font: "sans", size: 44, lh: 1.3, track: 0, color: "#111", align: "start", o: 1, need: 0 }) as Drawable);
+    const ks: Keyframe[] = [{ id: "s1", start: 0, ms: 1000, ds, cues: {} }];
+    return check(ks, { W: 1920, H: 1080 }, { top: 0, right: 0, bottom: 0, left: 0 }, mergeTheme(theme)).filter((i) => i.kind === "widow").map((i) => i.msg.split(" ")[0]);
+  };
+
+  it("finds a word or a character or two left alone on a last line", () => {
+    expect(widows(["Make every", "layer."], ["期限切れの判定が逆で", "す"], ["Server:", "nextDay"], ["Make every", "layer count"], ["It costs", "10"])).toEqual(["t0", "t1"]);
   });
 });
 

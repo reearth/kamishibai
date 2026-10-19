@@ -199,7 +199,7 @@ The layout already knows every box, so these are found with no frame drawn:
 - `overflow`: a word too long to break in the width it has, or text that spills out of what it sits on (a card, or a figure's filled rect).
 - `overlap`: two parts overlap.
 - `contrast`: text below WCAG contrast on what it sits on (3:1 for large text, 4.5:1 otherwise).
-- `widow`: one or two characters alone on a paragraph's last line.
+- `widow`: one or two characters, or one word, alone on a paragraph's last line.
 
 Each issue ends with what usually fixes it. It exits 1 when it finds anything. What it can't judge is whether the result looks good: look at the frames of each shape you render.
 

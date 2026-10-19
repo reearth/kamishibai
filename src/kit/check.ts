@@ -67,10 +67,11 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
       if (!inside(b, safe)) out.push({ scene: s, kind: "off-stage", msg: `${d.id} reaches outside the safe area (${box(b)}): use fewer words, set a width, or split the scene` });
       if (d.t !== "text") continue;
       if (d.need > d.w + 1) out.push({ scene: s, kind: "overflow", msg: `${d.id} needs ${Math.round(d.need)} but has ${Math.round(d.w)}: a word too long to break; shorten it, or give it more room (fewer parts beside it)` });
-      // One or two characters left alone on the last line of a paragraph.
+      // One or two characters, or one latin word after a line of several, left alone on the last line.
       const last = d.lines.at(-1) ?? "";
       const lastLen = [...last].length;
-      if (d.lines.length > 1 && lastLen > 0 && lastLen <= 2 && !/^\d+$/.test(last)) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
+      const loneWord = /^[\p{Script=Latin}\d'’.,!?:;)-]+$/u.test(last) && / /.test(d.lines.at(-2) ?? "");
+      if (d.lines.length > 1 && lastLen > 0 && !/^\d+$/.test(last) && (lastLen <= 2 || loneWord)) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
       const g = groundOf(k.ds, k.ds.indexOf(d));
       if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
       const bg = g?.fill ?? theme.paper;
