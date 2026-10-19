@@ -461,7 +461,7 @@ definePart<FigureSpec>("figure", {
   fields: {
     width: f.num("its units across", true),
     height: f.num("its units down", true),
-    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue', true),
+    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, mono?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue', true),
     caption: f.str("a small line under it"),
   },
   check: (s, at) => checkItems(s.items, `${at}.items`, ["cue"]),

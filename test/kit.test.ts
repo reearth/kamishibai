@@ -14,6 +14,7 @@ import { layoutScene, partBox, stageFrame } from "../src/kit/stage.ts";
 import { loadYoga } from "../src/kit/layout.ts";
 import { Fonts } from "../src/kit/text.ts";
 import { mergeTheme, SIZE } from "../src/kit/theme.ts";
+import { itemPaint } from "../src/kit/items.ts";
 import type { Ctx } from "../src/kit/parts.ts";
 import type { Bounds, Drawable } from "../src/kit/model.ts";
 import type { PartSpec, SceneSpec } from "../src/kit/spec.ts";
@@ -439,6 +440,13 @@ describe("morph", () => {
     g.fill = (() => (filled.push({ ...last, fill: String(g.fillStyle) }), fill())) as never;
     return { g, filled };
   };
+
+  it("sets a text item in the mono font when asked", () => {
+    const T = mergeTheme(theme);
+    const fonts = new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), T);
+    const font = (it: object) => (itemPaint({ text: "nextDay", pos: [0, 0], ...it }, { id: "t", o: 1 }, { x: 0, y: 0, k: 1 }, T, fonts) as { font: string }).font;
+    expect([font({}), font({ bold: true }), font({ mono: true })]).toEqual(["sans", "bold", "mono"]);
+  });
 
   it("moves an item kept under its id from one keyframe to the next", async () => {
     const env = await nodeEnv(".");

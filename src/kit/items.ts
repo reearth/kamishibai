@@ -27,11 +27,13 @@ export type FigureItem = {
   size?: number;
   color?: string;
   bold?: boolean;
+  /** set in the theme's mono font (code, identifiers) */
+  mono?: boolean;
   align?: "start" | "center" | "end";
 };
 
 const SHAPES = ["rect", "circle", "line", "text"] as const;
-const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "align"];
+const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "align"];
 const isNums = (v: unknown, n?: number) => Array.isArray(v) && (n === undefined || v.length === n) && v.every((x) => typeof x === "number" && isFinite(x));
 
 /** What is wrong with a list of items, each message led by `at`. `extra` names the fields this use adds (cue, delay). */
@@ -83,7 +85,7 @@ export function itemPaint(it: FigureItem, base: { id: string; o: number; enter?:
     return { ...base, t: "path", pts: it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]), stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none" };
   }
   const size = (it.size ?? SIZE.body) * k;
-  const font: FontRole = it.bold ? "bold" : "sans";
+  const font: FontRole = it.mono ? "mono" : it.bold ? "bold" : "sans";
   const lines = it.text!.split("\n");
   const w = Math.max(...lines.map((l) => fonts.measure(l, font, size)));
   const h = lines.length * size * 1.3;

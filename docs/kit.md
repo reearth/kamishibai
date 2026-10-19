@@ -114,7 +114,7 @@ A `figure` draws in its own units, `width` × `height`, and is fitted to the roo
     - { id: dot, circle: [600, 300, 20], fill: accent }
 ```
 
-Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `pos: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default) and `bold`. `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `lineWidth` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
+Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `pos: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default), and `bold` or `mono` (the theme's mono font, for code). `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `lineWidth` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
 
 `code` is the code itself, or a reference to a file next to the reel: `"src/coupon.ts#L44"` shows lines 43 to 45, and `"src/coupon.ts#L40-L48"` that range, with line numbers.
 
