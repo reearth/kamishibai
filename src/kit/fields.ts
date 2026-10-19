@@ -38,7 +38,9 @@ export function checkFields(o: Record<string, unknown>, fields: Fields, at: stri
       if (fd.required) out.push(`${at}: "${k}" is required${fd.doc ? ` (${fd.doc})` : ""}`);
       continue;
     }
-    const bad = (want: string) => out.push(`${at}.${k}: expected ${want}, got ${kindOf(v)} ${short(v)}`);
+    // Unquoted YAML text with ": " in it is read as a map; say how to keep it text.
+    const quote = (fd.kind === "string" || fd.kind === "strings" || fd.kind === "text") && hasMap(v) ? ' (YAML reads "a: b" as a map: put the text in quotes)' : "";
+    const bad = (want: string) => out.push(`${at}.${k}: expected ${want}, got ${kindOf(v)} ${short(v)}${quote}`);
     switch (fd.kind) {
       case "string":
         if (typeof v !== "string") bad("a string");
@@ -78,6 +80,8 @@ export function checkFields(o: Record<string, unknown>, fields: Fields, at: stri
   }
   return out;
 }
+
+const hasMap = (v: unknown): boolean => kindOf(v) === "object" || (Array.isArray(v) && v.some((x) => kindOf(x) === "object"));
 
 function short(v: unknown): string {
   const s = typeof v === "function" ? "function" : JSON.stringify(v) ?? String(v);

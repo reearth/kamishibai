@@ -49,6 +49,12 @@ describe("normalize", () => {
     expect(s2!.parts.map((p) => p.id)).toEqual(["title", "card", "card.2"]);
   });
 
+  it("says to quote text that YAML read as a map", () => {
+    // say: ["Note: it moves"] unquoted in YAML
+    const ps = problems({ kit: 1, scenes: [{ say: [{ Note: "it moves" }], parts: [{ type: "title", text: "T" }] }] });
+    expect(ps).toEqual([expect.stringMatching(/^scenes\[0\]\.say: expected a string or a list of strings, got array .* \(YAML reads "a: b" as a map: put the text in quotes\)$/)]);
+  });
+
   it("names every problem with its place, and suggests what a typo meant", () => {
     const ps = problems({
       kit: 1,
