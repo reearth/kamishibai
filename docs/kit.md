@@ -64,6 +64,7 @@ The reel's fields:
 | `lexicon` | Readings for the voice only; captions keep the text. |
 | `music` | A track under the whole reel, `{ src, gain?, duck? }`: looped, faded out at the end, and lowered while the voice speaks unless `duck: false`. |
 | `captions` | Captions from each scene's `say`: `true` (the default) for a subtitle track and an `.srt` next to the video, `burn` to draw them into the picture (light on a dark box, in the room kept at the foot), or `false`. |
+| `captionRoom` | `false` gives the room kept at the foot for the captions to the parts, so they fill more of the stage; the captions then sit over them. For a reel whose captions are often off, or are a player's own. Default `true` when there are captions. |
 | `scenes` | The scenes, in order. |
 
 ## Scenes

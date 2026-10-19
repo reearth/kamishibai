@@ -128,5 +128,7 @@ export type KitReelSpec = {
   music?: { src: string; gain?: number; duck?: boolean };
   /** captions from each scene's `say`: a subtitle track (true, the default), drawn into the picture ("burn"), or none */
   captions?: boolean | "burn";
+  /** keep room at the foot of the stage for the captions (default true when there are captions); false lets the parts use it, and a player's captions cover them */
+  captionRoom?: boolean;
   scenes: SceneSpec[];
 };

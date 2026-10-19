@@ -130,7 +130,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     }
     const ctx: Ctx = {
       stage,
-      frame: stageFrame(stage, insets, !!captions),
+      frame: stageFrame(stage, insets, !!captions && spec.captionRoom !== false),
       fonts,
       theme,
       readText: (p) => env.readText(p),

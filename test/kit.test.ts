@@ -313,6 +313,20 @@ describe("transitions and the camera", () => {
     expect(middle(reel.meta.durationMs - 100)).toEqual([255, 0, 0]);
   });
 
+  it("gives the captions' room at the foot to the parts with captionRoom: false", async () => {
+    const fig = { type: "figure", width: 1600, height: 900, items: [{ rect: [0, 0, 1600, 900], fill: "#f00" }] };
+    const at = async (captionRoom: boolean, y: number) => {
+      const reel = await kit({ kit: 1, fonts, theme, captionRoom, scenes: [{ ms: 2000, parts: [fig] }] });
+      const view = resolveView(reel.meta);
+      const paint = await reel.setup(view, await nodeEnv("."));
+      const c = createCanvas(view.width, view.height);
+      paint(patchContext(c.getContext("2d") as unknown as Context2D), 1900);
+      return [...c.getContext("2d").getImageData(view.width / 2, y, 1, 1).data].slice(0, 3);
+    };
+    expect(await at(true, 900)).not.toEqual([255, 0, 0]);
+    expect(await at(false, 900)).toEqual([255, 0, 0]);
+  });
+
   it("checks where the camera goes and how a scene comes in", () => {
     const sc = (more: object) => ({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", id: "word", text: "x" }], ...more }] });
     expect(problems(sc({ focus: "wrod" }))).toEqual(['scenes[0].focus: no part "wrod" in this scene (did you mean "word"?)']);

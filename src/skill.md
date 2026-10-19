@@ -425,7 +425,9 @@ scenes:
   400 ms into a scene, 250 ms between sentences, the scene holds 700 ms after
   (2.5 s at least); `ms: 4000` holds a scene that long instead.
 - `captions: burn` draws them into the picture (needed for social video and
-  gifs); `true` (default) is a subtitle track + `.srt`; `false` none.
+  gifs); `true` (default) is a subtitle track + `.srt`; `false` none. The
+  foot of the stage is kept for them; `captionRoom: false` gives it to the
+  parts (the captions then sit over them).
 - `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
   `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
   { sans, mono }`, `weights: { body, bold, black }`. Dark: paper `#0b0f1a`,

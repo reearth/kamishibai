@@ -41,6 +41,7 @@ export const REEL_FIELDS: Fields = {
   lexicon: f.obj("reading substitutions for the voice only"),
   music: f.obj("a track under the whole reel: { src, gain?, duck? }"),
   captions: f.any('captions from each scene\'s say: true (a subtitle track, the default), "burn" (drawn into the picture) or false'),
+  captionRoom: f.bool("keep room at the foot for the captions (default true when there are captions); false gives it to the parts"),
   scenes: f.any("the scenes, in order", true),
 };
 
