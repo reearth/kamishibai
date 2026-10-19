@@ -12,7 +12,7 @@ can contain breaking changes, and they are called out under **Changed**.
 - A figure's (and `morph`'s) text item takes **`mono: true`**, for code in a diagram.
 - **`kamishibai check` finds characters no font has** (`glyph`), which would draw as an empty box, such as ✗ or ↻ missing from a CJK font.
 - **`captionRoom: false`** gives the room a kit reel keeps at the foot for captions to the parts, so they fill more of the stage and the captions sit over them.
-- **A figure's item can move within its scene**: `then: [{ cue: 1, circle: [600, 300, 20] }, …]` lists what it becomes at each sentence (its shape's field, `pos`, colours, sizes, `text`), and it moves there over `ms` (750 by default). A dot can travel along a route, a bar can grow, and a number can count while the narration goes on, without a new scene for each. In `morph`, a step takes `delay` instead of `cue`.
+- **A figure's item can move within its scene**: `then: [{ cue: 1, circle: [600, 300, 20] }, …]` lists what it becomes at each sentence, `delay` ms after it starts (its shape's field, `pos`, colours, sizes, `text`), and it moves there over `ms` (750 by default). A dot can travel along a route, a bar can grow, and a number can count while the narration goes on, without a new scene for each. In `morph`, a step takes `delay` instead of `cue`.
 - **A scene says where its parts sit and how large they grow.** `place: left | right | top | bottom` puts the parts under the heading at that edge of their room (default `center`), and `fill: max` grows them as large as the room allows instead of up to 1.6× and 90% of it.
 - **`focus` can aim at an item inside a figure**, by the figure's id and the item's (`focus: map.gate`), so a diagram drawn as one figure can be looked at a piece at a time.
 

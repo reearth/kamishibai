@@ -36,9 +36,9 @@ export type FigureItem = {
 
 /**
  * A later form of an item: the fields it changes (its shape's own field, pos,
- * colours, sizes), and when. In a figure `cue` is the sentence it moves with;
- * in morph `delay` is ms after the keyframe starts. `ms` is how long the move
- * takes (default 750).
+ * colours, sizes), and when. In a figure it moves `delay` ms (default 0) after
+ * sentence `cue` (default 0) starts; in morph, `delay` ms after the keyframe
+ * starts. `ms` is how long the move takes (default 750).
  */
 export type ItemStep = Partial<Pick<FigureItem, "rect" | "circle" | "line" | "text" | "pos" | "fill" | "stroke" | "lineWidth" | "r" | "size" | "color">> & { cue?: number; delay?: number; ms?: number };
 
@@ -73,21 +73,25 @@ export function checkItems(items: unknown, at: string, extra: readonly string[])
 /** What is wrong with an item's steps: each keeps its shape, and says when. */
 function checkSteps(it: Record<string, unknown>, kind: (typeof SHAPES)[number], at: string, extra: readonly string[]): string[] {
   if (!Array.isArray(it.then)) return [`${at}: expected a list of steps ({ ${extra.includes("cue") ? "cue" : "delay"}, …the fields that change })`];
-  const when = extra.includes("cue") ? "cue" : "delay";
-  const keys = [...STEP_KEYS, when];
+  const figure = extra.includes("cue");
+  const keys = [...STEP_KEYS, ...(figure ? ["cue", "delay"] : ["delay"])];
   const out: string[] = [];
-  let last = -1;
+  let last: [number, number] = [-1, -1];
   it.then.forEach((st: Record<string, unknown>, j: number) => {
     const where = `${at}[${j}]`;
-    if (!st || typeof st !== "object") return void out.push(`${where}: expected a step ({ ${when}, …the fields that change })`);
+    if (!st || typeof st !== "object") return void out.push(`${where}: expected a step ({ ${figure ? "cue, delay?" : "delay"}, …the fields that change })`);
     const unknown = Object.keys(st).filter((k) => !keys.includes(k));
     if (unknown.length) out.push(`${where}: unknown field${unknown.length === 1 ? "" : "s"} ${unknown.map((k) => `"${k}"`).join(", ")}; a step takes ${keys.join(", ")}`);
     const other = SHAPES.filter((k) => k !== kind && st[k] !== undefined);
     if (other.length) out.push(`${where}: a ${kind} stays a ${kind}, so its step can't give ${other.join(" or ")}`);
-    const t = st[when];
-    if (typeof t !== "number" || !(t >= 0)) out.push(`${where}.${when}: expected ${when === "cue" ? "a sentence number" : "ms after the keyframe starts"}`);
-    else if (t <= last) out.push(`${where}.${when}: steps go in order, so this must be after ${last}`);
-    else last = t;
+    const cue = (st.cue ?? 0) as number;
+    const delay = (st.delay ?? 0) as number;
+    if (figure && !(typeof cue === "number" && Number.isInteger(cue) && cue >= 0)) out.push(`${where}.cue: expected a sentence number`);
+    else if (!(typeof delay === "number" && delay >= 0)) out.push(`${where}.delay: expected ms after ${figure ? "its sentence" : "the keyframe"} starts`);
+    else if (figure && st.cue === undefined && st.delay === undefined) out.push(`${where}: say when, with cue (a sentence) or delay (ms after the scene starts)`);
+    else if (!figure && st.delay === undefined) out.push(`${where}: say when, with delay (ms after the keyframe starts)`);
+    else if (cue < last[0] || (cue === last[0] && delay <= last[1])) out.push(`${where}: steps go in order, so this must come after the step before (${figure ? `cue ${last[0]}, ` : ""}delay ${last[1]})`);
+    else last = [cue, delay];
     if (st.ms !== undefined && !(typeof st.ms === "number" && st.ms >= 0)) out.push(`${where}.ms: expected ms`);
     if (st.rect !== undefined && !isNums(st.rect, 4)) out.push(`${where}.rect: expected [x, y, w, h]`);
     if (st.circle !== undefined && !isNums(st.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
@@ -104,7 +108,7 @@ export function itemSteps(it: FigureItem, base: { id: string; o: number; enter?:
   return (it.then ?? []).map((st) => {
     const { cue, delay, ms, ...change } = st;
     form = { ...form, ...change };
-    return { ...(cue !== undefined ? { cue } : { at: delay ?? 0 }), ms, d: itemPaint(form, base, at, T, fonts) as Drawable };
+    return { ...(cue !== undefined ? { cue } : {}), at: delay ?? 0, ms, d: itemPaint(form, base, at, T, fonts) as Drawable };
   });
 }
 

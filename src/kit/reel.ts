@@ -152,8 +152,8 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const boxes = new Map<string, Bounds>();
       const ds = layoutScene(s, ctx, boxes);
       const at = (n: number) => (n && t.say[n] ? t.say[n]!.atMs - t.start : 0);
-      // Steps move with their sentence.
-      for (const d of ds) if (d.steps) d.steps = d.steps.map((st) => (st.cue !== undefined ? { ...st, at: at(st.cue) } : st));
+      // Steps move with their sentence, and `at` holds their delay after it.
+      for (const d of ds) if (d.steps) d.steps = d.steps.map((st) => (st.cue !== undefined ? { ...st, at: at(st.cue) + (st.at ?? 0) } : st));
       // A part has its box; a thing inside one (a figure's item) has only its drawable.
       const target = (on: string) => boxes.get(on) ?? bbox(ds.find((d) => d.id === on)!);
       const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(target(fc.on), fc.zoom, stage, fr, anchor) }));

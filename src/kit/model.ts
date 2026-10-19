@@ -22,8 +22,8 @@ type Base = {
 
 /**
  * A later form of a drawable within its scene: from `at` ms after the scene
- * starts (or, before the reel times it, the sentence `cue`), it moves to `d`
- * over `ms`.
+ * starts, it moves to `d` over `ms`. Before the reel times it, `cue` names
+ * the sentence and `at` the delay after it.
  */
 export type Step = { at?: number; cue?: number; ms?: number; d: Drawable };
 

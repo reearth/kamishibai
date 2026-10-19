@@ -348,9 +348,11 @@ describe("transitions and the camera", () => {
   it("checks an item's steps", () => {
     const sc = (then: unknown) => ({ kit: 1, scenes: [{ say: "One. Two.", parts: [{ type: "figure", width: 100, height: 100, items: [{ id: "a", rect: [0, 0, 10, 10], then }] }] }] });
     expect(problems(sc([{ cue: 1, circle: [5, 5, 5] }]))).toEqual([expect.stringMatching(/then\[0\]: a rect stays a rect, so its step can't give circle$/)]);
-    expect(problems(sc([{ cue: 1, rect: [1, 1, 1, 1] }, { cue: 1, fill: "red" }]))).toEqual([expect.stringMatching(/then\[1\]\.cue: steps go in order, so this must be after 1$/)]);
+    expect(problems(sc([{ cue: 1, rect: [1, 1, 1, 1] }, { cue: 1, fill: "red" }]))).toEqual([expect.stringMatching(/then\[1\]: steps go in order, so this must come after the step before \(cue 1, delay 0\)$/)]);
     expect(problems(sc([{ cue: 3, rect: [1, 1, 1, 1] }]))).toEqual([expect.stringMatching(/figure\.a moves at cue 3, which is not a sentence of this scene's say \(it has 2\)$/)]);
-    expect(problems(sc([{ rect: [1, 1, 1, 1] }]))).toEqual([expect.stringMatching(/then\[0\]\.cue: expected a sentence number$/)]);
+    expect(problems(sc([{ rect: [1, 1, 1, 1] }]))).toEqual([expect.stringMatching(/then\[0\]: say when, with cue \(a sentence\) or delay \(ms after the scene starts\)$/)]);
+    // Two moves in one sentence: the second a delay after it.
+    expect(problems(sc([{ cue: 1, rect: [1, 1, 1, 1] }, { cue: 1, delay: 800, fill: "red" }]))).toEqual([]);
   });
 
   it("checks where the camera goes and how a scene comes in", () => {

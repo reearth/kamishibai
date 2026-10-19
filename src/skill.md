@@ -420,7 +420,8 @@ scenes:
   ids across scenes, so a diagram can change shape; an item can have a `cue`.
   Within a scene an item moves by `then: [{ cue: 1, circle: [600, 300, 20] },
   …]`: each step gives the fields that change (same shape; `ms` for the
-  move, 750 default) at its sentence; the next scene starts from the last.
+  move, 750 default) at its sentence `cue`, plus `delay` ms after it; the
+  next scene starts from the last.
 - `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
 - `voice: { provider: say, voice: Samantha }` (macOS), `{ provider: kokoro,
   voice: af_heart }`, or `openai` / `gemini` / `google` / `elevenlabs` /
