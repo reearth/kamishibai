@@ -18,6 +18,8 @@ export default defineConfig({
     "canvas-worker": "src/canvas/worker.ts",
     // Keyframe reels from a kit of parts (kamishibai/kit), in code, JSON or YAML.
     kit: "src/kit/index.ts",
+    // The guide `kamishibai skill` prints, for a program (kamishibai/skill).
+    skill: "src/skill-guide.ts",
     // What `kamishibai export` bundles into a page's file: the player, and
     // the module that serves the page its recorded files.
     player: "src/player.ts",

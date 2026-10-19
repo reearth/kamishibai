@@ -96,6 +96,8 @@ Or pipe the guide straight into your agent's context yourself:
 kamishibai skill all > kamishibai.md
 ```
 
+A program that runs an agent can take the same text from `kamishibai/skill` ([library](https://github.com/reearth/kamishibai/blob/main/docs/library.md#the-guide-for-an-agent)).
+
 ---
 
 ## How it works

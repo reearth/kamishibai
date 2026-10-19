@@ -16,3 +16,18 @@ await render({
 ```
 
 `render` is just `capture` then `assemble`, and both are exported: `capture({ entry, framesDir })` captures frames (+ manifest + mux sidecar) without encoding, and `encode({ framesDir, out })` re-assembles a kept frames dir into a video without re-capturing (the programmatic forms of the [subcommands](cli.md#splitting-a-render-capture--encode)). Lower-level building blocks (`probeMeta`, `captureChunk`, `renderPool`, `serveEntry`, `encodeFrames`, `muxAudio`, `assemble`, `splitFrames`) are exported too if you want to assemble your own pipeline.
+
+## The guide for an agent
+
+`kamishibai/skill` gives a program the guide `kamishibai skill` prints, for an agent it runs itself: in a system prompt, or as a tool's result.
+
+```ts
+import { skill, skillTopics } from "kamishibai/skill";
+
+skill();                  // the core, with the list of topics
+skill(["audio", "kit"]);  // those topics
+skill(["all"]);           // the whole guide
+skillTopics();            // [{ name: "audio", summary: "…" }, …]
+```
+
+It is the installed version's guide, as the CLI's is, and `skill` throws on a topic that does not exist.

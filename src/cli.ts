@@ -20,8 +20,6 @@ import { exportHtml } from "./canvas/export.ts";
 import { dev, CC_MODES, type CcMode } from "./dev/server.ts";
 import { loadTTSAdapters } from "./tts/load.ts";
 import { parseAspect, parseInsets } from "./canvas/types.ts";
-import SKILL from "./skill.md";
-import { skillText } from "./skill.ts";
 
 const HELP = `kamishibai — turn a reel into a video: a web page seeked frame by frame
 in Chrome, or a canvas reel painted with no browser. Or into one HTML file.
@@ -286,9 +284,8 @@ async function main(): Promise<void> {
   // context: the core and a topic list, or the named topics, or `all`.
   if (command === "skill" || command === "skills") {
     try {
-      // The kit topic carries the field reference, made from the fields themselves.
-      const { kitBrief } = await import("./kit/schema.ts");
-      process.stdout.write(skillText(SKILL, positionals.slice(1), { "kit-fields": "```\n" + kitBrief() + "```" }));
+      const { skill } = await import("./skill-guide.ts");
+      process.stdout.write(skill(positionals.slice(1)));
     } catch (e) {
       console.error((e as Error).message);
       process.exit(1);

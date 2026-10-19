@@ -76,3 +76,16 @@ describe("parseSkill", () => {
     expect(() => skillText(md, ["nope"])).toThrow('unknown skill topic "nope". Topics: extra, all');
   });
 });
+
+describe("kamishibai/skill", () => {
+  it("gives a program what the CLI prints", async () => {
+    const { skill, skillTopics } = await import("../src/skill-guide.ts");
+    expect(skill()).toBe(parseSkill(GUIDE).core);
+    const topics = skillTopics();
+    expect(topics.map((t) => t.name)).toContain("kit");
+    for (const t of topics) expect(skill()).toContain(`kamishibai skill ${t.name}`);
+    expect(skill(["kit"])).not.toContain("(kit-fields left out)");
+    expect(skill(["all"]).length).toBeGreaterThan(skill().length);
+    expect(() => skill(["nope"])).toThrow(/unknown skill topic "nope"/);
+  });
+});

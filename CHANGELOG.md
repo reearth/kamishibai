@@ -18,6 +18,7 @@ can contain breaking changes, and they are called out under **Changed**.
 - **`morph` (`kamishibai/kit`): the kit's motion in a canvas reel.** A canvas reel's painter draws keyframes of items it places itself, at times it chooses: an item that keeps its id moves to its next place, one that is gone fades out, and a new one comes in with its verb. The items are a figure's (`rect`, `circle`, `line`, `text`), with `delay` in place of a cue, and a keyframe can come in by any of the kit's transitions. `check()` finds items off the area, spilling text and weak contrast with no frame drawn.
 - **`kamishibai check <entry>`** lays a kit reel out for each shape it allows and lists what is off the stage, overflowing, overlapping, low in contrast or left alone on a line, with no frame drawn (`--json` for a program; exit 1 on any). **`kamishibai schema`** prints the JSON Schema of a kit reel, and `--brief` every field, a line per part and shape (the kit topic of the guide includes it). Each issue `check` lists ends with what usually fixes it.
 - **`play(reel, el, options)`** from `kamishibai/canvas` plays a canvas reel in any element, laid out for its shape, and returns a handle (`play`, `pause`, `seek`, …) a page can drive.
+- **`kamishibai/skill`** gives a program the guide `kamishibai skill` prints: `skill(topics?)` returns the core, the named topics or `["all"]`, and `skillTopics()` lists the topics. See [docs/library.md](docs/library.md#the-guide-for-an-agent).
 
 ### Docs
 

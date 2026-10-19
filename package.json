@@ -61,6 +61,10 @@
     "./kit": {
       "types": "./dist/kit.d.ts",
       "import": "./dist/kit.js"
+    },
+    "./skill": {
+      "types": "./dist/skill.d.ts",
+      "import": "./dist/skill.js"
     }
   },
   "files": [
