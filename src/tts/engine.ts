@@ -170,8 +170,8 @@ async function openaiSpeech(
     input: text,
     response_format: "mp3",
   };
-  // `speed` works on tts-1/tts-1-hd and Kokoro; gpt-4o-mini-tts takes
-  // `instructions` (e.g. pace/tone) instead. Both are passed straight through.
+  // `speed` sets the rate (OpenAI's models and Kokoro); gpt-4o-mini-tts also
+  // takes `instructions` (pace, tone). Both are passed straight through.
   if (opts.speed != null) body.speed = opts.speed;
   if (opts.instructions != null) body.instructions = opts.instructions;
   const headers: Record<string, string> = { "content-type": "application/json" };

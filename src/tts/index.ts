@@ -139,8 +139,7 @@ export function kokoroAdapter(opts: {
 export function openaiAdapter(opts: {
   model?: string;
   voice?: string;
-  /** playback rate 0.25–4.0 for tts-1 / tts-1-hd (gpt-4o-mini-tts ignores it —
-   *  steer its pace with `instructions`); passed straight through */
+  /** playback rate 0.25–4.0 (tts-1, tts-1-hd and gpt-4o-mini-tts); passed straight through */
   speed?: number;
   /** voice/style direction, e.g. pace or tone (gpt-4o-mini-tts) */
   instructions?: string;
