@@ -12,6 +12,7 @@ can contain breaking changes, and they are called out under **Changed**.
 - A figure's (and `morph`'s) text item takes **`mono: true`**, for code in a diagram.
 - **`kamishibai check` finds characters no font has** (`glyph`), which would draw as an empty box, such as ✗ or ↻ missing from a CJK font.
 - **`captionRoom: false`** gives the room a kit reel keeps at the foot for captions to the parts, so they fill more of the stage and the captions sit over them.
+- **A figure's item can move within its scene**: `then: [{ cue: 1, circle: [600, 300, 20] }, …]` lists what it becomes at each sentence (its shape's field, `pos`, colours, sizes, `text`), and it moves there over `ms` (750 by default). A dot can travel along a route, a bar can grow, and a number can count while the narration goes on, without a new scene for each. In `morph`, a step takes `delay` instead of `cue`.
 - **`focus` can aim at an item inside a figure**, by the figure's id and the item's (`focus: map.gate`), so a diagram drawn as one figure can be looked at a piece at a time.
 
 - **TTS asks each provider for a few lines at a time, and asks again after a dropped connection.** At most 4 at once (2 for `say` and Kokoro, which share the machine with the render), set for all with `KAMISHIBAI_TTS_CONCURRENCY` or per adapter with `concurrency`. A dropped connection, a 429 or a 5xx is retried twice, after 1 s and 2 s. Before, every line went out at once, which could stall a local Kokoro, and one dropped connection failed its line.

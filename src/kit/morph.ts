@@ -8,7 +8,7 @@ import { fnv1a64 } from "../fingerprint.ts";
 import { check, type Issue } from "./check.ts";
 import { drawLayers } from "./draw.ts";
 import { layersAt, type Keyframe } from "./engine.ts";
-import { checkItems, itemPaint, type FigureItem } from "./items.ts";
+import { checkItems, itemPaint, itemSteps, type FigureItem } from "./items.ts";
 import type { Drawable } from "./model.ts";
 import { KitSpecError } from "./normalize.ts";
 import type { Transition } from "./spec.ts";
@@ -71,7 +71,8 @@ export function morph(frames: MorphFrame[], o: MorphOptions): Morph {
       // Items come in together, but for one with a delay, which takes its own turn.
       if (it.delay !== undefined) cues[id] = it.delay;
       const base = { id, o: 1, enter: it.enter, ...(it.delay !== undefined ? { turn: id } : {}) };
-      return { ...itemPaint(it, base, place, theme, fonts), owner: "items" } as Drawable;
+      const d = { ...itemPaint(it, base, place, theme, fonts), owner: "items" } as Drawable;
+      return it.then ? { ...d, steps: itemSteps(it, base, place, theme, fonts) } : d;
     });
     const next = frames[i + 1];
     return { id: `frames[${i}]`, start: fr.at, ms: next ? next.at - fr.at : Infinity, ds: [...paper, ...ds], cues, transition: fr.transition };

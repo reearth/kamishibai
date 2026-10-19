@@ -63,7 +63,9 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
   for (const k of ks) {
     const s = k.id;
     const ds = k.ds.filter((d) => d.id !== "stage");
-    for (const d of ds) {
+    // Each form a drawable takes in its scene: as it comes in, and after each step.
+    const forms = ds.flatMap((d) => [d, ...(d.steps?.map((st) => ({ ...st.d, id: d.id, owner: d.owner }) as Drawable) ?? [])]);
+    for (const d of forms) {
       const b = bbox(d);
       if (!inside(b, safe)) out.push({ scene: s, kind: "off-stage", msg: `${d.id} reaches outside the safe area (${box(b)}): use fewer words, set a width, or split the scene` });
       if (d.t !== "text") continue;
@@ -73,7 +75,7 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
       const lastLen = [...last].length;
       const loneWord = /^[\p{Script=Latin}\d'’.,!?:;)-]+$/u.test(last) && / /.test(d.lines.at(-2) ?? "");
       if (d.lines.length > 1 && lastLen > 0 && !/^\d+$/.test(last) && (lastLen <= 2 || loneWord)) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
-      const g = groundOf(k.ds, k.ds.indexOf(d));
+      const g = groundOf(k.ds, k.ds.findIndex((x) => x.id === d.id));
       if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
       const bg = g?.fill ?? theme.paper;
       const need = d.size >= 40 || (d.size >= 30 && d.font !== "sans") ? 3 : 4.5;
@@ -83,7 +85,7 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
 
     // Overlaps between different parts, each by its outer box.
     const parts = new Map<string, Bounds>();
-    for (const d of ds) {
+    for (const d of forms) {
       const b = bbox(d);
       const p = parts.get(d.owner);
       if (!p) parts.set(d.owner, b);

@@ -7,7 +7,7 @@ import { intrinsic, layout, type Box, type Paint, type Rect } from "./layout.ts"
 import { f, type Fields } from "./fields.ts";
 import { SIZE, type FontRole, type Theme } from "./theme.ts";
 import type { Fonts } from "./text.ts";
-import { checkItems, itemPaint, type FigureItem } from "./items.ts";
+import { checkItems, itemPaint, itemSteps, type FigureItem } from "./items.ts";
 import type {
   ArrowSpec,
   CardSpec,
@@ -62,6 +62,8 @@ export interface PartDef<S = Record<string, unknown>> {
   children?(spec: Placed<S>): PartSpec[];
   /** ids of things inside it that `focus` may aim at (a figure's items) */
   targets?(spec: Placed<S>): string[];
+  /** sentences that things inside it move with later in the scene (a figure's item steps), as [what, sentence], to check */
+  stepCues?(spec: S): Array<[string, number]>;
   /** cues of things inside it (a figure's items), as [turn, sentence] */
   cues?(spec: S): Array<[string, number]>;
   /** problems beyond its fields' kinds, each led by `at` */
@@ -465,11 +467,12 @@ definePart<FigureSpec>("figure", {
   fields: {
     width: f.num("its units across", true),
     height: f.num("its units down", true),
-    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, mono?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue', true),
+    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, mono?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue, then: [{ cue, ms?, …the fields that change }]', true),
     caption: f.str("a small line under it"),
   },
   check: (s, at) => checkItems(s.items, `${at}.items`, ["cue"]),
   cues: (s) => (Array.isArray(s.items) ? s.items.flatMap((it, i) => (typeof it?.cue === "number" ? [[itemId(s, it, i), it.cue] as [string, number]] : [])) : []),
+  stepCues: (s) => (Array.isArray(s.items) ? s.items.flatMap((it, i) => (Array.isArray(it?.then) ? it.then.flatMap((st) => (typeof st?.cue === "number" ? [[itemId(s, it, i), st.cue] as [string, number]] : [])) : [])) : []),
   targets: (s) => (Array.isArray(s.items) ? s.items.flatMap((it, i) => (typeof it?.id === "string" ? [itemId(s, it, i)] : [])) : []),
   box: (s, ctx) => {
     const T = ctx.theme;
@@ -484,7 +487,12 @@ definePart<FigureSpec>("figure", {
       paint: (r) => {
         const k = r.w / s.width;
         // An item with a cue comes in on its own turn; the rest with the figure.
-        return s.items.map((it, i) => itemPaint(it, { id: itemId(s, it, i), ...(it.cue ? { turn: itemId(s, it, i) } : {}), o: 1, enter: it.enter }, { x: r.x, y: r.y, k }, T, ctx.fonts));
+        return s.items.map((it, i) => {
+          const base = { id: itemId(s, it, i), ...(it.cue ? { turn: itemId(s, it, i) } : {}), o: 1, enter: it.enter };
+          const place = { x: r.x, y: r.y, k };
+          const d = itemPaint(it, base, place, T, ctx.fonts);
+          return it.then ? ({ ...d, steps: itemSteps(it, base, place, T, ctx.fonts) } as Paint) : d;
+        });
       },
     };
     if (!s.caption) return pic;

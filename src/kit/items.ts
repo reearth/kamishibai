@@ -3,7 +3,7 @@
 // either way the same id in the next keyframe moves the item there.
 // ------------------------------------------------------------------
 import type { Paint } from "./layout.ts";
-import type { Verb } from "./model.ts";
+import type { Drawable, Step, Verb } from "./model.ts";
 import type { Fonts } from "./text.ts";
 import { SIZE, type FontRole, type Theme } from "./theme.ts";
 
@@ -30,10 +30,21 @@ export type FigureItem = {
   /** set in the theme's mono font (code, identifiers) */
   mono?: boolean;
   align?: "start" | "center" | "end";
+  /** what it becomes later in the scene, in order: it moves from each form to the next */
+  then?: ItemStep[];
 };
 
+/**
+ * A later form of an item: the fields it changes (its shape's own field, pos,
+ * colours, sizes), and when. In a figure `cue` is the sentence it moves with;
+ * in morph `delay` is ms after the keyframe starts. `ms` is how long the move
+ * takes (default 750).
+ */
+export type ItemStep = Partial<Pick<FigureItem, "rect" | "circle" | "line" | "text" | "pos" | "fill" | "stroke" | "lineWidth" | "r" | "size" | "color">> & { cue?: number; delay?: number; ms?: number };
+
 const SHAPES = ["rect", "circle", "line", "text"] as const;
-const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "align"];
+const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "align", "then"];
+const STEP_KEYS = [...SHAPES, "pos", "fill", "stroke", "lineWidth", "r", "size", "color", "ms"];
 const isNums = (v: unknown, n?: number) => Array.isArray(v) && (n === undefined || v.length === n) && v.every((x) => typeof x === "number" && isFinite(x));
 
 /** What is wrong with a list of items, each message led by `at`. `extra` names the fields this use adds (cue, delay). */
@@ -52,10 +63,49 @@ export function checkItems(items: unknown, at: string, extra: readonly string[])
     if (it.circle !== undefined && !isNums(it.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
     if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p: unknown) => isNums(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
     if (it.text !== undefined && (typeof it.text !== "string" || !isNums(it.pos, 2))) out.push(`${where}: a text needs text and pos: [x, y]`);
+    if (it.then !== undefined) out.push(...checkSteps(it, kinds[0]!, `${where}.then`, extra));
   });
   const ids = items.map((it, i) => (it && typeof it === "object" ? (it.id ?? String(i)) : String(i)));
   for (const id of new Set(ids.filter((x, i) => ids.indexOf(x) !== i))) out.push(`${at}: the id "${id}" is used twice`);
   return out;
+}
+
+/** What is wrong with an item's steps: each keeps its shape, and says when. */
+function checkSteps(it: Record<string, unknown>, kind: (typeof SHAPES)[number], at: string, extra: readonly string[]): string[] {
+  if (!Array.isArray(it.then)) return [`${at}: expected a list of steps ({ ${extra.includes("cue") ? "cue" : "delay"}, …the fields that change })`];
+  const when = extra.includes("cue") ? "cue" : "delay";
+  const keys = [...STEP_KEYS, when];
+  const out: string[] = [];
+  let last = -1;
+  it.then.forEach((st: Record<string, unknown>, j: number) => {
+    const where = `${at}[${j}]`;
+    if (!st || typeof st !== "object") return void out.push(`${where}: expected a step ({ ${when}, …the fields that change })`);
+    const unknown = Object.keys(st).filter((k) => !keys.includes(k));
+    if (unknown.length) out.push(`${where}: unknown field${unknown.length === 1 ? "" : "s"} ${unknown.map((k) => `"${k}"`).join(", ")}; a step takes ${keys.join(", ")}`);
+    const other = SHAPES.filter((k) => k !== kind && st[k] !== undefined);
+    if (other.length) out.push(`${where}: a ${kind} stays a ${kind}, so its step can't give ${other.join(" or ")}`);
+    const t = st[when];
+    if (typeof t !== "number" || !(t >= 0)) out.push(`${where}.${when}: expected ${when === "cue" ? "a sentence number" : "ms after the keyframe starts"}`);
+    else if (t <= last) out.push(`${where}.${when}: steps go in order, so this must be after ${last}`);
+    else last = t;
+    if (st.ms !== undefined && !(typeof st.ms === "number" && st.ms >= 0)) out.push(`${where}.ms: expected ms`);
+    if (st.rect !== undefined && !isNums(st.rect, 4)) out.push(`${where}.rect: expected [x, y, w, h]`);
+    if (st.circle !== undefined && !isNums(st.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
+    if (st.line !== undefined && (!Array.isArray(st.line) || st.line.length !== (it.line as unknown[] | undefined)?.length || !st.line.every((p: unknown) => isNums(p, 2)))) out.push(`${where}.line: expected as many points as the line has (${(it.line as unknown[] | undefined)?.length ?? 0})`);
+    if (st.pos !== undefined && !isNums(st.pos, 2)) out.push(`${where}.pos: expected [x, y]`);
+    if (st.text !== undefined && typeof st.text !== "string") out.push(`${where}.text: expected a string`);
+  });
+  return out;
+}
+
+/** An item's steps as drawables, each laid over the item's form before it. */
+export function itemSteps(it: FigureItem, base: { id: string; o: number; enter?: Verb; turn?: string }, at: Place, T: Theme, fonts: Fonts): Step[] {
+  let form: FigureItem = it;
+  return (it.then ?? []).map((st) => {
+    const { cue, delay, ms, ...change } = st;
+    form = { ...form, ...change };
+    return { ...(cue !== undefined ? { cue } : { at: delay ?? 0 }), ms, d: itemPaint(form, base, at, T, fonts) as Drawable };
+  });
 }
 
 /** A theme colour by name (accent, ink, ink3, card…), or a CSS colour as it is. */

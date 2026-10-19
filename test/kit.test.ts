@@ -327,6 +327,32 @@ describe("transitions and the camera", () => {
     expect(await at(false, 900)).toEqual([255, 0, 0]);
   });
 
+  it("moves a figure's item within its scene, with each sentence of its steps", async () => {
+    // A red bar that grows across the figure as the second sentence starts.
+    const fig = { type: "figure", width: 1600, height: 400, items: [{ id: "bar", rect: [0, 150, 100, 100], fill: "#f00", then: [{ cue: 1, rect: [0, 150, 1600, 100] }] }] };
+    const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [{ say: "One. Two.", fill: false, parts: [fig] }, { ms: 1500, fill: false, parts: [{ ...fig, items: [{ id: "bar", rect: [0, 150, 1600, 100], fill: "#f00" }] }] }] });
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    const g = patchContext(c.getContext("2d") as unknown as Context2D);
+    const right = (ms: number) => (paint(g, ms), [...c.getContext("2d").getImageData(view.width * 0.75, view.height / 2, 1, 1).data].slice(0, 3));
+    const two = reel.timing[0]!.say[1]!.atMs;
+    expect(right(two - 100)).not.toEqual([255, 0, 0]);
+    expect(right(two + 900)).toEqual([255, 0, 0]);
+    // The next scene starts from the bar as it ended, so it stays put.
+    expect(right(reel.timing[1]!.start + 50)).toEqual([255, 0, 0]);
+    // A frame mid-move differs from one after it.
+    expect(paint(g, two + 300)).not.toBe(paint(g, two + 900));
+  });
+
+  it("checks an item's steps", () => {
+    const sc = (then: unknown) => ({ kit: 1, scenes: [{ say: "One. Two.", parts: [{ type: "figure", width: 100, height: 100, items: [{ id: "a", rect: [0, 0, 10, 10], then }] }] }] });
+    expect(problems(sc([{ cue: 1, circle: [5, 5, 5] }]))).toEqual([expect.stringMatching(/then\[0\]: a rect stays a rect, so its step can't give circle$/)]);
+    expect(problems(sc([{ cue: 1, rect: [1, 1, 1, 1] }, { cue: 1, fill: "red" }]))).toEqual([expect.stringMatching(/then\[1\]\.cue: steps go in order, so this must be after 1$/)]);
+    expect(problems(sc([{ cue: 3, rect: [1, 1, 1, 1] }]))).toEqual([expect.stringMatching(/figure\.a moves at cue 3, which is not a sentence of this scene's say \(it has 2\)$/)]);
+    expect(problems(sc([{ rect: [1, 1, 1, 1] }]))).toEqual([expect.stringMatching(/then\[0\]\.cue: expected a sentence number$/)]);
+  });
+
   it("checks where the camera goes and how a scene comes in", () => {
     const sc = (more: object) => ({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", id: "word", text: "x" }], ...more }] });
     expect(problems(sc({ focus: "wrod" }))).toEqual(['scenes[0].focus: no part "wrod" in this scene (did you mean "word"?)']);
@@ -511,6 +537,17 @@ describe("morph", () => {
     const fonts = new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), T);
     const font = (it: object) => (itemPaint({ text: "nextDay", pos: [0, 0], ...it }, { id: "t", o: 1 }, { x: 0, y: 0, k: 1 }, T, fonts) as { font: string }).font;
     expect([font({}), font({ bold: true }), font({ mono: true })]).toEqual(["sans", "bold", "mono"]);
+  });
+
+  it("moves an item within its keyframe by its steps' delays", async () => {
+    const env = await nodeEnv(".");
+    const m = morph([{ at: 0, items: [{ id: "dot", circle: [50, 100, 20], fill: "#f00", then: [{ delay: 1000, circle: [350, 100, 20] }] }] }], { env, width: 400, height: 200 });
+    const c = createCanvas(400, 200);
+    const g = patchContext(c.getContext("2d") as unknown as Context2D);
+    const red = (ms: number, x: number) => (g.clearRect(0, 0, 400, 200), m.draw(g, ms), c.getContext("2d").getImageData(x, 100, 1, 1).data[0] === 255);
+    expect([red(900, 50), red(900, 350)]).toEqual([true, false]);
+    expect([red(2000, 50), red(2000, 350)]).toEqual([false, true]);
+    expect(() => morph([{ at: 0, items: [{ circle: [1, 1, 1], then: [{ cue: 1, circle: [2, 2, 1] }] }] }], { env, width: 10, height: 10 })).toThrow(/then\[0\]: unknown field "cue"/);
   });
 
   it("moves an item kept under its id from one keyframe to the next", async () => {

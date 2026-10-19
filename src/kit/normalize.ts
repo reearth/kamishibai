@@ -140,6 +140,9 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       used.add(id);
       for (const t of def.targets?.({ ...p, id } as never) ?? []) inner.add(t);
       if (cue) cues.set(id, cue);
+      for (const [what, n] of def.stepCues?.({ ...p, id } as never) ?? []) {
+        if (!Number.isInteger(n) || n < 0 || n >= Math.max(1, say.length)) problems.push(`${label}: ${what} moves at cue ${n}, which is not a sentence of this scene's say (it has ${say.length})`);
+      }
       for (const [turn, n] of def.cues?.({ ...p, id } as never) ?? []) {
         if (!Number.isInteger(n) || n < 0 || n >= Math.max(1, say.length)) problems.push(`${label}: the cue ${n} of ${turn} is not a sentence of this scene's say (it has ${say.length})`);
         else if (n) cues.set(turn, n);

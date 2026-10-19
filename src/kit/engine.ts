@@ -152,6 +152,21 @@ function enter(d: Drawable, e: number): Live | null {
 }
 
 /** The keyframe before `i`, if what stays moves from it (a morph). */
+/** A drawable as its steps have made it `tau` ms into its scene (Infinity: as it ends). */
+export function stepAt(d: Drawable, tau: number): Drawable {
+  if (!d.steps?.length) return d;
+  const { steps, ...base } = d;
+  let cur = base as Drawable;
+  for (const s of steps) {
+    const at = s.at ?? 0;
+    if (tau <= at) break;
+    const to = { ...s.d, id: d.id, owner: d.owner, turn: d.turn, enter: d.enter } as Drawable;
+    cur = tween(cur, to, tau === Infinity ? 1 : move(clamp01((tau - at) / (s.ms ?? MORPH_MS)))) as Drawable;
+  }
+  return cur;
+}
+const final = (d: Drawable) => stepAt(d, Infinity);
+
 function morphFrom(ks: Keyframe[], i: number): Keyframe | null {
   return i > 0 && (ks[i]!.transition ?? "morph") === "morph" ? ks[i - 1]! : null;
 }
@@ -192,8 +207,9 @@ function turns(ks: Keyframe[], i: number): Map<string, number> {
 export function settleMs(ks: Keyframe[], i: number): number {
   const last = Math.max(0, ...turns(ks, i).values());
   const shot = ks[i]!.shots?.at(-1)?.at ?? 0;
-  // the last turn, its staggered drawables, and the longest verb (a count, or typing); the camera; a transition
-  return Math.max(MORPH_MS, last + 12 * 35 + 1500, shot + CAM_MS, i > 0 ? TRANS_MS : 0);
+  const step = Math.max(0, ...ks[i]!.ds.flatMap((d) => d.steps?.map((s) => (s.at ?? 0) + (s.ms ?? MORPH_MS)) ?? []));
+  // the last turn, its staggered drawables, and the longest verb (a count, or typing); the camera; a transition; the last step
+  return Math.max(MORPH_MS, last + 12 * 35 + 1500, shot + CAM_MS, i > 0 ? TRANS_MS : 0, step);
 }
 
 const lerpCam = (a: Cam, b: Cam, p: number): Cam => ({ x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), s: lerp(a.s, b.s, p) });
@@ -214,7 +230,7 @@ export function camAt(ks: Keyframe[], i: number, tau: number): Cam | undefined {
 }
 
 /** A keyframe as it stands once everything has come in, at the reel's time `t`. */
-const settled = (k: Keyframe, t: number): Live[] => k.ds.map((d) => (d.t === "paint" ? { ...d, now: t } : d));
+const settled = (k: Keyframe, t: number): Live[] => k.ds.map(final).map((d) => (d.t === "paint" ? { ...d, now: t } : d));
 
 /**
  * What to paint at `t`: one layer, or, while a scene comes in by a fade, a
@@ -242,7 +258,8 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
   const k = ks[i]!;
   const prev = morphFrom(ks, i);
   const tau = t - k.start;
-  const before = new Map(prev?.ds.map((d) => [d.id, d]));
+  // The scene before as it ended, its steps all taken.
+  const before = new Map(prev?.ds.map((d) => [d.id, final(d)]));
   const now = new Set(k.ds.map((d) => d.id));
   const p = move(clamp01(tau / MORPH_MS));
 
@@ -252,11 +269,11 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
 
   const out: Live[] = [];
   const exiting: Live[] = [];
-  for (const d of prev?.ds ?? []) {
+  for (const d of prev?.ds.map(final) ?? []) {
     if (now.has(d.id)) continue;
     exiting.push({ ...d, o: d.o * (1 - clamp01(tau / EXIT_MS)) });
   }
-  for (const d of k.ds) {
+  for (const d of k.ds.map((d) => stepAt(d, tau))) {
     const a = before.get(d.id);
     if (a && morphable(a, d)) {
       out.push(tween(a, d, p));

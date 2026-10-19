@@ -117,6 +117,13 @@ A `figure` draws in its own units, `width` × `height`, and is fitted to the roo
 
 Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head), or `text` with `pos: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default), and `bold` or `mono` (the theme's mono font, for code). `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, and `lineWidth` is a line's or an outline's width. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
 
+An item can also move within its scene. `then` lists what it becomes, in order, each with the `cue` of the sentence it moves with: the fields that change (its shape's own field, `pos`, `fill`, `stroke`, `color`, `lineWidth`, `r`, `size`, `text`), and `ms` for how long the move takes (750 by default). A rect stays a rect, and a line keeps its number of points. A number text with `enter: count` counts to its new value. The next scene starts from the item as its last step left it.
+
+```yaml
+- { id: dot, circle: [100, 300, 20], fill: accent, then: [{ cue: 1, circle: [600, 300, 20] }, { cue: 2, circle: [1100, 300, 20] }] }
+- { id: bar, rect: [0, 400, 0, 40], fill: accent, then: [{ cue: 1, rect: [0, 400, 1200, 40], ms: 2000 }] }
+```
+
 `code` is the code itself, or a reference to a file next to the reel: `"src/coupon.ts#L44"` shows lines 43 to 45, and `"src/coupon.ts#L40-L48"` that range, with line numbers.
 
 ### What moves between scenes

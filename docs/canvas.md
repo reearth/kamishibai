@@ -88,7 +88,7 @@ export default canvasReel({
 });
 ```
 
-The items are a [figure's](kit.md#figures): `rect`, `circle`, `line` and `text`, with the same fields, but `delay` (ms after the keyframe starts) in place of a cue. New items come in together unless they have one. A keyframe's `transition` takes the kit's values (`morph`, `cut`, `fade`, `push`, `wipe`); a push or a wipe needs `paper`, a colour `morph` fills under each keyframe to hide the one before.
+The items are a [figure's](kit.md#figures): `rect`, `circle`, `line` and `text`, with the same fields, but `delay` (ms after the keyframe starts) in place of a cue, in an item and in each of its `then` steps. New items come in together unless they have one. A keyframe's `transition` takes the kit's values (`morph`, `cut`, `fade`, `push`, `wipe`); a push or a wipe needs `paper`, a colour `morph` fills under each keyframe to hide the one before.
 
 `m.draw(g, ms)` draws in `g`'s current units and returns a fingerprint of what it drew: a painter that draws nothing else that changes can return it, so the frames after the items settle are copied. `m.check()` finds an item off the area, text that spills out of a filled rect, and weak contrast, as `kamishibai check` does for a kit reel. [`examples/canvas/morph.ts`](../examples/canvas/morph.ts) is a complete one, laid out for wide and tall views.
 

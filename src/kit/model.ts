@@ -16,7 +16,16 @@ type Base = {
   owner: string;
   /** what it comes in with, when not its owner (a figure's item): a cue names it */
   turn?: string;
+  /** what it becomes later in its scene, in order: each moves it there from the form before */
+  steps?: Step[];
 };
+
+/**
+ * A later form of a drawable within its scene: from `at` ms after the scene
+ * starts (or, before the reel times it, the sentence `cue`), it moves to `d`
+ * over `ms`.
+ */
+export type Step = { at?: number; cue?: number; ms?: number; d: Drawable };
 
 export type RectD = Base & {
   t: "rect";

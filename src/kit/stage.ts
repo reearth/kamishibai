@@ -109,6 +109,11 @@ function bounds(bs: Bounds[]): Bounds {
 
 /** A drawable `k` times bigger, its top-left (or centre, or points) moved by `move`. */
 function grow(d: Drawable, k: number, move: (x: number, y: number) => [number, number]): Drawable {
+  const g = growOne(d, k, move);
+  return d.steps ? { ...g, steps: d.steps.map((s) => ({ ...s, d: growOne(s.d, k, move) })) } : g;
+}
+
+function growOne(d: Drawable, k: number, move: (x: number, y: number) => [number, number]): Drawable {
   switch (d.t) {
     case "circle": {
       const [cx, cy] = move(d.cx, d.cy);

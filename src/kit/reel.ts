@@ -152,6 +152,8 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const boxes = new Map<string, Bounds>();
       const ds = layoutScene(s, ctx, boxes);
       const at = (n: number) => (n && t.say[n] ? t.say[n]!.atMs - t.start : 0);
+      // Steps move with their sentence.
+      for (const d of ds) if (d.steps) d.steps = d.steps.map((st) => (st.cue !== undefined ? { ...st, at: at(st.cue) } : st));
       // A part has its box; a thing inside one (a figure's item) has only its drawable.
       const target = (on: string) => boxes.get(on) ?? bbox(ds.find((d) => d.id === on)!);
       const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(target(fc.on), fc.zoom, stage, fr, anchor) }));
@@ -177,7 +179,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     async check(view, env) {
       const { ks, stage, insets, fonts } = await prepare(view, env);
       // What is drawn as text: the parts', and the captions when they are burned in.
-      const texts = ks.flatMap((k) => k.ds.flatMap((d) => (d.t === "text" ? [{ s: d.lines.join(""), font: d.font, scene: k.id, id: d.id }] : [])));
+      const texts = ks.flatMap((k) => k.ds.flatMap((d) => [d, ...(d.steps?.map((st) => st.d) ?? [])].flatMap((f) => (f.t === "text" ? [{ s: f.lines.join(""), font: f.font, scene: k.id, id: d.id }] : []))));
       if (burn) timing.forEach((t) => t.say.forEach((l, i) => texts.push({ s: l.text, font: "bold", scene: t.id, id: `caption ${i}` })));
       const g = env.createCanvas(64, 64).getContext("2d");
       return [...check(ks, stage, insets, theme), ...missingGlyphs(texts, fonts, g)];
