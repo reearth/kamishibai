@@ -91,6 +91,14 @@ describe("text", () => {
     expect(ts.some((t) => t.startsWith("、") || /^[のがです]/.test(t))).toBe(false);
   });
 
+  it("keeps a number with its counter, and words joined by a no-break space", () => {
+    const ts = tokens("店名が4文字と同じ");
+    expect(ts.join("")).toBe("店名が4文字と同じ");
+    expect(ts.some((t) => t.startsWith("4文字"))).toBe(true);
+    expect(tokens("≈\u00a010 ms")).toEqual(["≈\u00a010", " ", "ms"]);
+    expect(tokens("a\u00a0b c")).toEqual(["a\u00a0b", " ", "c"]);
+  });
+
   it("splits narration into sentences, but not at a decimal point", () => {
     expect(sentences("期限です。直します！ 終わり")).toEqual(["期限です。", "直します！", "終わり"]);
     expect(sentences('It costs 3.5 dollars. Then it stops! "Yes." Done')).toEqual(["It costs 3.5 dollars.", "Then it stops!", '"Yes."', "Done"]);
@@ -390,6 +398,10 @@ scenes:
       kit: 1, fonts: [{ family: "Geist", src: GEIST, weight: "100 900" }], theme,
       scenes: [{ parts: [row([card({ body: "a".repeat(30), width: 900 }), arrow(), card({ body: "b".repeat(30), width: 900 })], { narrow: "keep" })] }],
     }));
+    await writeFile(join(dir, "chips.json"), JSON.stringify({
+      kit: 1, fonts: [{ family: "Geist", src: GEIST, weight: "100 900" }], theme,
+      scenes: [{ parts: [row(["≈ 10 ms", "≈ 20 ms", "≈ 40 ms", "≈ 80 ms"].map((text) => ({ type: "chip", text })))] }],
+    }));
     await writeFile(join(dir, "plain.json"), JSON.stringify({ hello: 1 }));
     // A module of parts in a package that says it has no side effects: uses must still run it.
     await writeFile(join(dir, "package.json"), JSON.stringify({ name: "parts", type: "module", sideEffects: false }));
@@ -410,6 +422,11 @@ definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 
     } finally {
       await e?.close();
     }
+  });
+
+  it("keeps a chip's label on one line, narrowing its row instead", async () => {
+    const r = await checkEntry({ entry: join(dir, "chips.json") });
+    expect(r.views.flatMap((v) => v.issues)).toEqual([]);
   });
 
   it("is checked for every shape, and a row kept too wide is caught", async () => {

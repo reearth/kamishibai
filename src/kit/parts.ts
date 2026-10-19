@@ -90,6 +90,8 @@ export type TextOpts = {
   style?: Box["style"];
   /** even out the lines, so none ends with a word or two alone */
   balance?: boolean;
+  /** keep it on one line (breaking only at "\n"): a label too wide for its room overflows, and a row that holds it narrows */
+  nowrap?: boolean;
 };
 
 /** A run of text that wraps to the width it gets. */
@@ -99,7 +101,7 @@ export function textBox(id: string, s: string, ctx: Ctx, o: TextOpts = {}): Box 
   const lh = o.lh ?? 1.45;
   const track = o.track ?? 0;
   const F = ctx.fonts;
-  const lines = (w: number) => (o.balance ? F.balance(s, font, size, w, track) : F.wrap(s, font, size, w, track));
+  const lines = (w: number) => (o.nowrap ? s.split("\n") : o.balance ? F.balance(s, font, size, w, track) : F.wrap(s, font, size, w, track));
   const widest = (ls: string[]) => Math.max(0, ...ls.map((l) => F.measure(l, font, size, track)));
   return {
     style: o.style,
@@ -354,7 +356,7 @@ definePart<ChipSpec>("chip", {
     return {
       style: { dir: "row", align: "center", gap: 16, pad: [22, badge.length ? 32 : 40], shrink: 0 },
       paint: (r) => [rect(s.id, r, { r: r.h / 2, fill: on ? T.accent : done ? T.well : T.card, stroke: on ? T.accent : T.rule, sw: 2, ground: true, enter: s.enter })],
-      kids: [...badge, textBox(`${s.id}.t`, s.text, ctx, { font: "bold", size: SIZE.body, color: on ? T.onAccent : done ? T.ink2 : T.ink })],
+      kids: [...badge, textBox(`${s.id}.t`, s.text, ctx, { font: "bold", size: SIZE.body, color: on ? T.onAccent : done ? T.ink2 : T.ink, nowrap: true })],
     };
   },
 });

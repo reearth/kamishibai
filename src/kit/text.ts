@@ -85,19 +85,38 @@ const noStart = new Set([..."、。，．・：；？！ー」』）】〉》〕
 const noEnd = new Set([..."「『（【〈《〔([{"]);
 const isWide = (ch: string) => /[　-鿿＀-￯]/.test(ch);
 const kanaOnly = /^[ぁ-ゟー]+$/;
+const numeral = /^[0-9０-９][0-9０-９.,，．]*$/;
+/** No-break spaces (U+00A0, U+202F): they join the words on either side. */
+const noBreak = /^[\u00a0\u202f]+$/;
 let segmenter: Intl.Segmenter | undefined;
 
 /**
  * Split into units that may not be broken: a latin word, or a Japanese phrase.
  * A phrase is a word with the hiragana after it (particles, endings), so a
- * line breaks as 「期限切れの／判定が、」 and not inside a word.
+ * line breaks as 「期限切れの／判定が、」 and not inside a word. A number
+ * stays with the word after it (「4文字」), and a no-break space joins.
  */
 export function tokens(s: string): string[] {
   segmenter ??= new Intl.Segmenter("ja", { granularity: "word" });
   const out: string[] = [];
+  let join = false;
   for (const { segment: w } of segmenter.segment(s)) {
     const prev = out[out.length - 1];
+    if (noBreak.test(w)) {
+      if (prev === undefined || prev === " ") out.push(w);
+      else out[out.length - 1] = prev + w;
+      join = true;
+      continue;
+    }
+    if (join && prev !== undefined) {
+      out[out.length - 1] = prev + w;
+      join = false;
+      continue;
+    }
+    join = false;
     if (/\s/.test(w)) out.push(" ");
+    // A number keeps its counter: 「4文字」, not 「4／文字」.
+    else if (prev && numeral.test(prev) && isWide(w[0]!)) out[out.length - 1] = prev + w;
     else if (prev && prev !== " " && kanaOnly.test(w) && isWide(prev[prev.length - 1]!) && !noEnd.has(prev[prev.length - 1]!)) out[out.length - 1] = prev + w;
     else out.push(w);
   }
