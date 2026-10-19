@@ -20,7 +20,7 @@ import {
 import { check, type Issue } from "./check.ts";
 import { drawLayers } from "./draw.ts";
 import { keyframeAt, layersAt, settleMs, type Cam, type Keyframe, type Shot } from "./engine.ts";
-import type { Bounds } from "./model.ts";
+import { bbox, type Bounds } from "./model.ts";
 import { normalize, type NormScene } from "./normalize.ts";
 import { partDef, type Ctx, type Stage } from "./parts.ts";
 import { loadYoga } from "./layout.ts";
@@ -152,7 +152,9 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const boxes = new Map<string, Bounds>();
       const ds = layoutScene(s, ctx, boxes);
       const at = (n: number) => (n && t.say[n] ? t.say[n]!.atMs - t.start : 0);
-      const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(boxes.get(fc.on)!, fc.zoom, stage, fr, anchor) }));
+      // A part has its box; a thing inside one (a figure's item) has only its drawable.
+      const target = (on: string) => boxes.get(on) ?? bbox(ds.find((d) => d.id === on)!);
+      const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(target(fc.on), fc.zoom, stage, fr, anchor) }));
       if (!shots.length || shots[0]!.at > 0) shots.unshift({ at: 0, cam: { ...anchor, s: 1 } });
       return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, shots };
     });

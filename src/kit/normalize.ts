@@ -108,6 +108,8 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const say = typeof sc.say === "string" ? sentences(sc.say) : Array.isArray(sc.say) ? sc.say.filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];
     const cues = new Map<string, number>();
     const used = new Set<string>();
+    // Things inside parts that focus may aim at too (a figure's items, as "figure.item").
+    const inner = new Set<string>();
     const place = (p: unknown, pat: string, inherited?: number): Placed<PartSpec> | null => {
       if (!isObj(p)) {
         problems.push(`${pat}: expected a part ({ type, … }), got ${JSON.stringify(p)}`);
@@ -135,6 +137,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
         for (let n = 2; used.has(id); n++) id = `${p.type}.${n}`;
       } else if (used.has(id)) problems.push(`${pat}: the id "${id}" is used twice in this scene`);
       used.add(id);
+      for (const t of def.targets?.({ ...p, id } as never) ?? []) inner.add(t);
       if (cue) cues.set(id, cue);
       for (const [turn, n] of def.cues?.({ ...p, id } as never) ?? []) {
         if (!Number.isInteger(n) || n < 0 || n >= Math.max(1, say.length)) problems.push(`${label}: the cue ${n} of ${turn} is not a sentence of this scene's say (it has ${say.length})`);
@@ -161,8 +164,8 @@ export function normalize(spec: KitReelSpec): NormScene[] {
         if (!o) return problems.push(`${fat}: expected a part's id or { on, cue?, zoom? }, got ${JSON.stringify(fc)}`);
         problems.push(...checkFields(o, FOCUS_FIELDS, fat));
         if (typeof o.on !== "string") return;
-        if (!used.has(o.on)) {
-          const near = closest(o.on, [...used]);
+        if (!used.has(o.on) && !inner.has(o.on)) {
+          const near = closest(o.on, [...used, ...inner]);
           return problems.push(`${fat}: no part "${o.on}" in this scene${near ? ` (did you mean "${near}"?)` : ""}`);
         }
         const cue = typeof o.cue === "number" ? o.cue : 0;

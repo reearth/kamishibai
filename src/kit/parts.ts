@@ -60,6 +60,8 @@ export interface PartDef<S = Record<string, unknown>> {
   corner?(spec: Placed<S>): boolean;
   /** the parts inside it, so they get ids too */
   children?(spec: Placed<S>): PartSpec[];
+  /** ids of things inside it that `focus` may aim at (a figure's items) */
+  targets?(spec: Placed<S>): string[];
   /** cues of things inside it (a figure's items), as [turn, sentence] */
   cues?(spec: S): Array<[string, number]>;
   /** problems beyond its fields' kinds, each led by `at` */
@@ -468,6 +470,7 @@ definePart<FigureSpec>("figure", {
   },
   check: (s, at) => checkItems(s.items, `${at}.items`, ["cue"]),
   cues: (s) => (Array.isArray(s.items) ? s.items.flatMap((it, i) => (typeof it?.cue === "number" ? [[itemId(s, it, i), it.cue] as [string, number]] : [])) : []),
+  targets: (s) => (Array.isArray(s.items) ? s.items.flatMap((it, i) => (typeof it?.id === "string" ? [itemId(s, it, i)] : [])) : []),
   box: (s, ctx) => {
     const T = ctx.theme;
     const maxH = ctx.stage.H * 0.6;

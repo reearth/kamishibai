@@ -10,6 +10,7 @@ can contain breaking changes, and they are called out under **Changed**.
 
 - **`kamishibai --version`** (`-v`) prints the installed version.
 - A figure's (and `morph`'s) text item takes **`mono: true`**, for code in a diagram.
+- **`focus` can aim at an item inside a figure**, by the figure's id and the item's (`focus: map.gate`), so a diagram drawn as one figure can be looked at a piece at a time.
 
 ### Fixed
 

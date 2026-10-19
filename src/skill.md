@@ -412,7 +412,8 @@ scenes:
 - A scene's `transition`: `morph` (default; same ids move), `cut`, `fade`,
   `push`, `wipe`. `focus: gate` moves the camera in on a part;
   `focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]` moves with the
-  sentences (`zoom` caps how close).
+  sentences (`zoom` caps how close). `focus: map.gate` aims at item `gate`
+  of figure `map`.
 - `{ type: figure, width, height, items }` draws as data: items `rect: [x, y,
   w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`), `text`
   with `pos: [x, y]`; colours by theme name (`accent`, `ink3`…). Items keep

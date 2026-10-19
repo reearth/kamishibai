@@ -299,6 +299,20 @@ describe("transitions and the camera", () => {
     expect(aim({ x: 0, y: 0, w: 100, h: 100 }, 2, stage, fr, mid)).toEqual({ x: 250, y: 250, s: 2 });
   });
 
+  it("moves in on an item inside a figure, by the figure's id and the item's", async () => {
+    const fig = { type: "figure", id: "map", width: 1600, height: 400, items: [{ id: "a", rect: [0, 0, 300, 300], fill: "#00f" }, { id: "b", rect: [1300, 100, 300, 300], fill: "#f00" }] };
+    expect(problems({ kit: 1, scenes: [{ parts: [fig], focus: "map.c" }] })).toEqual(['scenes[0].focus: no part "map.c" in this scene (did you mean "map.a"?)']);
+    const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [{ say: "One. Two.", parts: [fig], focus: { on: "map.b", cue: 1 } }] });
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    const g = patchContext(c.getContext("2d") as unknown as Context2D);
+    const middle = (ms: number) => (paint(g, ms), [...c.getContext("2d").getImageData(view.width / 2, view.height / 2, 1, 1).data].slice(0, 3));
+    // Before its sentence the middle of the frame is paper; once the camera is in, it is item b.
+    expect(middle(reel.timing[0]!.say[1]!.atMs - 200)).not.toEqual([255, 0, 0]);
+    expect(middle(reel.meta.durationMs - 100)).toEqual([255, 0, 0]);
+  });
+
   it("checks where the camera goes and how a scene comes in", () => {
     const sc = (more: object) => ({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", id: "word", text: "x" }], ...more }] });
     expect(problems(sc({ focus: "wrod" }))).toEqual(['scenes[0].focus: no part "wrod" in this scene (did you mean "word"?)']);

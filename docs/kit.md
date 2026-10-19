@@ -161,7 +161,7 @@ With `cut`, `push` and `wipe`, a part with a `cue` still comes in with its sente
 
 ### Camera
 
-`focus` moves the camera in on a part, by its `id`: as close as frames it (2.5× at most), and never so close that the part is cut off or the stage's edge shows. `{ on, cue, zoom }` moves in as sentence `cue` starts, and holds back at `zoom` if that is less. A list moves from part to part, in the order of their sentences. Captions stay where they are.
+`focus` moves the camera in on a part, by its `id`, or on an item of a figure, by the figure's id and the item's (`map.gate`): as close as frames it (2.5× at most), and never so close that the part is cut off or the stage's edge shows. `{ on, cue, zoom }` moves in as sentence `cue` starts, and holds back at `zoom` if that is less. A list moves from part to part, in the order of their sentences. Captions stay where they are.
 
 ```yaml
 - say: [The card holds your balance., The gate reads it over radio., The station server keeps the fare tables.]
