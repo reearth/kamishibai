@@ -38,7 +38,8 @@ export async function readKitData(path: string): Promise<unknown> {
     throw new Error("a YAML reel is read with the yaml package: npm i -D yaml");
   }
   try {
-    return yaml.parse(text);
+    // merge: true lets a scene take shared fields with `<<: *anchor`.
+    return yaml.parse(text, { merge: true });
   } catch (err) {
     throw new Error(`${path}: not valid YAML: ${(err as Error).message}`);
   }

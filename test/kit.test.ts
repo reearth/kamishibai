@@ -373,7 +373,10 @@ fonts: [{ family: Geist, src: ${JSON.stringify(GEIST)}, weight: "100 900" }]
 theme: { fonts: { sans: Geist, mono: Geist } }
 scenes:
   - { kata: cover, title: Hello, say: hello there }
-  - { kata: code, title: The code, code: "code.ts#L3-L5", highlight: line4 }
+  # a merge key: the scene takes the anchor's fields
+  - <<: &code { kata: code, title: The code }
+    code: "code.ts#L3-L5"
+    highlight: line4
 `;
     await writeFile(join(dir, "reel.yaml"), yaml);
     await writeFile(join(dir, "wide.json"), JSON.stringify({
