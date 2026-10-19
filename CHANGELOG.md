@@ -4,6 +4,12 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Added
+
+- **`kamishibai --version`** (`-v`) prints the installed version.
+
 ## 0.9.0
 
 ### Added

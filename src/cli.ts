@@ -15,6 +15,7 @@
 // ------------------------------------------------------------------
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { render, encode, capture, synthesize } from "./render.ts";
 import { exportHtml } from "./canvas/export.ts";
 import { dev, CC_MODES, type CcMode } from "./dev/server.ts";
@@ -139,6 +140,7 @@ Check options (check):
 Other:
       --keep-frames     (render) keep the intermediate PNG frames
   -h, --help            show this help
+  -v, --version         print kamishibai's version
 
 A flag the chosen subcommand doesn't use is ignored, with a warning.
 
@@ -275,10 +277,18 @@ async function main(): Promise<void> {
       "no-sweep": { type: "boolean" },
       "no-open": { type: "boolean" },
       help: { type: "boolean", short: "h" },
+      version: { type: "boolean", short: "v" },
     },
   });
 
   const [command, entry] = positionals;
+
+  if (values.version) {
+    // package.json sits one level up from both src/ and dist/.
+    const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+    process.stdout.write(`${version}\n`);
+    return;
+  }
 
   // `kamishibai skill` (alias: skills) prints the usage guide for an agent's
   // context: the core and a topic list, or the named topics, or `all`.
