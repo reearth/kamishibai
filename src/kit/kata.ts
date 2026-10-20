@@ -83,10 +83,10 @@ defineKata<{ title: string; steps: string[]; at?: number; note?: string }>("flow
   ],
 });
 
-defineKata<{ title: string; value: number; unit?: string; label?: string }>("stat", {
+defineKata<{ title: string; value: number; prefix?: string; unit?: string; label?: string }>("stat", {
   doc: "One big number that counts up, under a heading.",
-  fields: { title: f.str("the heading", true), value: f.num("the number", true), unit: f.str("set small after the number"), label: f.str("a line under it") },
-  parts: (o) => [title(o.title, { id: "title" }), stat(o.value, { id: "stat", unit: o.unit, label: o.label, tone: "accent" })],
+  fields: { title: f.str("the heading", true), value: f.num("the number", true), prefix: f.str("set small before the number ($, ¥, ~)"), unit: f.str("set small after the number"), label: f.str("a line under it") },
+  parts: (o) => [title(o.title, { id: "title" }), stat(o.value, { id: "stat", prefix: o.prefix, unit: o.unit, label: o.label, tone: "accent" })],
 });
 
 defineKata<{ title: string; items: string[]; at?: number }>("points", {
