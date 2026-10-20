@@ -898,7 +898,9 @@ reel uses the ref `{ id, provider, opts }`, with every output-affecting option
 in `id`. (Browser/Node split: the reel's adapter is a serializable ref;
 synthesis runs in Node, served to the page over `POST /__tts`.)
 
-The cache key folds in the adapter id + text + per-line opts. Change one
+The cache is `.kamishibai-tts/` in the working directory; `--tts-cache <dir>`
+or `KAMISHIBAI_TTS_CACHE` moves it (keep it the same for every run). The cache
+key folds in the adapter id + text + per-line opts. Change one
 character of a line and **only that line** re-synthesizes; change
 `voice`/`model`/`instructions` and **every** line is re-billed. So the cheap
 workflow is: **finalize the narration text first, then iterate on timing and

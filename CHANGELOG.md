@@ -6,6 +6,10 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ## Unreleased
 
+### Added
+
+- **`--tts-cache <dir>` and `KAMISHIBAI_TTS_CACHE`** move the narration cache from `.kamishibai-tts` in the working directory, on `render`, `capture`, `tts`, `dev` and `export`, so a project can keep it under a folder it ignores, and CI can restore it. The default is unchanged.
+
 ### Fixed
 
 - A kit scene grew to fit its figure's items as they came in, not as their `then` steps left them, so an item that grew could end up over the heading. The grow now fits every form an item takes.

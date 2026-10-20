@@ -25,6 +25,7 @@ kamishibai render <entry|url> [options]
 | `--encode-args` | | raw ffmpeg args for the video encode pass, e.g. `"-tune animation"` (mp4 only) |
 | `--mux-args` | | raw ffmpeg args for the audio/subtitle mux pass, e.g. `"-movflags +faststart"` (mp4 only) |
 | `--probe-timeout` | | seconds to wait for the page to expose `window.kamishibai` with nothing in progress (default: 15); narration still synthesizing doesn't count |
+| `--tts-cache` | | where narration audio is cached (default: `KAMISHIBAI_TTS_CACHE`, else `.kamishibai-tts` in the working directory); also `tts`, `dev`, `export` |
 | `--keep-frames` | | keep the intermediate PNG frames (in the temp dir; path is logged) |
 | `--verbose` | | stream ffmpeg output |
 | `--size` | | a [canvas reel](canvas.md)'s view size in layout units, e.g. `1080x1920` (default: its meta size) |

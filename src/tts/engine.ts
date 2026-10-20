@@ -64,7 +64,7 @@ export interface TTSAdapter {
 export interface TTSEngineOptions {
   /** custom adapters; a matching `provider` overrides a built-in */
   adapters?: TTSAdapter[];
-  /** where baked audio is cached (default: <cwd>/.kamishibai-tts) */
+  /** where baked audio is cached (default: $KAMISHIBAI_TTS_CACHE, else <cwd>/.kamishibai-tts) */
   cacheDir?: string;
   /** called whenever a synthesis (a cache miss) starts or settles */
   onProgress?: (stats: TTSStats) => void;
@@ -451,7 +451,7 @@ function retryable(err: unknown): boolean {
 
 /** Build a TTS engine with the built-in adapters plus any custom ones. */
 export function createTTSEngine(opts: TTSEngineOptions = {}): TTSEngine {
-  const cacheDir = resolve(opts.cacheDir ?? ".kamishibai-tts");
+  const cacheDir = resolve(opts.cacheDir ?? (process.env.KAMISHIBAI_TTS_CACHE || ".kamishibai-tts"));
   const registry = new Map<string, TTSAdapter>();
   // Built-ins first, then customs — so a matching provider overrides.
   const builtins = [

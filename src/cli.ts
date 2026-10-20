@@ -75,6 +75,9 @@ Capture options (render, capture):
                         a module (.ts/.js) whose default export is a custom
                         TTSAdapter, or an array of them; the reel picks one by
                         its provider. Repeatable (also: tts)
+      --tts-cache <dir> where narration audio is cached (default:
+                        $KAMISHIBAI_TTS_CACHE, else .kamishibai-tts in the
+                        working directory) (also: tts, dev, export)
 
 Canvas reel options (render, capture):
       --size <w>x<h>    the view's size in layout units (default: meta's)
@@ -170,7 +173,7 @@ Examples:
 
 const CAPTURE_FLAGS = [
   "workers", "fps", "scale", "public", "frames-dir", "incremental", "only",
-  "burn-subtitles", "probe-timeout", "tts-adapter", "size", "aspect", "inset", "renderer",
+  "burn-subtitles", "probe-timeout", "tts-adapter", "tts-cache", "size", "aspect", "inset", "renderer",
 ];
 const ENCODE_FLAGS = [
   "out", "frames-dir", "fps", "max-width", "gif-loop", "crf", "preset", "preview",
@@ -181,9 +184,9 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   render: new Set([...CAPTURE_FLAGS, ...ENCODE_FLAGS, "keep-frames"]),
   capture: new Set(CAPTURE_FLAGS),
   encode: new Set(ENCODE_FLAGS),
-  tts: new Set(["public", "probe-timeout", "tts-adapter"]),
-  dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open"]),
-  export: new Set(["out", "bare", "loop", "no-autoplay", "audio", "public", "probe-timeout", "tts-adapter"]),
+  tts: new Set(["public", "probe-timeout", "tts-adapter", "tts-cache"]),
+  dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open", "tts-cache"]),
+  export: new Set(["out", "bare", "loop", "no-autoplay", "audio", "public", "probe-timeout", "tts-adapter", "tts-cache"]),
   check: new Set(["size", "aspect", "inset", "json"]),
   schema: new Set(["brief"]),
 };
@@ -263,6 +266,7 @@ async function main(): Promise<void> {
       "burn-subtitles": { type: "boolean" },
       "probe-timeout": { type: "string" },
       "tts-adapter": { type: "string", multiple: true },
+      "tts-cache": { type: "string" },
       size: { type: "string" },
       aspect: { type: "string" },
       inset: { type: "string" },
@@ -408,6 +412,9 @@ async function main(): Promise<void> {
 
   // `kamishibai check` lays a kit reel out for each shape and lists what the
   // arithmetic finds wrong; it exits 1 when it finds anything.
+  // Every TTS engine this run makes reads the cache from here.
+  if (values["tts-cache"] && FLAGS_FOR[command]?.has("tts-cache")) process.env.KAMISHIBAI_TTS_CACHE = values["tts-cache"];
+
   if (command === "check") {
     if (!entry) {
       process.stderr.write(`Missing <entry>.\n\n${HELP}`);

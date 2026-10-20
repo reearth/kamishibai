@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { chmod, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -76,6 +76,17 @@ describe("TTS engine", () => {
     expect(tries.filter((t) => t === "drop")).toHaveLength(2);
     expect(tries.filter((t) => t === "busy")).toHaveLength(3);
     expect(tries.filter((t) => t === "bad")).toHaveLength(1);
+  });
+
+  it("keeps its cache where KAMISHIBAI_TTS_CACHE says, unless told", () => {
+    vi.stubEnv("KAMISHIBAI_TTS_CACHE", "tmp/tts");
+    try {
+      expect(createTTSEngine().cacheDir).toBe(join(process.cwd(), "tmp/tts"));
+      expect(createTTSEngine({ cacheDir: "elsewhere" }).cacheDir).toBe(join(process.cwd(), "elsewhere"));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(createTTSEngine().cacheDir).toBe(join(process.cwd(), ".kamishibai-tts"));
   });
 
   it("reports progress for cache misses only", async () => {
