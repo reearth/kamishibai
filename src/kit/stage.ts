@@ -62,14 +62,14 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
   const area = room.get(BODY)!;
   room.delete(BODY);
   const inBody = new Set(body.flatMap(ids));
-  const k = scene.fill ? fillScale(ds, inBody, area, scene.fill === "max") : 1;
+  const k = scene.fill ? fillScale(ds, inBody, area, scene.fill === "max" ? MAX_FILL : typeof scene.fill === "number" ? scene.fill : undefined) : 1;
   if (k > 1) {
     // Grown about where it is placed in the room, so it stays there: its middle, or an edge.
     const c = bounds(ds.filter((d) => inBody.has(d.owner)).map(bbox));
     const pl = scene.place;
     const at = {
-      x: pl === "left" ? area.x + (c.w * k) / 2 : pl === "right" ? area.x + area.w - (c.w * k) / 2 : area.x + area.w / 2,
-      y: pl === "top" ? area.y + (c.h * k) / 2 : pl === "bottom" ? area.y + area.h - (c.h * k) / 2 : area.y + area.h / 2,
+      x: pl.endsWith("left") ? area.x + (c.w * k) / 2 : pl.endsWith("right") ? area.x + area.w - (c.w * k) / 2 : area.x + area.w / 2,
+      y: pl.startsWith("top") ? area.y + (c.h * k) / 2 : pl.startsWith("bottom") ? area.y + area.h - (c.h * k) / 2 : area.y + area.h / 2,
     };
     const move = (x: number, y: number): [number, number] => [at.x + (x - c.x - c.w / 2) * k, at.y + (y - c.y - c.h / 2) * k];
     for (let i = 0; i < ds.length; i++) if (inBody.has(ds[i]!.owner)) ds[i] = grow(ds[i]!, k, move);
@@ -106,14 +106,18 @@ const PLACE = {
   right: { justify: "center", align: "end" },
   top: { justify: "start", align: "center" },
   bottom: { justify: "end", align: "center" },
+  "top-left": { justify: "start", align: "start" },
+  "top-right": { justify: "start", align: "end" },
+  "bottom-left": { justify: "end", align: "start" },
+  "bottom-right": { justify: "end", align: "end" },
 } as const;
 
-/** How much the body parts may grow to fill `area` (1 when they nearly do, or draw by code). */
-function fillScale(ds: Drawable[], own: Set<string>, area: Bounds, max = false): number {
+/** How much the body parts may grow to fill `area` (1 when they nearly do, or draw by code): up to `max` times and all of the room, or by default. */
+function fillScale(ds: Drawable[], own: Set<string>, area: Bounds, max?: number): number {
   const mine = ds.filter((d) => own.has(d.owner));
   if (!mine.length || mine.some((d) => d.t === "paint")) return 1;
   const c = bounds(mine.map(bbox));
-  const [most, fw, fh] = max ? [MAX_FILL, 1, 1] : [FILL_MAX, FILL_W, FILL_H];
+  const [most, fw, fh] = max !== undefined ? [max, 1, 1] : [FILL_MAX, FILL_W, FILL_H];
   const k = Math.min(most, (area.w * fw) / Math.max(1, c.w), (area.h * fh) / Math.max(1, c.h));
   return k > 1.05 ? k : 1;
 }

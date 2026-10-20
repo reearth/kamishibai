@@ -163,15 +163,18 @@ export function openaiAdapter(opts: {
 export function elevenLabsAdapter(opts: {
   voiceId: string;
   model?: string;
+  /** the voice's settings, passed straight through as voice_settings: speed (0.7–1.2), stability, similarity_boost, style, use_speaker_boost */
+  voiceSettings?: Record<string, number | boolean>;
   /** API base URL, e.g. a proxy (default ELEVENLABS_BASE_URL env, else https://api.elevenlabs.io).
    *  It picks where to send, not the audio, so it stays out of the cache id. */
   baseUrl?: string;
 }): TTSAdapterRef {
   const model = opts.model ?? "eleven_multilingual_v2";
   const o: Record<string, unknown> = { voiceId: opts.voiceId, model };
+  if (opts.voiceSettings) o.voiceSettings = opts.voiceSettings;
   if (opts.baseUrl) o.baseUrl = opts.baseUrl;
   return {
-    id: `elevenlabs:${opts.voiceId}:${model}`,
+    id: `elevenlabs:${opts.voiceId}:${model}${opts.voiceSettings ? `:${JSON.stringify(Object.entries(opts.voiceSettings).sort(([a], [b]) => (a < b ? -1 : 1)))}` : ""}`,
     provider: "elevenlabs",
     opts: o,
   };
@@ -185,6 +188,10 @@ export function googleAdapter(opts: {
   name?: string;
   /** "MALE" | "FEMALE" | "NEUTRAL" (when `name` is not pinned) */
   ssmlGender?: string;
+  /** 0.25–4.0, 1 by default */
+  speakingRate?: number;
+  /** semitones, -20 to 20 */
+  pitch?: number;
   /** API base URL, e.g. a proxy (default GOOGLE_TTS_BASE_URL env, else https://texttospeech.googleapis.com).
    *  It picks where to send, not the audio, so it stays out of the cache id. */
   baseUrl?: string;
@@ -193,9 +200,11 @@ export function googleAdapter(opts: {
   const voice: Record<string, unknown> = { languageCode };
   if (opts.name) voice.name = opts.name;
   if (opts.ssmlGender) voice.ssmlGender = opts.ssmlGender;
+  if (opts.speakingRate != null) voice.speakingRate = opts.speakingRate;
+  if (opts.pitch != null) voice.pitch = opts.pitch;
   if (opts.baseUrl) voice.baseUrl = opts.baseUrl;
   return {
-    id: `google:${languageCode}:${opts.name ?? opts.ssmlGender ?? "default"}`,
+    id: `google:${languageCode}:${opts.name ?? opts.ssmlGender ?? "default"}${opts.speakingRate != null ? `:rate${opts.speakingRate}` : ""}${opts.pitch != null ? `:pitch${opts.pitch}` : ""}`,
     provider: "google",
     opts: voice,
   };

@@ -326,6 +326,9 @@ describe("transitions and the camera", () => {
     expect(aim({ x: 100, y: 450, w: 800, h: 100 }, undefined, stage, fr, mid).s).toBeCloseTo(850 / 800);
     expect(aim({ x: 100, y: 450, w: 800, h: 100 }, 3, stage, fr, mid).s).toBeCloseTo(850 / 800);
     expect(aim({ x: 450, y: 450, w: 100, h: 100 }, 1.5, stage, fr, mid).s).toBe(1.5);
+    // A zoom goes past the default cap, but never so far that the part is cut off.
+    expect(aim({ x: 480, y: 480, w: 40, h: 40 }, 6, stage, fr, mid).s).toBe(6);
+    expect(aim({ x: 450, y: 450, w: 100, h: 100 }, 20, stage, fr, mid).s).toBeCloseTo(8.5);
     // A part in the corner: the camera stops where the stage's edge meets the view's.
     expect(aim({ x: 0, y: 0, w: 100, h: 100 }, 2, stage, fr, mid)).toEqual({ x: 250, y: 250, s: 2 });
   });
@@ -442,8 +445,8 @@ describe("filling the stage", () => {
     expect((await lay({ parts: fig })).boxes.get("f")!.w).toBeCloseTo((1920 - 192) * 0.9, 0);
     expect((await lay({ parts: fig, fill: "max" })).boxes.get("f")!.w).toBeCloseTo(1920 - 192, 0);
     expect(problems({ kit: 1, scenes: [{ parts, fill: "most", place: "middle" }] })).toEqual([
-      'scenes[0].place: "middle" is not one of "center", "left", "right", "top", "bottom"',
-      'scenes[0].fill: expected true, false or "max", got "most"',
+      'scenes[0].place: "middle" is not one of "center", "left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"',
+      'scenes[0].fill: expected true, false, "max" or a number from 1, got "most"',
     ]);
   });
 
@@ -468,6 +471,17 @@ describe("filling the stage", () => {
     expect((by("f.h").lines as string[]).length).toBeGreaterThan(1);
     expect(by("f.d").o).toBe(0.5);
     expect((by("f.d").dash as number[]).length).toBe(2);
+  });
+
+  it("takes one shape, a numeric fill, and a corner", async () => {
+    const tall = await kit({ kit: 1, fonts, theme, aspect: "9:16", scenes: [{ parts: [title("A")] }] });
+    expect([tall.meta.width, tall.meta.height, tall.meta.aspect]).toEqual([1080, 1920, { min: 9 / 16, max: 9 / 16 }]);
+    expect(problems({ kit: 1, aspect: "tall", scenes: [{ parts: [title("A")] }] })).toEqual(['reel.aspect: expected a shape such as "9:16" or a number, got "tall"']);
+    const fig = [{ type: "figure", id: "f", width: 400, height: 100, items: [{ rect: [0, 0, 400, 100] }] }];
+    expect((await lay({ parts: fig, fill: 2 })).boxes.get("f")!.w).toBeCloseTo(800, 0);
+    const corner = await lay({ parts: [{ type: "card", id: "c", body: "In the corner" }], place: "bottom-right" });
+    const c = corner.boxes.get("c")!;
+    expect([c.x + c.w, c.y + c.h].map(Math.round)).toEqual([1920 - 96, 1080 - 96]);
   });
 
   it("numbers a flow's steps, and ticks the ones done", async () => {

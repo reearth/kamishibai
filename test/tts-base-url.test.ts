@@ -126,6 +126,18 @@ describe("TTS base URL", () => {
     expect(kokoroAdapter({ voice: "af_heart" }).id).not.toBe(openaiAdapter({ voice: "af_heart" }).id);
   });
 
+  it("sends ElevenLabs' voice settings and Google's rate and pitch, and keys them", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "k");
+    vi.stubEnv("GOOGLE_API_KEY", "k");
+    const el = elevenLabsAdapter({ voiceId: "v", voiceSettings: { speed: 1.1, stability: 0.4 } });
+    const { init: a } = await requestedUrl(el, () => new Response("x"));
+    expect(JSON.parse(String(a.body)).voice_settings).toEqual({ speed: 1.1, stability: 0.4 });
+    const g = googleAdapter({ speakingRate: 1.2, pitch: -2 });
+    const { init: b } = await requestedUrl(g, () => new Response("{}"));
+    expect(JSON.parse(String(b.body)).audioConfig).toEqual({ audioEncoding: "MP3", speakingRate: 1.2, pitch: -2 });
+    expect([el.id, g.id]).toEqual(['elevenlabs:v:eleven_multilingual_v2:[["speed",1.1],["stability",0.4]]', "google:en-US:default:rate1.2:pitch-2"]);
+  });
+
   it("says how to start Kokoro when nothing listens", async () => {
     vi.stubEnv("KOKORO_BASE_URL", "");
     // What undici throws when the connection is refused.

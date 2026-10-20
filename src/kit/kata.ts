@@ -15,7 +15,7 @@ export interface KataDef {
 
 const TRANSITIONS = ["morph", "cut", "fade", "push", "wipe"] as const;
 
-export const PLACES = ["center", "left", "right", "top", "bottom"] as const;
+export const PLACES = ["center", "left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"] as const;
 
 /** A scene's own fields. A shape's fields sit beside them, so a shape can't take these names. */
 export const SCENE_FIELDS: Fields = {
@@ -26,9 +26,9 @@ export const SCENE_FIELDS: Fields = {
   kata: f.str("a scene shape, filled in with the fields beside it"),
   parts: f.parts("parts, after the shape's"),
   transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
-  focus: f.any("move the camera in on a part, or a figure's item (figure.item): its id, { on, cue?, zoom? }, or a list of those in sentence order; as close as frames it, 2.5× at most"),
-  fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows, up to 4×), or false'),
-  place: f.one(PLACES, 'where the parts under the heading sit in their room: "center" (default), "left", "right", "top" or "bottom"'),
+  focus: f.any("move the camera in on a part, or a figure's item (figure.item): its id, { on, cue?, zoom? }, or a list of those in sentence order; as close as frames it, 2.5× at most unless zoom says how close"),
+  fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows, up to 4×), a number (as large as the room allows, up to that many times), or false'),
+  place: f.one(PLACES, 'where the parts under the heading sit in their room: "center" (default), an edge ("left", "right", "top", "bottom") or a corner ("top-left", …)'),
 };
 
 const registry = new Map<string, KataDef>();

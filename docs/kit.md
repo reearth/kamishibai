@@ -57,7 +57,7 @@ The reel's fields:
 | `uses` | Modules that define parts and shapes (see [Parts of your own](#parts-of-your-own)), as paths relative to the reel. A JSON or YAML reel reads them before its scenes; a code reel imports them itself. |
 | `title`, `fps` | The reel's title, and frames per second (default 30). |
 | `width`, `height` | The default view, in layout units (default 1920×1080). |
-| `aspect` | The shapes it lays out for, `{ min, max }` as `"9:16"` or numbers (default 9:16 to 16:9). |
+| `aspect` | The shapes it lays out for: one, `"9:16"` (the default view then takes it: 1080×1920), or a range `{ min, max }` as `"9:16"` or numbers (default 9:16 to 16:9). |
 | `fonts` | Font files, `[{ family, src, weight? }]`, paths relative to the reel. |
 | `theme` | Colours and font families over the default theme (see below). |
 | `voice` | The narration's voice: `{ provider, …options }`, with any provider of [`kamishibai/tts`](narration.md) (`kokoro`, `openai`, `gemini`, `google`, `elevenlabs`, `polly`, `say`) and its options, such as `{ provider: say, voice: Samantha }` or `{ provider: kokoro, voice: jf_alpha }`, or a provider a `--tts-adapter` module registers (its options all go into the cache key). |
@@ -70,7 +70,7 @@ The reel's fields:
 
 ## Scenes
 
-A scene has a `say` (the narration, and its captions: a text, split into sentences, or a list of them, where a sentence may be written out as `{ text, caption?, voice?, pause? }`: what is spoken, what the caption shows instead, the voice's options for it alone (`{ speed: 0.9 }`), and the ms before the next one) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)). When the parts under the heading leave most of the stage empty, they grow together, up to 1.6 times and 90% of the room, to fill it; `fill: max` grows them as large as the room allows (up to 4×), and `fill: false` keeps them at their own size; a scene with a `paint` part does not grow. `place` says where they sit in their room: `center` (the default), `left`, `right`, `top` or `bottom`, and they grow from there. A scene with no `title` has no heading, so its room runs from the stage's top margin.
+A scene has a `say` (the narration, and its captions: a text, split into sentences, or a list of them, where a sentence may be written out as `{ text, caption?, voice?, pause? }`: what is spoken, what the caption shows instead, the voice's options for it alone (`{ speed: 0.9 }`), and the ms before the next one) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)). When the parts under the heading leave most of the stage empty, they grow together, up to 1.6 times and 90% of the room, to fill it; `fill: max` grows them as large as the room allows (up to 4×), a number such as `fill: 2` as large as the room allows up to that many times, and `fill: false` keeps them at their own size; a scene with a `paint` part does not grow. `place` says where they sit in their room: `center` (the default), an edge (`left`, `right`, `top`, `bottom`) or a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`), and they grow from there. A scene with no `title` has no heading, so its room runs from the stage's top margin.
 
 | Shape | Fields (* required) | |
 |---|---|---|
@@ -170,7 +170,7 @@ With `cut`, `push` and `wipe`, a part with a `cue` still comes in with its sente
 
 ### Camera
 
-`focus` moves the camera in on a part, by its `id`, or on an item of a figure, by the figure's id and the item's (`map.gate`): as close as frames it (2.5× at most), and never so close that the part is cut off or the stage's edge shows. `{ on, cue, zoom }` moves in as sentence `cue` starts, and holds back at `zoom` if that is less. A list moves from part to part, in the order of their sentences. Captions stay where they are.
+`focus` moves the camera in on a part, by its `id`, or on an item of a figure, by the figure's id and the item's (`map.gate`): as close as frames it (2.5× at most), and never so close that the part is cut off or the stage's edge shows. `{ on, cue, zoom }` moves in as sentence `cue` starts, as close as `zoom` (closer than 2.5× for a small item, or holding back), still never cutting the part off. A list moves from part to part, in the order of their sentences. Captions stay where they are.
 
 ```yaml
 - say: [The card holds your balance., The gate reads it over radio., The station server keeps the fare tables.]

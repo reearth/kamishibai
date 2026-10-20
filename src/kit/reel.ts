@@ -173,13 +173,18 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     return { k, stage, insets, fonts, images, ks, anchor, frame: fr, theme };
   }
 
+  // One shape ("9:16") is a range of one, and the default view takes it.
+  const one = typeof spec.aspect === "string" || typeof spec.aspect === "number" ? parseAspect(spec.aspect) : undefined;
+  const range = one !== undefined ? { min: one, max: one } : { min: parseAspect((spec.aspect as { min?: string | number } | undefined)?.min ?? "9:16"), max: parseAspect((spec.aspect as { max?: string | number } | undefined)?.max ?? "16:9") };
+  const even = (n: number) => Math.round(n / 2) * 2;
+  const [w0, h0] = one === undefined ? [1920, 1080] : one < 1 ? [even(LONG_SIDE * one), LONG_SIDE] : [LONG_SIDE, even(LONG_SIDE / one)];
   return {
     meta: {
       fps: spec.fps ?? 30,
       durationMs,
-      width: spec.width ?? 1920,
-      height: spec.height ?? 1080,
-      aspect: { min: parseAspect(spec.aspect?.min ?? "9:16"), max: parseAspect(spec.aspect?.max ?? "16:9") },
+      width: spec.width ?? w0,
+      height: spec.height ?? h0,
+      aspect: range,
       title: spec.title,
     },
     fonts: spec.fonts,
@@ -222,14 +227,15 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
 
 /**
  * The camera framing box `b` at the anchor: as close as fits the frame (never
- * past MAX_ZOOM, or `zoom`), and moved so the stage still fills the view.
+ * past `zoom`, or MAX_ZOOM without one), and moved so the stage still fills
+ * the view.
  */
 export function aim(b: Bounds, zoom: number | undefined, stage: { W: number; H: number }, fr: { top: number; right: number; bottom: number; left: number }, anchor: { x: number; y: number }): Cam {
   const aw = stage.W - fr.left - fr.right;
   const ah = stage.H - fr.top - fr.bottom;
-  // Never so close that the part itself is cut off: a zoom only holds the camera back.
-  const fit = Math.min(MAX_ZOOM, (aw * 0.85) / Math.max(1, b.w), (ah * 0.85) / Math.max(1, b.h));
-  const s = Math.max(1, Math.min(zoom ?? fit, fit));
+  // Never so close that the part itself is cut off; without a zoom, no closer than MAX_ZOOM.
+  const fit = Math.min((aw * 0.85) / Math.max(1, b.w), (ah * 0.85) / Math.max(1, b.h));
+  const s = Math.max(1, Math.min(zoom ?? MAX_ZOOM, fit));
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
   return {
     x: clamp(b.x + b.w / 2, anchor.x / s, stage.W - (stage.W - anchor.x) / s),

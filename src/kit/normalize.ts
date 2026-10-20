@@ -2,8 +2,9 @@
 // parts, and every part given an id. A reel read from JSON or YAML is checked
 // here, with every problem named by its place, before anything is drawn.
 // ------------------------------------------------------------------
+import { parseAspect } from "../canvas/types.ts";
 import { checkFields, closest, f, type Fields } from "./fields.ts";
-import { kataDef, kataNames, SCENE_FIELDS } from "./kata.ts";
+import { kataDef, kataNames, SCENE_FIELDS, type PLACES } from "./kata.ts";
 import { COMMON, partDef, partTypes, type Placed } from "./parts.ts";
 import { KIT_VERSION, type KitReelSpec, type Pace, type PartSpec, type SayLine, type Transition } from "./spec.ts";
 import { sentences } from "./text.ts";
@@ -22,10 +23,10 @@ export type NormScene = {
   transition: Transition;
   /** where the camera moves in, in order of their sentences */
   focus: Focus[];
-  /** grow the parts below the heading to fill the room they leave: some, as much as fits, or not */
-  fill: boolean | "max";
+  /** grow the parts below the heading to fill the room they leave: some, as much as fits (up to n times), or not */
+  fill: boolean | "max" | number;
   /** where the parts below the heading sit in their room */
-  place: "center" | "left" | "right" | "top" | "bottom";
+  place: (typeof PLACES)[number];
 };
 
 /** The camera on a part from a sentence on, at a zoom (or as close as fits). */
@@ -38,7 +39,7 @@ export const REEL_FIELDS: Fields = {
   fps: f.num("frames per second (default 30)"),
   width: f.num("the default view's width (default 1920)"),
   height: f.num("the default view's height (default 1080)"),
-  aspect: f.obj('the shapes it lays out for: { min, max } as "9:16" or numbers (default 9:16 to 16:9)'),
+  aspect: f.any('the shapes it lays out for: one, "9:16" (the default view takes it), or a range { min, max } as "9:16" or numbers (default 9:16 to 16:9)'),
   fonts: f.any("font files: [{ family, src, weight? }], paths relative to the reel"),
   theme: f.obj("over the default (light) theme: colours paper, card, well, ink, ink2, ink3, rule, accent, accentText, accentTint, onAccent, and any of your own by name; fonts { sans, mono, bold?, black? } (bold and black default to sans's family); weights { body, bold, black, mono? }"),
   voice: f.obj('the narration voice: { provider: "kokoro" | "openai" | "gemini" | … or a --tts-adapter provider, voice?, … }'),
@@ -113,6 +114,17 @@ export function normalize(spec: KitReelSpec): NormScene[] {
   if (!isObj(spec)) throw new KitSpecError(["the reel must be an object with kit and scenes"]);
   problems.push(...checkFields(spec, REEL_FIELDS, "reel"));
   problems.push(...checkPace(spec.pace, "reel.pace"));
+  const ratio = (v: unknown, at: string) => {
+    if (v === undefined) return;
+    try {
+      if (typeof v !== "string" && typeof v !== "number") throw new Error();
+      parseAspect(v);
+    } catch {
+      problems.push(`${at}: expected a shape such as "9:16" or a number, got ${JSON.stringify(v)}`);
+    }
+  };
+  if (isObj(spec.aspect)) (ratio(spec.aspect.min, "reel.aspect.min"), ratio(spec.aspect.max, "reel.aspect.max"));
+  else ratio(spec.aspect, "reel.aspect");
   if (spec.captions !== undefined && typeof spec.captions !== "boolean" && spec.captions !== "burn") {
     problems.push(`reel.captions: expected true, false or "burn", got ${JSON.stringify(spec.captions)}`);
   }
@@ -151,7 +163,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     }
     // With a shape, the fields beside it were checked against the shape's.
     problems.push(...checkFields(sc, SCENE_FIELDS, where, sc.kata !== undefined ? Object.keys(sc) : []));
-    if (sc.fill !== undefined && typeof sc.fill !== "boolean" && sc.fill !== "max") problems.push(`${where}.fill: expected true, false or "max", got ${JSON.stringify(sc.fill)}`);
+    if (sc.fill !== undefined && typeof sc.fill !== "boolean" && sc.fill !== "max" && !(typeof sc.fill === "number" && sc.fill >= 1)) problems.push(`${where}.fill: expected true, false, "max" or a number from 1, got ${JSON.stringify(sc.fill)}`);
     if (sc.kata === undefined && !sc.parts) problems.push(`${where}: a scene needs kata or parts`);
 
     const say = sayLines(sc.say, `${where}.say`, problems);
@@ -237,7 +249,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       cues,
       transition: (sc.transition as Transition | undefined) ?? "morph",
       focus,
-      fill: sc.fill === "max" ? "max" : sc.fill !== false,
+      fill: sc.fill === "max" || typeof sc.fill === "number" ? sc.fill : sc.fill !== false,
       place: (sc.place as NormScene["place"] | undefined) ?? "center",
     };
   });

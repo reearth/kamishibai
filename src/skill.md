@@ -422,7 +422,8 @@ scenes:
 
 - Units: sizes (`width`, `gap`) are layout units of a stage whose long side
   is 1920, whatever the output size; a figure has its own `width × height`
-  units; times are ms. Defaults: 30 fps, 1920×1080, shapes from 9:16 to 16:9.
+  units; times are ms. Defaults: 30 fps, 1920×1080, shapes from 9:16 to 16:9
+  (`aspect: "9:16"` for one shape: the default view becomes 1080×1920).
 - Same `id` in the next scene: the part moves there. Without an id, a part's
   id is its type, numbered when it repeats (`card`, `card.2`), so `title`
   stays put across scenes; the shapes' ids are fixed, so moving `at` along a
@@ -447,7 +448,8 @@ scenes:
   paper), `push` (slides in from the right), `wipe` (uncovers left to right).
   A camera move takes 900 ms. `focus: gate` moves the camera in on a part;
   `focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]` moves with the
-  sentences (`zoom` caps how close). `focus: map.gate` aims at item `gate`
+  sentences (`zoom` sets how close, past the default 2.5× for a small
+  item; the part is never cut off). `focus: map.gate` aims at item `gate`
   of figure `map`.
 - `{ type: figure, width, height, items }` draws as data: items `rect: [x, y,
   w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`), `text`
@@ -497,9 +499,11 @@ scenes:
   cards, and the parts under the heading grow (up to 1.6×) to fill a stage
   they leave mostly empty, so there is rarely a reason to set widths. A
   scene with `fill: false` keeps its parts at their own size; `fill: max`
-  grows them as large as the room allows, up to 4× (a full-frame figure).
+  grows them as large as the room allows, up to 4× (a full-frame figure), and
+  `fill: 2` up to 2×.
   Neither grows a scene with a `paint` part. `place: left|right|top|bottom`
-  puts them at that edge of the room (default center). The room is the stage
+  puts them at that edge of the room, `top-left` and the like at a corner
+  (default center). The room is the stage
   less its margins: 96 at the sides and 88 at the top on a wide stage (72 and
   120 on a tall one), and at the foot 200 (360 tall) kept for captions, or 96
   (120) with `captionRoom: false` or no captions, plus any `--inset`. A scene
@@ -863,14 +867,14 @@ video or outside it, such as the description. Adapters, with their defaults:
 `kokoroAdapter({ voice: "af_heart", speed })`;
 `openaiAdapter({ model: "tts-1", voice: "alloy", speed, instructions })`
 (`OPENAI_API_KEY`; `speed` 0.25–4 works on every model, `instructions` steers
-gpt-4o-mini-tts); `googleAdapter({ name, languageCode: "en-US", ssmlGender })`
+gpt-4o-mini-tts); `googleAdapter({ name, languageCode: "en-US", ssmlGender, speakingRate, pitch })`
 (`GOOGLE_API_KEY` or `GOOGLE_TTS_API_KEY`);
 `geminiAdapter({ voice: "Kore", model, instructions })` (`GEMINI_API_KEY`,
 falling back to `GOOGLE_API_KEY`);
 `pollyAdapter({ voiceId: "Joanna", engine: "neural", languageCode, region })`
 (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`
 default `us-east-1`; signed with a built-in SigV4, no AWS SDK); or
-`elevenLabsAdapter({ voiceId, model: "eleven_multilingual_v2" })`
+`elevenLabsAdapter({ voiceId, model: "eleven_multilingual_v2", voiceSettings: { speed, stability, … } })`
 (`ELEVENLABS_API_KEY`). A kit reel's `voice: { provider, …opts }` passes the
 same options. Each
 network adapter takes a `baseUrl` (a proxy or a compatible server), else reads

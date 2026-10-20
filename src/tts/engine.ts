@@ -240,7 +240,7 @@ const elevenLabsAdapter: TTSAdapter = {
     const res = await fetch(`${base}/v1/text-to-speech/${voiceId}`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ text, model_id: opts.model ?? "eleven_multilingual_v2" }),
+      body: JSON.stringify({ text, model_id: opts.model ?? "eleven_multilingual_v2", ...(opts.voiceSettings ? { voice_settings: opts.voiceSettings } : {}) }),
     });
     if (!res.ok)
       throw new Error(`ElevenLabs TTS ${res.status}: ${await res.text().catch(() => "")}`);
@@ -262,7 +262,11 @@ const googleAdapter: TTSAdapter = {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: { text }, voice, audioConfig: { audioEncoding: "MP3" } }),
+        body: JSON.stringify({
+          input: { text },
+          voice,
+          audioConfig: { audioEncoding: "MP3", ...(opts.speakingRate != null ? { speakingRate: opts.speakingRate } : {}), ...(opts.pitch != null ? { pitch: opts.pitch } : {}) },
+        }),
       },
     );
     if (!res.ok) throw new Error(`Google TTS ${res.status}: ${await res.text().catch(() => "")}`);

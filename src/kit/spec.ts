@@ -6,6 +6,7 @@ import type { FontSource } from "../canvas/types.ts";
 import type { Context2D } from "../canvas/types.ts";
 import type { Verb } from "./model.ts";
 import type { Theme, ThemeSpec } from "./theme.ts";
+import type { PLACES } from "./kata.ts";
 
 /** The version of the layout rules a reel was written for. */
 export const KIT_VERSION = 1;
@@ -106,9 +107,9 @@ export type SceneSpec = {
   /** move the camera in on a part, or a list of those, each with a cue */
   focus?: FocusSpec | FocusSpec[];
   /** grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6×), "max" (as large as the room allows, up to 4×), or false */
-  fill?: boolean | "max";
-  /** where the parts under the heading sit in their room (default "center") */
-  place?: "center" | "left" | "right" | "top" | "bottom";
+  fill?: boolean | "max" | number;
+  /** where the parts under the heading sit in their room (default "center"): an edge or a corner */
+  place?: (typeof PLACES)[number];
   [field: string]: unknown;
 };
 
@@ -137,7 +138,7 @@ export type KitReelSpec = {
   width?: number;
   height?: number;
   /** the shapes it lays out for, as "9:16" or a number (default 9:16 to 16:9) */
-  aspect?: { min: string | number; max: string | number };
+  aspect?: string | number | { min?: string | number; max?: string | number };
   fonts?: FontSource[];
   theme?: ThemeSpec;
   voice?: VoiceSpec;
