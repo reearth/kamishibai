@@ -65,7 +65,7 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
   const k = scene.fill ? fillScale(ds, inBody, area, scene.fill === "max" ? MAX_FILL : typeof scene.fill === "number" ? scene.fill : undefined) : 1;
   if (k > 1) {
     // Grown about where it is placed in the room, so it stays there: its middle, or an edge.
-    const c = bounds(ds.filter((d) => inBody.has(d.owner)).map(bbox));
+    const c = bounds(ds.filter((d) => inBody.has(d.owner)).flatMap(reach));
     const pl = scene.place;
     const at = {
       x: pl.endsWith("left") ? area.x + (c.w * k) / 2 : pl.endsWith("right") ? area.x + area.w - (c.w * k) / 2 : area.x + area.w / 2,
@@ -116,11 +116,14 @@ const PLACE = {
 function fillScale(ds: Drawable[], own: Set<string>, area: Bounds, max?: number): number {
   const mine = ds.filter((d) => own.has(d.owner));
   if (!mine.length || mine.some((d) => d.t === "paint")) return 1;
-  const c = bounds(mine.map(bbox));
+  const c = bounds(mine.flatMap(reach));
   const [most, fw, fh] = max !== undefined ? [max, 1, 1] : [FILL_MAX, FILL_W, FILL_H];
   const k = Math.min(most, (area.w * fw) / Math.max(1, c.w), (area.h * fh) / Math.max(1, c.h));
   return k > 1.05 ? k : 1;
 }
+
+/** Every box a drawable takes in its scene: as it comes in, and after each step. */
+const reach = (d: Drawable): Bounds[] => [d, ...(d.steps?.map((s) => s.d) ?? [])].map(bbox);
 
 function bounds(bs: Bounds[]): Bounds {
   const x = Math.min(...bs.map((b) => b.x));

@@ -4,6 +4,12 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Fixed
+
+- A kit scene grew to fit its figure's items as they came in, not as their `then` steps left them, so an item that grew could end up over the heading. The grow now fits every form an item takes.
+
 ## 0.10.0
 
 ### Added

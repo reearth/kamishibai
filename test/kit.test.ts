@@ -389,6 +389,15 @@ describe("transitions and the camera", () => {
     expect(paint(g, two + 300)).not.toBe(paint(g, two + 900));
   });
 
+  it("grows a scene to fit its items as they end up, not only as they start", async () => {
+    const reel = await kit({
+      kit: 1, fonts, theme,
+      scenes: [{ say: ["Small.", "It grows."], parts: [title("A building grows"), { type: "figure", id: "f", width: 600, height: 300, items: [{ id: "b", rect: [250, 200, 100, 100], fill: "accentTint", then: [{ cue: 1, rect: [0, 0, 600, 300] }] }] }] }],
+    });
+    await registerFonts(reel, ".");
+    expect(await reel.check(resolveView(reel.meta), await nodeEnv("."))).toEqual([]);
+  });
+
   it("checks an item's steps", () => {
     const sc = (then: unknown) => ({ kit: 1, scenes: [{ say: "One. Two.", parts: [{ type: "figure", width: 100, height: 100, items: [{ id: "a", rect: [0, 0, 10, 10], then }] }] }] });
     expect(problems(sc([{ cue: 1, circle: [5, 5, 5] }]))).toEqual([expect.stringMatching(/then\[0\]: a rect stays a rect, so its step can't give circle$/)]);
