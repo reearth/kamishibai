@@ -16,7 +16,7 @@ kamishibai render <entry|url> [options]
 | `--public` | `-p` | static assets dir served at the root (for `staticFile`-style paths); the entry's own files win on a name clash |
 | `--frames-dir` | `-f` | write PNG frames here (created if needed; kept after rendering) |
 | `--incremental` | `-i` | reuse cached frames; re-render only changed ones (needs `--frames-dir`) |
-| `--only` | | render only these frames, e.g. `0-30,90,120-150` (needs `--frames-dir`) |
+| `--only` | | render only these frames, e.g. `0-30,90,120-150`, `90-` (to the end) or `2s-4.5s` (seconds) (needs `--frames-dir`) |
 | `--burn-subtitles` | | burn captions into the frames instead of a soft track + sidecar `.srt` |
 | `--gif-loop` | | gif loops: `0` infinite (default), `-1` once, `n` times |
 | `--crf` | | H.264 quality `0`–`51`, lower = better (default: 18) |

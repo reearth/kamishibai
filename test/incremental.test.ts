@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { assertOutput } from "../src/render.ts";
 import {
   parseFrameRanges,
   manifestMatches,
@@ -14,6 +15,13 @@ const KEY: ManifestKey = { fps: 30, width: 1920, height: 1080, scale: 1, burnSub
 describe("parseFrameRanges", () => {
   it("parses single indices and ranges", () => {
     expect([...parseFrameRanges("0,2,5-7", 100)]).toEqual([0, 2, 5, 6, 7]);
+  });
+
+  it("takes an open end, and seconds when it knows the fps", () => {
+    expect([...parseFrameRanges("97-", 100)]).toEqual([97, 98, 99]);
+    expect([...parseFrameRanges("2s-2.1s,3s", 100, 30)]).toEqual([60, 61, 62, 63, 90]);
+    expect([...parseFrameRanges("3s-", 100, 30)]).toEqual(Array.from({ length: 10 }, (_, i) => 90 + i));
+    expect(() => parseFrameRanges("2s", 100)).toThrow(/bad range "2s"/);
   });
 
   it("tolerates whitespace and dedupes overlaps", () => {
@@ -40,8 +48,16 @@ describe("parseFrameRanges", () => {
   });
 
   it("throws on a malformed token", () => {
-    expect(() => parseFrameRanges("0-", 100)).toThrow(/bad range/);
+    expect(() => parseFrameRanges("-5", 100)).toThrow(/bad range/);
     expect(() => parseFrameRanges("abc", 100)).toThrow(/bad range/);
+  });
+});
+
+describe("output", () => {
+  it("is an MP4-family file or a GIF, said before anything is captured", () => {
+    for (const ok of ["a.mp4", "a.MOV", "dir.v2/a.m4v", "a.gif"]) expect(() => assertOutput(ok)).not.toThrow();
+    expect(() => assertOutput("a.webm")).toThrow("-o a.webm: kamishibai writes .mp4 (also .m4v, .mov) or .gif, not .webm");
+    expect(() => assertOutput("dir.v2/out")).toThrow(/give the file an extension/);
   });
 });
 

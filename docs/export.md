@@ -36,7 +36,7 @@ The flags set the file's defaults, and the query string of its URL can change th
 <iframe src="reel.html?controls=0&loop=0&muted=1" width="640" height="360"></iframe>
 ```
 
-A page that embeds the file can drive it through `window.kamishibaiPlayer` (`play()`, `pause()`, `seek(ms)`, `ms`, `playing`, `durationMs`).
+A page that embeds the file can drive it through `window.kamishibaiPlayer` (`play()`, `pause()`, `seek(ms)`, `ms`, `playing`, `durationMs`), and follow it with `on(type, fn)`: `"play"`, `"pause"`, `"end"` (played to the end, with no loop left) and `"time"` (each frame drawn), each called with the time in ms; it returns a function that stops it.
 
 ## What goes in the file
 

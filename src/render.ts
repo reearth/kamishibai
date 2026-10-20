@@ -509,7 +509,7 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
     const prevFingerprints = opts.incremental ? prevPrints : undefined;
 
     // --only: restrict capture to the named frames; the rest stay on disk.
-    const selected = opts.only ? parseFrameRanges(opts.only, total) : undefined;
+    const selected = opts.only ? parseFrameRanges(opts.only, total, meta.fps) : undefined;
     const shouldRender = selected ? (i: number) => selected.has(i) : undefined;
 
     // Reuse keeps the PNGs, so drop any past this reel's end (a previous,
@@ -668,9 +668,17 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
  * mux). Just composes `capture` and the assemble stage — no extra modes — so
  * `kamishibai capture` + `kamishibai encode` reproduce exactly what it does.
  */
+/** What an output can be: H.264 in an MP4-family file, or a GIF. Said before any capture, not when ffmpeg fails at the end. */
+export function assertOutput(out: string): void {
+  const ext = /\.[^./\\]+$/.exec(out)?.[0].toLowerCase();
+  if (ext && [".mp4", ".m4v", ".mov", ".gif"].includes(ext)) return;
+  throw new Error(`-o ${out}: kamishibai writes .mp4 (also .m4v, .mov) or .gif${ext ? `, not ${ext}` : "; give the file an extension"}`);
+}
+
 export async function render(opts: RenderOptions): Promise<RenderResult> {
   const log = opts.onLog ?? (() => {});
   const started = Date.now();
+  assertOutput(opts.out);
 
   // Incremental / --only reuse PNGs across runs, so they need a persisted dir.
   const reuse = !!(opts.incremental || opts.only);
@@ -793,6 +801,7 @@ export interface EncodeResult {
 export async function encode(opts: EncodeFramesDirOptions): Promise<EncodeResult> {
   const log = opts.onLog ?? (() => {});
   const started = Date.now();
+  assertOutput(opts.out);
   await assertFfmpeg();
 
   const framesDir = resolve(opts.framesDir);

@@ -50,8 +50,12 @@ export interface Player {
   readonly ms: number;
   readonly playing: boolean;
   readonly durationMs: number;
+  /** Call `fn` on "play", "pause", "end" (played to the end, no loop left) or "time" (every frame drawn, with its ms). Returns a function that stops it. */
+  on(type: PlayerEvent, fn: (ms: number) => void): () => void;
   destroy(): void;
 }
+
+export type PlayerEvent = "play" | "pause" | "end" | "time";
 
 /**
  * Player options from a page's query string, over `defaults`: controls=0|1,
@@ -275,8 +279,11 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
   let clockAt = 0;
   let clockMs = 0;
   let shownCue: Cue | undefined | null = null;
+  const listeners = new Map<PlayerEvent, Set<(ms: number) => void>>();
+  const emit = (type: PlayerEvent) => listeners.get(type)?.forEach((fn) => fn(ms));
   function draw() {
     surface.draw(Math.min(ms, durationMs - 1));
+    emit("time");
     if (cc) {
       const cue = cueAt(cues, ms);
       if (cue !== shownCue) {
@@ -304,7 +311,8 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
     if (ms >= durationMs) {
       if (again()) return void seekTo(0, true);
       ms = durationMs;
-      return void pause();
+      pause();
+      return void emit("end");
     }
     draw();
     frame = requestAnimationFrame(tick);
@@ -326,12 +334,15 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
     sound?.play(ms);
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(tick);
+    emit("play");
   }
   function pause() {
+    const was = playing;
     playing = false;
     sound?.pause();
     cancelAnimationFrame(frame);
     draw();
+    if (was) emit("pause");
   }
 
   pic.addEventListener("click", () => (playing ? pause() : start()));
@@ -377,6 +388,12 @@ export async function createPlayer(el: HTMLElement, surface: Surface, opts: Play
       return playing;
     },
     durationMs,
+    on(type, fn) {
+      let set = listeners.get(type);
+      if (!set) listeners.set(type, (set = new Set()));
+      set.add(fn);
+      return () => void set.delete(fn);
+    },
     destroy() {
       pause();
       ro.disconnect();

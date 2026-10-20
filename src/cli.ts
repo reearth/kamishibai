@@ -62,7 +62,8 @@ Capture options (render, capture):
   -f, --frames-dir <d>  write PNG frames here (created if needed; kept after)
   -i, --incremental     reuse cached frames; re-render only changed ones
                         (needs --frames-dir; compares per-frame fingerprints)
-      --only <ranges>   render only these frames, e.g. 0-30,90,120-150
+      --only <ranges>   render only these frames, e.g. 0-30,90,120-150; an open
+                        end (90-) and seconds (2s-4.5s) work too
                         (needs --frames-dir with a prior full render)
       --burn-subtitles  burn captions into the frames (pixels) instead of the
                         default soft mp4 track + sidecar .srt (needed for gif)
@@ -87,7 +88,8 @@ Canvas reel options (render, capture):
                         mounted in a page)
 
 Encode options (render, encode):
-  -o, --out <file>      output file; .mp4 (default) or .gif by extension
+  -o, --out <file>      output file; .mp4 (default; also .m4v, .mov) or .gif by
+                        extension
   -f, --frames-dir <d>  (encode) the frames dir to read; fps, audio and
                         subtitles come from its manifest + mux sidecar
       --fps <n>         (encode) play the kept frames at this rate instead of

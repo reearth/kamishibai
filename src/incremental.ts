@@ -72,22 +72,26 @@ export function manifestFrames(m: FrameManifest | undefined, key: ManifestKey): 
 
 /**
  * Parse a frame-range spec like "0-30,90,120-150" into a set of frame indices
- * in [0, total). Whitespace is tolerated, and a range's end past the reel is
+ * in [0, total). An end may be left open ("90-" is 90 to the end), and with
+ * `fps` a point may be in seconds ("2s-4.5s", "10s"; a point in time is the
+ * frame showing it). Whitespace is tolerated, and a range's end past the reel is
  * clamped (so "90-99999" means "90 to the end"). Throws on a malformed token,
  * on a token that starts past the last frame, and on a spec that selects
  * nothing — so a typo never silently renders nothing.
  */
-export function parseFrameRanges(spec: string, total: number): Set<number> {
+export function parseFrameRanges(spec: string, total: number, fps?: number): Set<number> {
   const out = new Set<number>();
+  const point = (p: string) => (p.endsWith("s") ? Math.floor(Number(p.slice(0, -1)) * fps! + 1e-6) : Number(p));
+  const P = fps ? "(\\d+(?:\\.\\d+)?s|\\d+)" : "(\\d+)";
   for (const raw of spec.split(",")) {
     const tok = raw.trim();
     if (!tok) continue;
-    const m = /^(\d+)(?:-(\d+))?$/.exec(tok);
+    const m = new RegExp(`^${P}(?:\\s*(-)\\s*${P}?)?$`).exec(tok);
     if (!m) {
-      throw new Error(`--only: bad range "${tok}" (use forms like 0-30,90,120-150)`);
+      throw new Error(`--only: bad range "${tok}" (use forms like 0-30,90,120-${fps ? ", 2s-4.5s" : ""} with frame numbers${fps ? " or seconds" : ""})`);
     }
-    const a = Number(m[1]);
-    const b = m[2] != null ? Number(m[2]) : a;
+    const a = point(m[1]!);
+    const b = m[2] ? (m[3] != null ? point(m[3]) : total - 1) : a;
     const lo = Math.min(a, b);
     const hi = Math.min(total - 1, Math.max(a, b));
     if (lo > hi) {

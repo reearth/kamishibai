@@ -134,7 +134,8 @@ so both need a persisted `--frames-dir`:
   view) or `--burn-subtitles` changes, so give each shape its own `-f` dir:
   rendering 9:16 into the 16:9 dir captures every frame again over it. Use it
   when the change is **scattered** and you don't know which frames moved.
-- `--only 0-30,90,120-150` — render just the named frames, leaving every other
+- `--only 0-30,90,120-150` (also `90-` to the end, `2s-4.5s` in seconds) —
+  render just the named frames, leaving every other
   PNG untouched (needs a prior full render to fill the gaps). It never visits the
   other frames at all, so when you know exactly what changed — especially a
   **tail-only edit** — it's far faster than `-i`, which still has to walk the
@@ -560,7 +561,8 @@ kamishibai export reel.tsx --bare --no-autoplay -o s.html  # waits for the page:
 - `t` is in seconds. A browser may refuse sound before the viewer has clicked;
   the file then plays muted until the sound button is pressed.
   `window.kamishibaiPlayer` has `play()`, `pause()`, `seek(ms)`, `ms`,
-  `playing` and `durationMs`.
+  `playing`, `durationMs`, and `on("play" | "pause" | "end" | "time", fn)`,
+  which returns a function that stops it.
 - Open the file and play it through before handing it over.
 <!-- /topic -->
 
