@@ -30,18 +30,12 @@ import { Fonts, speechMs } from "./text.ts";
 import { LONG_SIDE, mergeTheme } from "./theme.ts";
 import { normalColours, normalTheme } from "./colour.ts";
 
-/** Narration starts this long into its scene, as the parts finish moving. */
-const LEAD_MS = 400;
-/** and the scene holds this long after it ends. */
-const TAIL_MS = 700;
 /** A scene with nothing to say holds this long. */
 const SILENT_MS = 3000;
-/** The pause between two sentences of a scene. */
-const GAP_MS = 250;
 /** The camera moves in no closer than this, by default. */
 const MAX_ZOOM = 2.5;
 
-const ADAPTERS: Record<VoiceSpec["provider"], (o: never) => TTSAdapterRef> = {
+const ADAPTERS: Record<string, (o: never) => TTSAdapterRef> = {
   say: sayAdapter,
   kokoro: kokoroAdapter,
   openai: openaiAdapter,
@@ -51,11 +45,17 @@ const ADAPTERS: Record<VoiceSpec["provider"], (o: never) => TTSAdapterRef> = {
   polly: pollyAdapter,
 };
 
+/**
+ * The voice's adapter ref: a built-in's, or for any other provider (one a
+ * --tts-adapter module registers) a ref with its options, every one of
+ * them in the cache key.
+ */
 function voiceAdapter(v: VoiceSpec): TTSAdapterRef {
   const { provider, ...opts } = v;
   const make = ADAPTERS[provider];
-  if (!make) throw new Error(`voice.provider: no adapter "${provider}" (${Object.keys(ADAPTERS).join(", ")})`);
-  return make(opts as never);
+  if (make) return make(opts as never);
+  const keys = Object.keys(opts).sort();
+  return { id: `${provider}:${JSON.stringify(Object.fromEntries(keys.map((k) => [k, opts[k]])))}`, provider, opts };
 }
 
 /** One sentence of a scene's narration on the reel's clock: the caption, and its audio ("" with none). */
@@ -85,21 +85,26 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
   // ---- the narration, one clip per sentence, and the timeline it sets
   let clips: Record<string, NarrationClip> = {};
   const key = (s: NormScene, i: number) => `${s.id}#${i}`;
-  const lines = Object.fromEntries(scenes.flatMap((s) => s.say.map((text, i) => [key(s, i), text])));
+  // A plain sentence is a bare string, so a reel without overrides keeps its cache keys.
+  const lines = Object.fromEntries(
+    scenes.flatMap((s) => s.say.map((l, i) => [key(s, i), l.caption === undefined && l.voice === undefined ? l.text : { text: l.text, caption: l.caption, opts: l.voice }])),
+  );
   if (spec.voice && Object.keys(lines).length) {
     clips = await prepareNarration(voiceAdapter(spec.voice), lines, { lexicon: spec.lexicon });
   }
   let start = 0;
   const timing: SceneTiming[] = scenes.map((s) => {
-    let at = start + LEAD_MS;
-    const say = s.say.map((text, i): SayTiming => {
+    const { lead, gap, tail } = s.pace;
+    let at = start + lead;
+    let end = at;
+    const say = s.say.map((l, i): SayTiming => {
       const clip = clips[key(s, i)];
-      const t = { atMs: at, ms: Math.round(clip?.durationMs ?? speechMs(text)), text: clip?.text ?? text, src: clip?.src ?? "" };
-      at += t.ms + GAP_MS;
+      const t = { atMs: at, ms: Math.round(clip?.durationMs ?? speechMs(l.text)), text: clip?.text ?? l.caption ?? l.text, src: clip?.src ?? "" };
+      end = at + t.ms;
+      at = end + (l.pause ?? gap);
       return t;
     });
-    const sayEnd = say.length ? at - GAP_MS - start : 0;
-    const ms = s.ms ?? (say.length ? Math.max(2500, sayEnd + TAIL_MS) : SILENT_MS);
+    const ms = s.ms ?? (say.length ? Math.max(2500, end - start + tail) : SILENT_MS);
     const t: SceneTiming = { id: s.id, start, ms, say };
     start += ms;
     return t;
@@ -109,7 +114,8 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
   const audio: NonNullable<CanvasReel["audio"]> = [];
   for (const t of timing) t.say.forEach((l, i) => l.src && audio.push({ src: l.src, atMs: l.atMs, label: `${t.id}#${i}` }));
   if (spec.music) {
-    audio.push({ src: spec.music.src, atMs: 0, durationMs, loop: true, gain: spec.music.gain ?? -14, duck: spec.music.duck ?? true, fadeOutMs: 1500, label: "music" });
+    const m = spec.music;
+    audio.push({ src: m.src, atMs: 0, durationMs, loop: true, gain: m.gain ?? -14, duck: m.duck ?? true, fadeInMs: m.fadeInMs, fadeOutMs: m.fadeOutMs ?? 1500, trimStartMs: m.trimStartMs, label: "music" });
   }
   // Burned captions are in the picture, so there is no track as well.
   const subtitles = captions === true ? timing.flatMap((t) => t.say.map((l) => ({ start: l.atMs, end: l.atMs + l.ms, text: l.text }))) : undefined;

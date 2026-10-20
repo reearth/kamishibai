@@ -5,13 +5,15 @@
 import { checkFields, closest, f, type Fields } from "./fields.ts";
 import { kataDef, kataNames, SCENE_FIELDS } from "./kata.ts";
 import { COMMON, partDef, partTypes, type Placed } from "./parts.ts";
-import { KIT_VERSION, type KitReelSpec, type PartSpec, type Transition } from "./spec.ts";
+import { KIT_VERSION, type KitReelSpec, type Pace, type PartSpec, type SayLine, type Transition } from "./spec.ts";
 import { sentences } from "./text.ts";
 
 export type NormScene = {
   id: string;
   /** the narration, as sentences */
-  say: string[];
+  say: SayLine[];
+  /** its narration timing, the reel's laid under the scene's */
+  pace: Required<Pace>;
   ms?: number;
   parts: Placed<PartSpec>[];
   /** the sentence each cued part (and every part inside it) comes in with, by id */
@@ -39,9 +41,10 @@ export const REEL_FIELDS: Fields = {
   aspect: f.obj('the shapes it lays out for: { min, max } as "9:16" or numbers (default 9:16 to 16:9)'),
   fonts: f.any("font files: [{ family, src, weight? }], paths relative to the reel"),
   theme: f.obj("over the default (light) theme: colours paper, card, well, ink, ink2, ink3, rule, accent, accentText, accentTint, onAccent, and any of your own by name; fonts { sans, mono, bold?, black? } (bold and black default to sans's family); weights { body, bold, black, mono? }"),
-  voice: f.obj('the narration voice: { provider: "kokoro" | "openai" | "gemini" | …, voice?, … }'),
+  voice: f.obj('the narration voice: { provider: "kokoro" | "openai" | "gemini" | … or a --tts-adapter provider, voice?, … }'),
   lexicon: f.obj("reading substitutions for the voice only"),
-  music: f.obj("a track under the whole reel: { src (relative to the reel), gain? (dB, default -14), duck? (lowered under the voice, default true) }; it loops and fades out over 1.5 s"),
+  music: f.obj("a track under the whole reel, looped: { src (relative to the reel), gain? (dB, default -14), duck? (lowered under the voice: true by default, or { amountDb, attackMs, releaseMs }), fadeInMs?, fadeOutMs? (default 1500), trimStartMs? }"),
+  pace: f.obj("narration timing for every scene, in ms: { lead? (400), gap? (250), tail? (700) }; a scene's pace overrides it"),
   captions: f.any('captions from each scene\'s say: true (a subtitle track, the default), "burn" (drawn into the picture) or false'),
   captionRoom: f.bool("keep room at the foot for the captions (default true when there are captions); false gives it to the parts"),
   scenes: f.any("the scenes, in order", true),
@@ -63,11 +66,53 @@ export class KitSpecError extends Error {
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
+/** Narration timing by default: the voice starts 400 ms into a scene, 250 ms between sentences, and the scene holds 700 ms after. */
+export const PACE: Required<Pace> = { lead: 400, gap: 250, tail: 700 };
+
+const PACE_FIELDS: Fields = {
+  lead: f.num("ms before the first sentence (default 400)"),
+  gap: f.num("ms between sentences (default 250)"),
+  tail: f.num("ms the scene holds after the last (default 700)"),
+};
+const LINE_FIELDS: Fields = {
+  text: f.str("what is spoken (and captioned, unless caption is given)", true),
+  caption: f.str("what the caption shows instead"),
+  voice: f.obj("the voice's options for this sentence alone, over the reel's (not its provider)"),
+  pause: f.num("ms before the next sentence, instead of the gap"),
+};
+
+function checkPace(v: unknown, at: string): string[] {
+  if (v === undefined) return [];
+  if (!isObj(v)) return [`${at}: expected { lead?, gap?, tail? } in ms`];
+  return checkFields(v, PACE_FIELDS, at);
+}
+
+/** A scene's say as sentences: a text split, or a list of texts and written-out lines. */
+function sayLines(v: unknown, at: string, problems: string[]): SayLine[] {
+  if (v === undefined) return [];
+  if (typeof v === "string") return sentences(v).map((text) => ({ text }));
+  if (!Array.isArray(v)) return void problems.push(`${at}: expected a text, or a list of sentences`), [];
+  const out: SayLine[] = [];
+  v.forEach((l, i) => {
+    if (typeof l === "string") return void (l.trim() && out.push({ text: l }));
+    if (!isObj(l)) return void problems.push(`${at}[${i}]: expected a sentence, or { text, caption?, voice?, pause? }`);
+    if (typeof l.text !== "string" && Object.keys(l).length === 1) {
+      // Unquoted YAML text with ": " in it is read as a map.
+      return void problems.push(`${at}[${i}]: expected a sentence, got ${JSON.stringify(l)} (YAML reads "a: b" as a map: put the text in quotes)`);
+    }
+    const p = checkFields(l, LINE_FIELDS, `${at}[${i}]`);
+    if (p.length) return void problems.push(...p);
+    out.push(l as SayLine);
+  });
+  return out;
+}
+
 /** Check `spec`, expand its shapes and place its parts; throws KitSpecError listing every problem. */
 export function normalize(spec: KitReelSpec): NormScene[] {
   const problems: string[] = [];
   if (!isObj(spec)) throw new KitSpecError(["the reel must be an object with kit and scenes"]);
   problems.push(...checkFields(spec, REEL_FIELDS, "reel"));
+  problems.push(...checkPace(spec.pace, "reel.pace"));
   if (spec.captions !== undefined && typeof spec.captions !== "boolean" && spec.captions !== "burn") {
     problems.push(`reel.captions: expected true, false or "burn", got ${JSON.stringify(spec.captions)}`);
   }
@@ -84,7 +129,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], parts: [], cues: new Map(), transition: "morph", focus: [], fill: true, place: "center" };
+      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", focus: [], fill: true, place: "center" };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -109,7 +154,8 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     if (sc.fill !== undefined && typeof sc.fill !== "boolean" && sc.fill !== "max") problems.push(`${where}.fill: expected true, false or "max", got ${JSON.stringify(sc.fill)}`);
     if (sc.kata === undefined && !sc.parts) problems.push(`${where}: a scene needs kata or parts`);
 
-    const say = typeof sc.say === "string" ? sentences(sc.say) : Array.isArray(sc.say) ? sc.say.filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];
+    const say = sayLines(sc.say, `${where}.say`, problems);
+    problems.push(...checkPace(sc.pace, `${where}.pace`));
     const cues = new Map<string, number>();
     const used = new Set<string>();
     // Things inside parts that focus may aim at too (a figure's items, as "figure.item").
@@ -185,6 +231,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     return {
       id,
       say,
+      pace: { ...PACE, ...(isObj(spec.pace) ? spec.pace : {}), ...(isObj(sc.pace) ? sc.pace : {}) } as Required<Pace>,
       ms: typeof sc.ms === "number" ? sc.ms : undefined,
       parts: [...kataParts, ...written].filter((p) => p !== null),
       cues,

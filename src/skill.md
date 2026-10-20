@@ -464,9 +464,14 @@ scenes:
 - `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
 - `voice: { provider: say, voice: Samantha }` (macOS), `{ provider: kokoro,
   voice: af_heart }`, or `openai` / `gemini` / `google` / `elevenlabs` /
-  `polly` with the options of the narration topic. Timing: the voice starts
-  400 ms into a scene, 250 ms between sentences, the scene holds 700 ms after
-  (2.5 s at least); `ms: 4000` holds a scene that long instead.
+  `polly` with the options of the narration topic, or a `--tts-adapter`
+  provider. Timing: the voice starts 400 ms into a scene, 250 ms between
+  sentences, the scene holds 700 ms after (2.5 s at least); `pace: { lead,
+  gap, tail }` on the reel or a scene changes them, and `ms: 4000` holds a
+  scene that long instead. A sentence can be written out: `say: ["…", {
+  text: "まちあざ", caption: "町字", voice: { speed: 0.9 }, pause: 800 }]`.
+- `music: { src, gain: -14, duck: true, fadeInMs, fadeOutMs: 1500,
+  trimStartMs }` loops under the reel.
 - `captions: burn` draws them into the picture (needed for social video and
   gifs); `true` (default) is a subtitle track + `.srt`; `false` none. The
   foot of the stage is kept for them; `captionRoom: false` gives it to the

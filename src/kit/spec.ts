@@ -92,8 +92,10 @@ export type Transition = "morph" | "cut" | "fade" | "push" | "wipe";
 /** One keyframe: what the screen shows while `say` is spoken. */
 export type SceneSpec = {
   id?: string;
-  /** the narration, and its captions: split into sentences, or given as a list of them */
-  say?: string | string[];
+  /** the narration, and its captions: split into sentences, or given as a list of them (each text or a SayLine) */
+  say?: string | Array<string | SayLine>;
+  /** this scene's narration timing, over the reel's */
+  pace?: Pace;
   /** hold this long instead of the narration's length */
   ms?: number;
   /** a scene shape from `kata`, filled in with the fields beside it */
@@ -111,7 +113,18 @@ export type SceneSpec = {
 };
 
 /** A voice for the narration: a built-in adapter of kamishibai/tts and its options. */
-export type VoiceSpec = { provider: "say" | "kokoro" | "openai" | "elevenlabs" | "google" | "gemini" | "polly"; [opt: string]: unknown };
+/**
+ * The narration's voice: a built-in provider ("say", "kokoro", "openai",
+ * "elevenlabs", "google", "gemini", "polly") or one a `--tts-adapter` module
+ * registers, with the provider's options beside it.
+ */
+export type VoiceSpec = { provider: string; [opt: string]: unknown };
+
+/** One sentence written out: what is spoken, what the caption shows, the voice's options for it alone, and a pause after it. */
+export type SayLine = { text: string; caption?: string; voice?: Record<string, unknown>; pause?: number };
+
+/** Narration timing, in ms: before the first sentence, between sentences, and after the last before the scene ends. */
+export type Pace = { lead?: number; gap?: number; tail?: number };
 
 export type KitReelSpec = {
   /** the layout rules' version (KIT_VERSION) */
@@ -131,7 +144,9 @@ export type KitReelSpec = {
   /** reading substitutions for the voice only (captions keep the text) */
   lexicon?: Record<string, string>;
   /** a track under the whole reel, lowered while the voice speaks */
-  music?: { src: string; gain?: number; duck?: boolean };
+  music?: { src: string; gain?: number; duck?: boolean | { amountDb?: number; attackMs?: number; releaseMs?: number }; fadeInMs?: number; fadeOutMs?: number; trimStartMs?: number };
+  /** narration timing for every scene (default lead 400, gap 250, tail 700) */
+  pace?: Pace;
   /** captions from each scene's `say`: a subtitle track (true, the default), drawn into the picture ("burn"), or none */
   captions?: boolean | "burn";
   /** keep room at the foot of the stage for the captions (default true when there are captions); false lets the parts use it, and a player's captions cover them */

@@ -20,7 +20,8 @@ export const PLACES = ["center", "left", "right", "top", "bottom"] as const;
 /** A scene's own fields. A shape's fields sit beside them, so a shape can't take these names. */
 export const SCENE_FIELDS: Fields = {
   id: f.str("a name for messages and the scene list"),
-  say: f.text("the narration, and its captions: a text split into sentences, or a list of sentences"),
+  say: f.any("the narration, and its captions: a text split into sentences, or a list of sentences, each text or { text, caption?, voice?, pause? }"),
+  pace: f.obj("this scene's narration timing, in ms: { lead?, gap?, tail? }, over the reel's"),
   ms: f.num("hold this long instead of the narration's length (a scene with no say holds 3000)"),
   kata: f.str("a scene shape, filled in with the fields beside it"),
   parts: f.parts("parts, after the shape's"),

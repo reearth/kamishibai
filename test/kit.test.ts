@@ -55,7 +55,7 @@ describe("normalize", () => {
   it("says to quote text that YAML read as a map", () => {
     // say: ["Note: it moves"] unquoted in YAML
     const ps = problems({ kit: 1, scenes: [{ say: [{ Note: "it moves" }], parts: [{ type: "title", text: "T" }] }] });
-    expect(ps).toEqual([expect.stringMatching(/^scenes\[0\]\.say: expected a string or a list of strings, got array .* \(YAML reads "a: b" as a map: put the text in quotes\)$/)]);
+    expect(ps).toEqual(['scenes[0].say[0]: expected a sentence, got {"Note":"it moves"} (YAML reads "a: b" as a map: put the text in quotes)']);
   });
 
   it("names every problem with its place, and suggests what a typo meant", () => {
@@ -106,6 +106,29 @@ describe("text", () => {
     const css = (over: object) => (["sans", "bold", "black", "mono"] as const).map((r) => new Fonts(g, mergeTheme(over)).css(r, 10));
     expect(css({ fonts: { sans: "Geist", mono: "Mono" } })).toEqual(["400 10px Geist", "700 10px Geist", "900 10px Geist", "400 10px Mono"]);
     expect(css({ fonts: { sans: "Geist", mono: "Mono", black: "Fraunces" }, weights: { mono: 700 } })).toEqual(["400 10px Geist", "700 10px Geist", "900 10px Fraunces", "700 10px Mono"]);
+  });
+
+  it("times narration by the pace and each line's pause, and speaks a line as written out", async () => {
+    const reel = await kit({
+      kit: 1, fonts, theme, pace: { lead: 100, gap: 1000 },
+      scenes: [{ pace: { tail: 2000 }, say: ["あいうえお。", { text: "かきくけこ。", caption: "書き", pause: 50 }, "さしすせそ。"], parts: [title("A")] }],
+    });
+    const [a, b, c] = reel.timing[0]!.say;
+    expect(a!.atMs).toBe(100);
+    expect(b).toMatchObject({ atMs: 100 + a!.ms + 1000, text: "書き" });
+    expect(c!.atMs).toBe(b!.atMs + b!.ms + 50);
+    expect(reel.timing[0]!.ms).toBe(c!.atMs + c!.ms + 2000);
+    expect(problems({ kit: 1, pace: { lead: "x" }, scenes: [{ parts: [title("A")], say: [{ text: "a", speed: 2 }] }] })).toEqual([
+      "reel.pace.lead: expected a number, got string \"x\"",
+      'scenes[0].say[0]: unknown field "speed"',
+    ]);
+  });
+
+  it("passes the music's fades, trim and ducking through, and takes any provider's voice", async () => {
+    const reel = await kit({ kit: 1, fonts, theme, music: { src: "m.mp3", fadeInMs: 800, trimStartMs: 2000, duck: { amountDb: -20 } }, scenes: [{ parts: [title("A")] }] });
+    expect(reel.audio?.find((a) => a.label === "music")).toMatchObject({ fadeInMs: 800, fadeOutMs: 1500, trimStartMs: 2000, duck: { amountDb: -20 } });
+    // A provider the kit doesn't know is a --tts-adapter's: no error, and lengths estimated with no host to synthesize.
+    await expect(kit({ kit: 1, fonts, theme, voice: { provider: "mine", voice: "x" }, scenes: [{ say: "Hello.", parts: [title("A")] }] })).resolves.toBeTruthy();
   });
 
   it("splits narration into sentences, but not at a decimal point", () => {
