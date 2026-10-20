@@ -3,7 +3,7 @@
 // arithmetic. An agent can fix a reel from these without looking at a frame.
 // ------------------------------------------------------------------
 import type { Context2D, Insets } from "../canvas/types.ts";
-import type { Keyframe } from "./engine.ts";
+import { MORPH_MS, stepAt, type Keyframe } from "./engine.ts";
 import { bbox, type Bounds, type Drawable, type RectD } from "./model.ts";
 import type { Stage } from "./parts.ts";
 import type { Fonts } from "./text.ts";
@@ -78,21 +78,32 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
   for (const k of ks) {
     const s = k.id;
     const ds = k.ds.filter((d) => d.id !== "stage");
-    // Each form a drawable takes in its scene: as it comes in, and after each step.
-    const forms = ds.flatMap((d) => [d, ...(d.steps?.map((st) => ({ ...st.d, id: d.id, owner: d.owner }) as Drawable) ?? [])]);
-    for (const d of forms) {
-      const b = bbox(d);
-      if (!inside(b, safe)) out.push({ scene: s, kind: "off-stage", msg: `${d.id} reaches outside the safe area (${box(b)}): use fewer words, set a width, or split the scene` });
-      if (d.t !== "text") continue;
-      if (d.need > d.w + 1) out.push({ scene: s, kind: "overflow", msg: `${d.id} needs ${Math.round(d.need)} but has ${Math.round(d.w)}: a word too long to break; shorten it, or give it more room (fewer parts beside it)` });
-      const last = widow(d.lines);
-      if (last) out.push({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
-      const g = groundOf(k.ds, k.ds.findIndex((x) => x.id === d.id));
-      if (g && !inside(b, g)) out.push({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
-      const bg = g?.fill ?? theme.paper;
-      const need = d.size >= 40 || (d.size >= 30 && d.font !== "sans") ? 3 : 4.5;
-      const c = contrast(d.color, bg);
-      if (c !== null && c < need) out.push({ scene: s, kind: "contrast", msg: `${d.id} is ${c.toFixed(2)}:1 on ${bg} (needs ${need}:1): ${tweak(theme, d.color, bg)}` });
+    // The scene as it stands when it comes in, and after each step has settled:
+    // each text is judged against what it sits on at that moment.
+    const ends = [...new Set(ds.flatMap((d) => d.steps?.map((st) => (st.at ?? 0) + (st.ms ?? MORPH_MS)) ?? []))].sort((a, b) => a - b);
+    const moments = [ds, ...ends.map((t) => ds.map((d) => stepAt(d, t)))];
+    const forms = moments.flat();
+    const said = new Set<string>();
+    const say = (i: Issue) => {
+      if (!said.has(i.msg)) out.push(i);
+      said.add(i.msg);
+    };
+    for (const now of moments) {
+      for (let i = 0; i < now.length; i++) {
+        const d = now[i]!;
+        const b = bbox(d);
+        if (!inside(b, safe)) say({ scene: s, kind: "off-stage", msg: `${d.id} reaches outside the safe area (${box(b)}): use fewer words, set a width, or split the scene` });
+        if (d.t !== "text") continue;
+        if (d.need > d.w + 1) say({ scene: s, kind: "overflow", msg: `${d.id} needs ${Math.round(d.need)} but has ${Math.round(d.w)}: a word too long to break; shorten it, or give it more room (fewer parts beside it)` });
+        const last = widow(d.lines);
+        if (last) say({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
+        const g = groundOf(now, i);
+        if (g && !inside(b, g)) say({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
+        const bg = g?.fill ?? theme.paper;
+        const need = d.size >= 40 || (d.size >= 30 && d.font !== "sans") ? 3 : 4.5;
+        const c = contrast(d.color, bg);
+        if (c !== null && c < need) say({ scene: s, kind: "contrast", msg: `${d.id} is ${c.toFixed(2)}:1 on ${bg} (needs ${need}:1): ${tweak(theme, d.color, bg)}` });
+      }
     }
 
     // Overlaps between different parts, each by its outer box.

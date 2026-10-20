@@ -441,6 +441,25 @@ describe("check", () => {
     return check(ks, { W: 1920, H: 1080 }, { top: 0, right: 0, bottom: 0, left: 0 }, mergeTheme(theme)).filter((i) => i.kind === "widow").map((i) => i.msg.split(" ")[0]);
   };
 
+  it("judges a moving text against what it sits on at each step", async () => {
+    const issues = async (to: [number, number]) => {
+      const fig = {
+        type: "figure", id: "f", width: 1200, height: 300,
+        items: [
+          { id: "box", rect: [0, 100, 92, 120], r: 10, fill: "accentTint", stroke: "accent" },
+          { id: "other", rect: [400, 100, 92, 120], r: 10, stroke: "rule" },
+          { id: "t", text: "A", pos: [46, 132], size: 44, bold: true, align: "center", cue: 1, then: [{ cue: 1, delay: 900, pos: to }] },
+        ],
+      };
+      const reel = await kit({ kit: 1, fonts, theme, scenes: [{ say: ["One.", "Two."], parts: [fig] }] });
+      await registerFonts(reel, ".");
+      return (await reel.check(resolveView(reel.meta), await nodeEnv("."))).map((i) => i.msg.split(":")[0]);
+    };
+    // Out of the box onto the paper: fine. Half off the box: it spills.
+    expect(await issues([246, 152])).toEqual([]);
+    expect(await issues([92, 152])).toEqual(["f.t spills out of f.box"]);
+  });
+
   it("finds characters no font has", async () => {
     const reel = await kit({ kit: 1, fonts, theme, scenes: [{ parts: [title("Done ✗ é ²"), { type: "text", text: "↻ again ✗" }] }] });
     await registerFonts(reel, ".");
