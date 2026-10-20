@@ -213,8 +213,10 @@ Components and hooks (times in ms):
 - `<Stage background style>`: the root surface.
 - `<Cue at hold>`: children only from `at` for `hold` (default: to the end of
   the enclosing scene), with a clock restarting at 0.
-- `<Enter at dur lift ease>`: fade and rise in (defaults `at` 0, `dur` 700,
-  `lift` 26 px, `eases.smooth`).
+- `<Enter at dur lift dx dy scale from ease>`: fade and rise in (defaults
+  `at` 0, `dur` 700, `lift` 26 px, `eases.smooth`); `dx`/`dy` slide it from
+  that far (negative: from the left / above), `scale` grows it from that
+  size (either alone does not rise), `from: 1` moves it without fading.
 - `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>`: scenes back
   to back, each with its own clock, optionally crossfading. Or from data:
   `<Series scenes={[{ durationMs, crossfadeMs, content }]} />`, with

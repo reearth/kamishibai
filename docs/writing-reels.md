@@ -6,7 +6,7 @@ You don't need React — any page that sets `window.kamishibai` works. But `kami
 
 - `useClock()` — the current clock: `{ ms, durationMs, fps, epochMs }`
 - `ramp` / `eases` / `bezier` / `spring` / `track` / `stagger` / `interpolateColor` — re-exported from [`kamishibai/easing`](#easing)
-- `<Stage>` — root surface · `<Cue at hold>` — reveal children during a window, with a **local clock** that restarts at 0 · `<Enter>` — fade + rise in
+- `<Stage>` — root surface · `<Cue at hold>` — reveal children during a window, with a **local clock** that restarts at 0 · `<Enter>` — fade + rise in (or slide in with `dx`/`dy`, grow with `scale`)
 - `<Series>` / `<Series.Scene durationMs crossfadeMs exitFadeMs>` — lay scenes back-to-back, each with its own local clock ([Scenes](#scenes) below)
 - `<Audio>` · `<Bgm>` — declare sound ([Audio](audio.md)) · `<Video>` — frame-accurate video ([Video](video.md))
 - `<Subtitle>` — soft captions, mux-time ([Subtitles](subtitles.md)) · `<Narration>` / `<NarrationSteps>` — play pre-synthesized lines ([Narration](narration.md))

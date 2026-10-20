@@ -256,23 +256,35 @@ export const Cue: React.FC<{
 };
 
 // ---- Enter --------------------------------------------------------
-// Convenience: fade + rise an element in over `dur` ms after `at` ms,
-// driven entirely by the clock (no CSS transitions).
+// Convenience: fade an element in over `dur` ms after `at` ms, coming from
+// `dx`/`dy` px away (rising `lift` px by default) and from `scale`, driven
+// entirely by the clock (no CSS transitions).
 export const Enter: React.FC<{
   at?: number;
   dur?: number;
+  /** px it rises from below: 26 by default, none when dx or scale is given; same as dy */
   lift?: number;
+  /** px it comes from: negative from the left / above */
+  dx?: number;
+  dy?: number;
+  /** the size it grows (or shrinks) from, e.g. 0.9 */
+  scale?: number;
+  /** 0 to fade in, 1 to only move (default 0) */
+  from?: number;
   ease?: Ease;
   style?: React.CSSProperties;
   children: React.ReactNode;
-}> = ({ at = 0, dur = 700, lift = 26, ease = eases.smooth, style, children }) => {
+}> = ({ at = 0, dur = 700, lift, dx = 0, dy, scale = 1, from = 0, ease = eases.smooth, style, children }) => {
   const { ms } = useClock();
   const p = ramp(ms, at, at + dur, 0, 1, ease);
+  const q = 1 - p;
+  const rise = dy ?? lift ?? (dx || scale !== 1 ? 0 : 26);
+  const moves = [dx ? `translateX(${q * dx}px)` : "", rise ? `translateY(${q * rise}px)` : "", scale !== 1 ? `scale(${scale + (1 - scale) * p})` : ""].filter(Boolean);
   return (
     <div
       style={{
-        opacity: p,
-        transform: `translateY(${(1 - p) * lift}px)`,
+        opacity: from + (1 - from) * p,
+        transform: moves.join(" "),
         ...style,
       }}
     >
