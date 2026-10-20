@@ -479,7 +479,8 @@ scenes:
 - `captions: burn` draws them into the picture (needed for social video and
   gifs); `true` (default) is a subtitle track + `.srt`; `false` none. The
   foot of the stage is kept for them; `captionRoom: false` gives it to the
-  parts (the captions then sit over them).
+  parts (the captions then sit over them). `captionStyle: { color, box,
+  size, font }` styles burned ones (white on a dark box, 40/48, bold).
 - `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
   `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
   { sans, mono, bold?, black? }` (bold and black take sans's family unless

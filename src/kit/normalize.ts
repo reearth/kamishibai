@@ -47,6 +47,7 @@ export const REEL_FIELDS: Fields = {
   music: f.obj("a track under the whole reel, looped: { src (relative to the reel), gain? (dB, default -14), duck? (lowered under the voice: true by default, or { amountDb, attackMs, releaseMs }), fadeInMs?, fadeOutMs? (default 1500), trimStartMs? }"),
   pace: f.obj("narration timing for every scene, in ms: { lead? (400), gap? (250), tail? (700) }; a scene's pace overrides it"),
   captions: f.any('captions from each scene\'s say: true (a subtitle track, the default), "burn" (drawn into the picture) or false'),
+  captionStyle: f.obj('how burned captions look: { color? (#fff), box? (rgba(0,0,0,0.62)), size? (40 wide, 48 tall), font? (bold) }, colours by theme name or CSS'),
   captionRoom: f.bool("keep room at the foot for the captions (default true when there are captions); false gives it to the parts"),
   scenes: f.any("the scenes, in order", true),
 };

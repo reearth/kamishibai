@@ -124,6 +124,9 @@ export type VoiceSpec = { provider: string; [opt: string]: unknown };
 /** One sentence written out: what is spoken, what the caption shows, the voice's options for it alone, and a pause after it. */
 export type SayLine = { text: string; caption?: string; voice?: Record<string, unknown>; pause?: number };
 
+/** Burned captions: text and box colours (a theme name or CSS), size in layout units (40 wide, 48 tall), and font role (bold). */
+export type CaptionStyle = { color?: string; box?: string; size?: number; font?: "sans" | "bold" | "black" | "mono" };
+
 /** Narration timing, in ms: before the first sentence, between sentences, and after the last before the scene ends. */
 export type Pace = { lead?: number; gap?: number; tail?: number };
 
@@ -150,6 +153,8 @@ export type KitReelSpec = {
   pace?: Pace;
   /** captions from each scene's `say`: a subtitle track (true, the default), drawn into the picture ("burn"), or none */
   captions?: boolean | "burn";
+  /** how burned captions look */
+  captionStyle?: CaptionStyle;
   /** keep room at the foot of the stage for the captions (default true when there are captions); false lets the parts use it, and a player's captions cover them */
   captionRoom?: boolean;
   scenes: SceneSpec[];

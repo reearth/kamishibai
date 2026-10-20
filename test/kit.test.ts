@@ -220,6 +220,16 @@ describe("kit", () => {
     expect(problems({ kit: 1, captions: "yes", scenes: [{ kata: "cover", title: "x" }] })).toEqual(['reel.captions: expected true, false or "burn", got "yes"']);
   });
 
+  it("styles burned captions with captionStyle", async () => {
+    const reel = await kit({ kit: 1, fonts, theme: { ...theme, signal: "#ff0000" }, captions: "burn", captionStyle: { box: "signal", color: "#000" }, scenes: [{ say: "One sentence here.", parts: [title("A")] }] });
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    paint(patchContext(c.getContext("2d") as unknown as Context2D), reel.timing[0]!.say[0]!.atMs + 100);
+    // Just inside the top of the box at the foot, above the text.
+    expect([...c.getContext("2d").getImageData(view.width / 2, 940, 1, 1).data].slice(0, 3)).toEqual([255, 0, 0]);
+  });
+
   it("refuses a cue past the scene's sentences", () => {
     expect(problems({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", text: "x", cue: 2 }] }] })[0]).toMatch(/cue: 2 is not a sentence of this scene's say \(it has 2/);
   });

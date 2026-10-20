@@ -25,7 +25,8 @@ import { normalize, type NormScene } from "./normalize.ts";
 import { partDef, type Ctx, type Stage } from "./parts.ts";
 import { loadYoga } from "./layout.ts";
 import { layoutScene, partBox, stageFrame } from "./stage.ts";
-import type { KitReelSpec, PartSpec, VoiceSpec } from "./spec.ts";
+import type { CaptionStyle, KitReelSpec, PartSpec, VoiceSpec } from "./spec.ts";
+import { colour } from "./items.ts";
 import { Fonts, speechMs } from "./text.ts";
 import { LONG_SIDE, mergeTheme } from "./theme.ts";
 import { normalColours, normalTheme } from "./colour.ts";
@@ -195,14 +196,14 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const { ks, stage, insets, fonts, theme } = await prepare(view, env);
       // What is drawn as text: the parts', and the captions when they are burned in.
       const texts = ks.flatMap((k) => k.ds.flatMap((d) => [d, ...(d.steps?.map((st) => st.d) ?? [])].flatMap((f) => (f.t === "text" ? [{ s: f.lines.join(""), font: f.font, scene: k.id, id: d.id }] : []))));
-      if (burn) timing.forEach((t) => t.say.forEach((l, i) => texts.push({ s: l.text, font: "bold", scene: t.id, id: `caption ${i}` })));
+      if (burn) timing.forEach((t) => t.say.forEach((l, i) => texts.push({ s: l.text, font: spec.captionStyle?.font ?? "bold", scene: t.id, id: `caption ${i}` })));
       const g = env.createCanvas(64, 64).getContext("2d");
       return [...check(ks, stage, insets, theme), ...missingGlyphs(texts, fonts, g)];
     },
     async setup(view, env) {
       const { k, ks, fonts, images, anchor, stage, insets, frame } = await prepare(view, env);
       const lines = timing.flatMap((t) => t.say);
-      const caption = burn ? captionPainter(lines, fonts, stage, insets, frame) : undefined;
+      const caption = burn ? captionPainter(lines, fonts, stage, insets, frame, spec.captionStyle) : undefined;
       const painted = ks.map((kf) => kf.ds.some((d) => d.t === "paint"));
       const settle = ks.map((_, i) => settleMs(ks, i));
       // A scene's frames after its last part came in all look the same.
@@ -249,31 +250,40 @@ export function aim(b: Bounds, zoom: number | undefined, stage: { W: number; H: 
  * dark box, centred in the room kept for them at the foot. Returns the
  * painter, which returns the index of the sentence it drew (-1 for none).
  */
-function captionPainter(lines: SayTiming[], fonts: Fonts, stage: { W: number; H: number }, insets: { top: number; right: number; bottom: number; left: number }, fr: { left: number; right: number; bottom: number }) {
+function captionPainter(
+  lines: SayTiming[],
+  fonts: Fonts,
+  stage: { W: number; H: number },
+  insets: { top: number; right: number; bottom: number; left: number },
+  fr: { left: number; right: number; bottom: number },
+  style: CaptionStyle = {},
+) {
   const tall = stage.H > stage.W;
-  const size = tall ? 48 : 40;
+  const size = style.size ?? (tall ? 48 : 40);
+  const font = style.font ?? "bold";
+  const T = fonts.theme;
   const lh = 1.45;
   const padX = size * 0.7;
   const padY = size * 0.35;
   const maxW = stage.W - fr.left - fr.right - padX * 2;
-  const laid = lines.map((l) => fonts.balance(l.text, "bold", size, maxW));
+  const laid = lines.map((l) => fonts.balance(l.text, font, size, maxW));
   const room = fr.bottom - insets.bottom;
   return (g: Context2D, ms: number): number => {
     const n = lines.findIndex((l) => ms >= l.atMs && ms < l.atMs + l.ms);
     if (n < 0) return -1;
     const ls = laid[n]!;
-    const w = Math.max(...ls.map((s) => fonts.measure(s, "bold", size))) + padX * 2;
+    const w = Math.max(...ls.map((s) => fonts.measure(s, font, size))) + padX * 2;
     const h = ls.length * size * lh + padY * 2;
     const y = stage.H - insets.bottom - room / 2 - h / 2;
     const x = (stage.W - w) / 2;
     g.save();
-    g.fillStyle = "rgba(0, 0, 0, 0.62)";
+    g.fillStyle = colour(style.box, T, "rgba(0, 0, 0, 0.62)");
     g.beginPath();
     g.roundRect(x, y, w, h, size * 0.3);
     g.fill();
-    g.font = fonts.css("bold", size);
+    g.font = fonts.css(font, size);
     g.letterSpacing = "0px";
-    g.fillStyle = "#ffffff";
+    g.fillStyle = colour(style.color, T, "#ffffff");
     g.textAlign = "center";
     g.textBaseline = "middle";
     ls.forEach((s, i) => g.fillText(s, stage.W / 2, y + padY + (i + 0.5) * size * lh));

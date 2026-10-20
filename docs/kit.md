@@ -65,6 +65,7 @@ The reel's fields:
 | `music` | A track under the whole reel, `{ src, gain?, duck?, fadeInMs?, fadeOutMs?, trimStartMs? }`: looped, faded out over `fadeOutMs` (1500) at the end, and lowered while the voice speaks unless `duck: false` (or as `duck: { amountDb, attackMs, releaseMs }` says). |
 | `pace` | Narration timing for every scene, in ms: `{ lead, gap, tail }`, the wait before the first sentence (400), between sentences (250), and after the last (700). A scene's own `pace` overrides it. |
 | `captions` | Captions from each scene's `say`: `true` (the default) for a subtitle track and an `.srt` next to the video, `burn` to draw them into the picture (light on a dark box, in the room kept at the foot), or `false`. |
+| `captionStyle` | How burned captions look: `{ color, box, size, font }`, the text colour (`#fff`), the box's (`rgba(0,0,0,0.62)`), each a theme colour's name or CSS, the size in layout units (40 on a wide stage, 48 on a tall one) and the font role (`bold`). |
 | `captionRoom` | `false` gives the room kept at the foot for the captions to the parts, so they fill more of the stage; the captions then sit over them. For a reel whose captions are often off, or are a player's own. Default `true` when there are captions. |
 | `scenes` | The scenes, in order. |
 
