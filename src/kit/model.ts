@@ -18,6 +18,8 @@ type Base = {
   turn?: string;
   /** what it becomes later in its scene, in order: each moves it there from the form before */
   steps?: Step[];
+  /** a dashed stroke: on and off lengths, as setLineDash takes them */
+  dash?: number[];
 };
 
 /**

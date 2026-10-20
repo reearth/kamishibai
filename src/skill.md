@@ -451,7 +451,8 @@ scenes:
   of figure `map`.
 - `{ type: figure, width, height, items }` draws as data: items `rect: [x, y,
   w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`), `text`
-  with `pos: [x, y]`; colours by theme name (`accent`, `ink3`…). Items keep
+  with `pos: [x, y]` (`font`, `width` to wrap at); colours by theme name
+  (`accent`, `ink3`…); `opacity`, `dash: [on, off]`. Items keep
   ids across scenes, so a diagram can change shape; an item can have a `cue`.
   Within a scene an item moves by `then: [{ cue: 1, circle: [600, 300, 20] },
   …]`: each step gives the fields that change (same shape; `ms` for the

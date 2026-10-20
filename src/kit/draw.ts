@@ -59,6 +59,7 @@ function one(g: Context2D, d: Live, c: DrawCtx) {
     g.clip();
   }
   if (d.dx || d.dy) g.translate(d.dx ?? 0, d.dy ?? 0);
+  if (d.dash?.length) g.setLineDash(d.dash);
   // Blur is in canvas pixels, so it scales with the view like everything else.
   if (d.blur && d.blur > 0.2) g.filter = `blur(${d.blur * g.getTransform().a}px)`;
   if (d.sc !== undefined && d.sc !== 1) {

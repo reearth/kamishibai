@@ -25,7 +25,9 @@ export type TextSpec = Common & {
   text: string;
   /** what the text is for, which sets its size: a cover's title, a large line, a sentence, or a small grey note */
   role?: "display" | "lead" | "body" | "note";
-  align?: "start" | "center";
+  align?: "start" | "center" | "end";
+  /** a theme colour's name or CSS (default: by role) */
+  color?: string;
 };
 export type GroupSpec = Common & {
   type: "row" | "col";
@@ -48,12 +50,14 @@ export type CardSpec = Common & {
 };
 export type ArrowSpec = Common & { type: "arrow"; kind?: "right" | "down" | "versus" | "equals" };
 export type ChipSpec = Common & { type: "chip"; text: string; state?: "active" | "done"; n?: number };
-export type StatSpec = Common & { type: "stat"; value: number; unit?: string; label?: string; tone?: "plain" | "accent"; digits?: number };
+export type StatSpec = Common & { type: "stat"; value: number; prefix?: string; unit?: string; label?: string; tone?: "plain" | "accent"; digits?: number };
 export type ListSpec = Common & {
   type: "list";
   items: string[];
   /** the index of the item to stress */
   at?: number;
+  /** number the items instead of bullets */
+  numbered?: boolean;
 };
 export type ImageSpec = Common & {
   type: "image";

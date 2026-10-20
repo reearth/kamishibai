@@ -218,7 +218,7 @@ describe("kit", () => {
       "scenes[0].parts[0] (figure).items[1]: give one of rect, circle, line, text (got circle and line)",
     ]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ line: [[0, 0], [1, 1]], width: 4 }] }] }] })).toEqual([
-      expect.stringMatching(/^scenes\[0\]\.parts\[0\] \(figure\)\.items\[0\]: unknown field "width"; an item takes .*lineWidth/),
+      expect.stringMatching(/^scenes\[0\]\.parts\[0\] \(figure\)\.items\[0\]\.width: only a text takes width \(where it wraps\); a line's or an outline's is lineWidth$/),
     ]);
   });
 
@@ -422,6 +422,29 @@ describe("filling the stage", () => {
       'scenes[0].place: "middle" is not one of "center", "left", "right", "top", "bottom"',
       'scenes[0].fill: expected true, false or "max", got "most"',
     ]);
+  });
+
+  it("takes a text's colour and end alignment, a stat's prefix, a numbered list, and an item's font, width, opacity and dash", async () => {
+    const { ds } = await lay({
+      parts: [
+        { type: "text", id: "t", text: "Right", align: "end", color: "accent" },
+        { type: "stat", id: "s", value: 3, prefix: "$" },
+        { type: "list", id: "l", items: ["One", "Two"], numbered: true },
+        { type: "figure", id: "f", width: 600, height: 200, items: [
+          { id: "h", text: "A heading set in black that wraps", pos: [0, 0], font: "black", width: 300 },
+          { id: "d", line: [[0, 150], [600, 150]], dash: [10, 6], opacity: 0.5 },
+        ] },
+      ],
+    });
+    const by = (id: string) => ds.find((d) => d.id === id) as Record<string, unknown>;
+    expect(by("t")).toMatchObject({ align: "end", color: mergeTheme(theme).accent });
+    expect((by("s.p").lines as string[])[0]).toBe("$");
+    expect([(by("l.0.n").lines as string[])[0], (by("l.1.n").lines as string[])[0]]).toEqual(["1.", "2."]);
+    expect(by("l.0.dot")).toBeUndefined();
+    expect(by("f.h")).toMatchObject({ font: "black" });
+    expect((by("f.h").lines as string[]).length).toBeGreaterThan(1);
+    expect(by("f.d").o).toBe(0.5);
+    expect((by("f.d").dash as number[]).length).toBe(2);
   });
 
   it("numbers a flow's steps, and ticks the ones done", async () => {

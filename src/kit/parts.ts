@@ -7,7 +7,7 @@ import { intrinsic, layout, type Box, type Paint, type Rect } from "./layout.ts"
 import { f, type Fields } from "./fields.ts";
 import { SIZE, type FontRole, type Theme } from "./theme.ts";
 import type { Fonts } from "./text.ts";
-import { checkItems, itemPaint, itemSteps, type FigureItem } from "./items.ts";
+import { checkItems, colour, itemPaint, itemSteps, type FigureItem } from "./items.ts";
 import type {
   ArrowSpec,
   CardSpec,
@@ -150,17 +150,17 @@ definePart<TitleSpec>("title", {
 
 definePart<TextSpec>("text", {
   doc: 'Plain text. role "display" is a cover\'s title, "lead" is large, "note" is small and grey.',
-  fields: { text: f.str("the text", true), role: f.one(["display", "lead", "body", "note"], 'its size: "display" a cover title, "lead" large, "body" (default), "note" small and grey'), align: f.one(["start", "center"], "default start") },
+  fields: { text: f.str("the text", true), role: f.one(["display", "lead", "body", "note"], 'its size: "display" a cover title, "lead" large, "body" (default), "note" small and grey'), align: f.one(["start", "center", "end"], "default start (center for display)"), color: f.str("a theme colour's name or CSS (default: by role)") },
   box: (s, ctx) => {
     const role = s.role ?? "body";
-    if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter });
+    if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter, color: colour(s.color, ctx.theme, ctx.theme.ink) });
     return textBox(s.id, s.text, ctx, {
       font: role === "lead" ? "bold" : "sans",
       size: role === "lead" ? SIZE.h2 : role === "note" ? SIZE.small : SIZE.body,
-      color: role === "note" ? ctx.theme.ink3 : ctx.theme.ink,
+      color: colour(s.color, ctx.theme, role === "note" ? ctx.theme.ink3 : ctx.theme.ink),
       enter: s.enter,
       align: s.align,
-      balance: s.align === "center",
+      balance: s.align === "center" || s.align === "end",
     });
   },
 });
@@ -376,7 +376,7 @@ definePart<ChipSpec>("chip", {
 
 definePart<StatSpec>("stat", {
   doc: "A big number that counts up from its previous value (or 0).",
-  fields: { value: f.num("the number", true), unit: f.str("set small after the number"), label: f.str("a line under it"), tone: f.one(["plain", "accent"], '"accent" sets the number in the accent'), digits: f.num("decimals shown (default: as many as the value has)") },
+  fields: { value: f.num("the number", true), prefix: f.str("set small before the number ($, ¥, ~)"), unit: f.str("set small after the number"), label: f.str("a line under it"), tone: f.one(["plain", "accent"], '"accent" sets the number in the accent'), digits: f.num("decimals shown (default: as many as the value has)") },
   box: (s, ctx) => {
     const T = ctx.theme;
     // As many decimals as the value is written with, unless told.
@@ -388,6 +388,7 @@ definePart<StatSpec>("stat", {
         {
           style: { dir: "row", align: "end", gap: 12 },
           kids: [
+            ...(s.prefix ? [textBox(`${s.id}.p`, s.prefix, ctx, { font: "bold", size: SIZE.h2, lh: 1.6, color: T.ink2 })] : []),
             textBox(`${s.id}.v`, v, ctx, { font: "mono", size: SIZE.stat, lh: 1.05, color: s.tone === "accent" ? T.accentText : T.ink, track: -0.04, enter: "count" }),
             ...(s.unit ? [textBox(`${s.id}.u`, s.unit, ctx, { font: "bold", size: SIZE.h2, lh: 1.6, color: T.ink2 })] : []),
           ],
@@ -400,18 +401,22 @@ definePart<StatSpec>("stat", {
 
 definePart<ListSpec>("list", {
   doc: "A bulleted list; at picks one item to stress. Each item keeps its own id, so an item still there slides.",
-  fields: { items: f.strs("the items", true), at: f.num("the index of the item to stress") },
+  fields: { items: f.strs("the items", true), at: f.num("the index of the item to stress"), numbered: f.bool("number the items (1, 2, …) instead of bullets") },
   box: (s, ctx) => {
     const T = ctx.theme;
+    // Numbers all as wide as the widest, so the items line up.
+    const numW = s.numbered ? Math.ceil(ctx.fonts.measure(`${s.items.length}.`, "bold", SIZE.body)) : 18;
     return {
       style: { gap: 28 },
       kids: s.items.map((item, i) => ({
         style: { dir: "row", gap: 24, align: "start" },
         kids: [
-          {
-            style: { w: 18, h: SIZE.body * 1.45, shrink: 0 },
-            paint: (r) => [{ t: "circle", id: `${s.id}.${i}.dot`, cx: r.x + 9, cy: r.y + r.h / 2, r: 9, fill: s.at === i ? T.accent : T.ink, o: 1 } as Paint],
-          },
+          s.numbered
+            ? textBox(`${s.id}.${i}.n`, `${i + 1}.`, ctx, { font: "bold", size: SIZE.body, color: s.at === i ? T.accentText : T.ink3, align: "end", nowrap: Infinity, style: { w: numW, shrink: 0 } })
+            : {
+                style: { w: 18, h: SIZE.body * 1.45, shrink: 0 },
+                paint: (r) => [{ t: "circle", id: `${s.id}.${i}.dot`, cx: r.x + 9, cy: r.y + r.h / 2, r: 9, fill: s.at === i ? T.accent : T.ink, o: 1 } as Paint],
+              },
           textBox(`${s.id}.${i}`, item, ctx, { font: s.at === i ? "bold" : "sans", size: SIZE.body, color: s.at === undefined || s.at === i ? T.ink : T.ink3, style: { shrink: 1 } }),
         ],
       })),
@@ -476,7 +481,7 @@ definePart<FigureSpec>("figure", {
   fields: {
     width: f.num("its units across", true),
     height: f.num("its units down", true),
-    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, bold?, mono?, align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), id, enter, cue, then: [{ cue?, delay?, ms?, …the fields that change }]. pos is the top-left of a text (top-centre with align: center); size defaults to 44', true),
+    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, font? (sans|bold|black|mono), width? (wraps there), align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), opacity, dash: [on, off], id, enter, cue, then: [{ cue?, delay?, ms?, …the fields that change }]. pos is the top-left of a text (top-centre with align: center); size defaults to 44', true),
     caption: f.str("a small line under it"),
   },
   check: (s, at) => checkItems(s.items, `${at}.items`, ["cue"]),

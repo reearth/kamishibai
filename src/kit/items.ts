@@ -29,6 +29,14 @@ export type FigureItem = {
   bold?: boolean;
   /** set in the theme's mono font (code, identifiers) */
   mono?: boolean;
+  /** a text's font role: sans, bold, black (a heading's) or mono; over bold and mono */
+  font?: FontRole;
+  /** a text wraps at this width, in the figure's units (default: only at "\n") */
+  width?: number;
+  /** 0 (unseen) to 1 (default) */
+  opacity?: number;
+  /** a dashed stroke: [on, off] lengths in the figure's units */
+  dash?: number[];
   align?: "start" | "center" | "end";
   /** what it becomes later in the scene, in order: it moves from each form to the next */
   then?: ItemStep[];
@@ -40,11 +48,12 @@ export type FigureItem = {
  * sentence `cue` (default 0) starts; in morph, `delay` ms after the keyframe
  * starts. `ms` is how long the move takes (default 750).
  */
-export type ItemStep = Partial<Pick<FigureItem, "rect" | "circle" | "line" | "text" | "pos" | "fill" | "stroke" | "lineWidth" | "r" | "size" | "color">> & { cue?: number; delay?: number; ms?: number };
+export type ItemStep = Partial<Pick<FigureItem, "rect" | "circle" | "line" | "text" | "pos" | "fill" | "stroke" | "lineWidth" | "r" | "size" | "color" | "opacity">> & { cue?: number; delay?: number; ms?: number };
 
 const SHAPES = ["rect", "circle", "line", "text"] as const;
-const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "align", "then"];
-const STEP_KEYS = [...SHAPES, "pos", "fill", "stroke", "lineWidth", "r", "size", "color", "ms"];
+const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "font", "width", "opacity", "dash", "align", "then"];
+const STEP_KEYS = [...SHAPES, "pos", "fill", "stroke", "lineWidth", "r", "size", "color", "opacity", "ms"];
+const ROLES = ["sans", "bold", "black", "mono"];
 const isNums = (v: unknown, n?: number) => Array.isArray(v) && (n === undefined || v.length === n) && v.every((x) => typeof x === "number" && isFinite(x));
 
 /** What is wrong with a list of items, each message led by `at`. `extra` names the fields this use adds (cue, delay). */
@@ -63,6 +72,11 @@ export function checkItems(items: unknown, at: string, extra: readonly string[])
     if (it.circle !== undefined && !isNums(it.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
     if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p: unknown) => isNums(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
     if (it.text !== undefined && (typeof it.text !== "string" || !isNums(it.pos, 2))) out.push(`${where}: a text needs text and pos: [x, y]`);
+    if (it.font !== undefined && !ROLES.includes(it.font)) out.push(`${where}.font: "${it.font}" is not one of ${ROLES.map((r) => `"${r}"`).join(", ")}`);
+    if (it.width !== undefined && it.text === undefined) out.push(`${where}.width: only a text takes width (where it wraps); a line's or an outline's is lineWidth`);
+    else if (it.width !== undefined && !(typeof it.width === "number" && it.width > 0)) out.push(`${where}.width: expected a width in the figure's units`);
+    if (it.opacity !== undefined && !(typeof it.opacity === "number" && it.opacity >= 0 && it.opacity <= 1)) out.push(`${where}.opacity: expected 0 to 1`);
+    if (it.dash !== undefined && !(isNums(it.dash) && it.dash.length >= 2)) out.push(`${where}.dash: expected [on, off] lengths`);
     if (it.then !== undefined) out.push(...checkSteps(it, kinds[0]!, `${where}.then`, extra));
   });
   const ids = items.map((it, i) => (it && typeof it === "object" ? (it.id ?? String(i)) : String(i)));
@@ -98,6 +112,7 @@ function checkSteps(it: Record<string, unknown>, kind: (typeof SHAPES)[number], 
     if (st.line !== undefined && (!Array.isArray(st.line) || st.line.length !== (it.line as unknown[] | undefined)?.length || !st.line.every((p: unknown) => isNums(p, 2)))) out.push(`${where}.line: expected as many points as the line has (${(it.line as unknown[] | undefined)?.length ?? 0})`);
     if (st.pos !== undefined && !isNums(st.pos, 2)) out.push(`${where}.pos: expected [x, y]`);
     if (st.text !== undefined && typeof st.text !== "string") out.push(`${where}.text: expected a string`);
+    if (st.opacity !== undefined && !(typeof st.opacity === "number" && st.opacity >= 0 && st.opacity <= 1)) out.push(`${where}.opacity: expected 0 to 1`);
   });
   return out;
 }
@@ -113,7 +128,7 @@ export function itemSteps(it: FigureItem, base: { id: string; o: number; enter?:
 }
 
 /** A theme colour by name (accent, ink, ink3, card…), or a CSS colour as it is. */
-function colour(c: string | undefined, theme: Theme, fallback: string): string {
+export function colour(c: string | undefined, theme: Theme, fallback: string): string {
   if (!c) return fallback;
   const named = (theme as unknown as Record<string, unknown>)[c];
   return typeof named === "string" ? named : c;
@@ -127,20 +142,22 @@ export function itemPaint(it: FigureItem, base: { id: string; o: number; enter?:
   const { k } = at;
   const X = (x: number) => at.x + x * k;
   const Y = (y: number) => at.y + y * k;
+  base = { ...base, o: base.o * (it.opacity ?? 1) };
+  const dash = it.dash ? { dash: it.dash.map((v) => v * k) } : {};
   if (it.rect) {
     const [x, y, w, h] = it.rect;
-    return { ...base, t: "rect", x: X(x), y: Y(y), w: w * k, h: h * k, r: (it.r ?? 0) * k, fill: it.fill || it.stroke ? (it.fill ? colour(it.fill, T, T.card) : undefined) : T.card, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k, ground: !!it.fill };
+    return { ...base, t: "rect", x: X(x), y: Y(y), w: w * k, h: h * k, r: (it.r ?? 0) * k, fill: it.fill || it.stroke ? (it.fill ? colour(it.fill, T, T.card) : undefined) : T.card, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k, ground: !!it.fill, ...dash };
   }
   if (it.circle) {
     const [cx, cy, rad] = it.circle;
-    return { ...base, t: "circle", cx: X(cx), cy: Y(cy), r: rad * k, fill: it.fill || !it.stroke ? colour(it.fill, T, T.ink) : undefined, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k };
+    return { ...base, t: "circle", cx: X(cx), cy: Y(cy), r: rad * k, fill: it.fill || !it.stroke ? colour(it.fill, T, T.ink) : undefined, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k, ...dash };
   }
   if (it.line) {
-    return { ...base, t: "path", pts: it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]), stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none" };
+    return { ...base, t: "path", pts: it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]), stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none", ...dash };
   }
   const size = (it.size ?? SIZE.body) * k;
-  const font: FontRole = it.mono ? "mono" : it.bold ? "bold" : "sans";
-  const lines = it.text!.split("\n");
+  const font: FontRole = it.font ?? (it.mono ? "mono" : it.bold ? "bold" : "sans");
+  const lines = it.width ? fonts.balance(it.text!, font, size, it.width * k) : it.text!.split("\n");
   const w = Math.max(...lines.map((l) => fonts.measure(l, font, size)));
   const h = lines.length * size * 1.3;
   const align = it.align ?? "start";
