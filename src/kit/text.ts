@@ -5,6 +5,10 @@
 import type { Context2D } from "../canvas/types.ts";
 import type { FontRole, Theme } from "./theme.ts";
 
+/** The family a role draws with: its own, or sans's. */
+export const familyOf = (t: Theme, role: FontRole): string => (role === "mono" ? t.fonts.mono : role === "sans" ? t.fonts.sans : (t.fonts[role] ?? t.fonts.sans));
+const weightOf = (t: Theme, role: FontRole): number => (role === "bold" ? t.weights.bold : role === "black" ? t.weights.black : role === "mono" ? (t.weights.mono ?? t.weights.body) : t.weights.body);
+
 export class Fonts {
   private widths = new Map<string, number>();
   private vertical = new Map<FontRole, { asc: number; desc: number }>();
@@ -16,8 +20,7 @@ export class Fonts {
 
   css(role: FontRole, size: number): string {
     const t = this.theme;
-    const weight = role === "bold" ? t.weights.bold : role === "black" ? t.weights.black : t.weights.body;
-    return `${weight} ${size}px ${role === "mono" ? t.fonts.mono : t.fonts.sans}`;
+    return `${weightOf(t, role)} ${size}px ${familyOf(t, role)}`;
   }
 
   measure(s: string, role: FontRole, size: number, track = 0): number {

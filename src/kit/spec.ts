@@ -5,7 +5,7 @@
 import type { FontSource } from "../canvas/types.ts";
 import type { Context2D } from "../canvas/types.ts";
 import type { Verb } from "./model.ts";
-import type { Theme } from "./theme.ts";
+import type { Theme, ThemeSpec } from "./theme.ts";
 
 /** The version of the layout rules a reel was written for. */
 export const KIT_VERSION = 1;
@@ -122,7 +122,7 @@ export type KitReelSpec = {
   /** the shapes it lays out for, as "9:16" or a number (default 9:16 to 16:9) */
   aspect?: { min: string | number; max: string | number };
   fonts?: FontSource[];
-  theme?: Partial<Theme>;
+  theme?: ThemeSpec;
   voice?: VoiceSpec;
   /** reading substitutions for the voice only (captions keep the text) */
   lexicon?: Record<string, string>;

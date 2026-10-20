@@ -38,7 +38,7 @@ export const REEL_FIELDS: Fields = {
   height: f.num("the default view's height (default 1080)"),
   aspect: f.obj('the shapes it lays out for: { min, max } as "9:16" or numbers (default 9:16 to 16:9)'),
   fonts: f.any("font files: [{ family, src, weight? }], paths relative to the reel"),
-  theme: f.obj("over the default (light) theme: colours paper, card, well, ink, ink2, ink3, rule, accent, accentText, accentTint, onAccent; fonts { sans, mono }; weights { body, bold, black }"),
+  theme: f.obj("over the default (light) theme: colours paper, card, well, ink, ink2, ink3, rule, accent, accentText, accentTint, onAccent, and any of your own by name; fonts { sans, mono, bold?, black? } (bold and black default to sans's family); weights { body, bold, black, mono? }"),
   voice: f.obj('the narration voice: { provider: "kokoro" | "openai" | "gemini" | …, voice?, … }'),
   lexicon: f.obj("reading substitutions for the voice only"),
   music: f.obj("a track under the whole reel: { src (relative to the reel), gain? (dB, default -14), duck? (lowered under the voice, default true) }; it loops and fades out over 1.5 s"),

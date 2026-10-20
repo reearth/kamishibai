@@ -13,7 +13,8 @@ import type { Drawable } from "./model.ts";
 import { KitSpecError } from "./normalize.ts";
 import type { Transition } from "./spec.ts";
 import { Fonts } from "./text.ts";
-import { mergeTheme, type Theme } from "./theme.ts";
+import { normalColours, normalTheme } from "./colour.ts";
+import { mergeTheme, type Theme, type ThemeSpec } from "./theme.ts";
 
 /** An item of a keyframe: a figure's item, with `delay` in place of a cue. */
 export type MorphItem = Omit<FigureItem, "cue"> & {
@@ -35,7 +36,7 @@ export type MorphOptions = {
   width: number;
   height: number;
   /** colours and font families, over the kit's default theme */
-  theme?: Partial<Theme>;
+  theme?: ThemeSpec;
   /** a colour (a theme colour's name or CSS) to fill the whole area under each keyframe; a push or a wipe needs one to hide the keyframe before */
   paper?: string;
 };
@@ -58,8 +59,10 @@ export function morph(frames: MorphFrame[], o: MorphOptions): Morph {
   });
   if (problems.length) throw new KitSpecError(problems);
 
-  const theme = mergeTheme(o.theme);
-  const fonts = new Fonts(o.env.createCanvas(1, 1).getContext("2d"), theme);
+  const g0 = o.env.createCanvas(1, 1).getContext("2d");
+  // Colours in one form, so they blend and their contrast can be judged.
+  const theme = normalTheme(mergeTheme(o.theme), g0);
+  const fonts = new Fonts(g0, theme);
   const named = (c: string) => ((theme as unknown as Record<string, unknown>)[c] as string | undefined) ?? c;
   const paper: Drawable[] = o.paper ? [{ t: "rect", id: "stage", owner: "stage", x: 0, y: 0, w: o.width, h: o.height, r: 0, o: 1, fill: named(o.paper), ground: true }] : [];
   const place = { x: 0, y: 0, k: 1 };
@@ -75,7 +78,7 @@ export function morph(frames: MorphFrame[], o: MorphOptions): Morph {
       return it.then ? { ...d, steps: itemSteps(it, base, place, theme, fonts) } : d;
     });
     const next = frames[i + 1];
-    return { id: `frames[${i}]`, start: fr.at, ms: next ? next.at - fr.at : Infinity, ds: [...paper, ...ds], cues, transition: fr.transition };
+    return { id: `frames[${i}]`, start: fr.at, ms: next ? next.at - fr.at : Infinity, ds: normalColours([...paper, ...ds], g0), cues, transition: fr.transition };
   });
   const dc = { fonts, env: o.env, images: new Map<string, CanvasImageSource>() };
   const none = { top: 0, right: 0, bottom: 0, left: 0 };

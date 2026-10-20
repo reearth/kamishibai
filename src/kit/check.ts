@@ -3,10 +3,11 @@
 // arithmetic. An agent can fix a reel from these without looking at a frame.
 // ------------------------------------------------------------------
 import type { Context2D, Insets } from "../canvas/types.ts";
+import { parseColour } from "./colour.ts";
 import { MORPH_MS, stepAt, type Keyframe } from "./engine.ts";
 import { bbox, type Bounds, type Drawable, type RectD } from "./model.ts";
 import type { Stage } from "./parts.ts";
-import type { Fonts } from "./text.ts";
+import { familyOf, type Fonts } from "./text.ts";
 import type { FontRole, Theme } from "./theme.ts";
 
 export type IssueKind = "off-stage" | "overflow" | "overlap" | "contrast" | "widow" | "glyph";
@@ -19,9 +20,11 @@ const inter = (a: Bounds, b: Bounds) => {
 };
 const inside = (a: Bounds, b: Bounds, tol = 1) => a.x >= b.x - tol && a.y >= b.y - tol && a.x + a.w <= b.x + b.w + tol && a.y + a.h <= b.y + b.h + tol;
 
-function lum(hex: string): number | null {
-  if (!/^#[0-9a-f]{6}$/i.test(hex)) return null;
-  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+function lum(colour: string): number | null {
+  const p = parseColour(colour);
+  // A see-through colour's contrast depends on what is under it: not judged.
+  if (!p || p[3] < 1) return null;
+  const c = p.slice(0, 3).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
   return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
 }
 /**
@@ -39,7 +42,7 @@ export function widow(lines: string[]): string | null {
   return len <= 2 || loneWord ? last : null;
 }
 
-/** The WCAG contrast ratio of two #rrggbb colours (null for any other form). */
+/** The WCAG contrast ratio of two opaque colours in a form parseColour reads (null otherwise). */
 export function contrast(a: string, b: string): number | null {
   const [la, lb] = [lum(a), lum(b)];
   if (la === null || lb === null) return null;
@@ -149,7 +152,7 @@ export function missingGlyphs(texts: Array<{ s: string; font: FontRole; scene: s
   for (const t of texts) {
     for (const ch of new Set(t.s)) {
       // Once per family: the weights of one family have the same characters.
-      const key = `${t.font === "mono" ? fonts.theme.fonts.mono : fonts.theme.fonts.sans}|${ch}`;
+      const key = `${familyOf(fonts.theme, t.font)}|${ch}`;
       if (/\s/u.test(ch) || seen.has(key)) continue;
       seen.add(key);
       if (!box.has(t.font)) box.set(t.font, draw("\u{10FFFD}", t.font));

@@ -12,7 +12,7 @@ export { f, type Field, type Fields } from "./fields.ts";
 export { KitSpecError, normalize } from "./normalize.ts";
 export { kitBrief, kitSchema } from "./schema.ts";
 export { contrast, type Issue, type IssueKind } from "./check.ts";
-export { DEFAULT_THEME, SIZE, type Theme, type FontRole } from "./theme.ts";
+export { DEFAULT_THEME, SIZE, type Theme, type ThemeSpec, type FontRole } from "./theme.ts";
 export type { Box, Paint, Rect, Style } from "./layout.ts";
 export type { Drawable, Verb } from "./model.ts";
 export * from "./spec.ts";

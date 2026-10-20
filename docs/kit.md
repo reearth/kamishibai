@@ -223,8 +223,10 @@ Each issue ends with what usually fixes it. It exits 1 when it finds anything. W
 | `ink`, `ink2`, `ink3` | `#121212`, `#3e3e3a`, `#6e6e69` | text, strongest to weakest |
 | `rule` | `#d8d6cf` | card edges |
 | `accent`, `accentText`, `accentTint`, `onAccent` | `#d9662a`, `#b84e14`, `#f6d9c6`, `#ffffff` | the accent, its darker text colour, its tint (code marks), and text on it |
-| `fonts` | `{ sans: "sans-serif", mono: "monospace" }` | CSS font families by role |
-| `weights` | `{ body: 400, bold: 700, black: 900 }` | the weights the roles draw with |
+| `fonts` | `{ sans: "sans-serif", mono: "monospace" }` | CSS font families by role: `sans` for text, `mono` for code and numbers, and `bold` (labels, card text) and `black` (headings, titles) take `sans`'s unless given, so `black: Fraunces` sets the headings in a serif |
+| `weights` | `{ body: 400, bold: 700, black: 900 }` | the weights the roles draw with; `mono` takes `body`'s unless given |
+
+Colours take any CSS colour (`#fff`, `#ff000080`, `rgb()`, `tomato`); they blend when a part changes colour, and check judges their contrast (a see-through one is not judged). A theme may also name colours of its own, `theme: { brand: "#0b6" }`, and use them by name wherever a colour goes (`fill: brand`).
 
 Without `fonts`, text is drawn with the system's fonts, which differ between machines: give the reel its font files so it looks the same everywhere. A container needs fonts for every script the reel uses.
 

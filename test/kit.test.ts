@@ -16,6 +16,7 @@ import { Fonts } from "../src/kit/text.ts";
 import { mergeTheme, SIZE } from "../src/kit/theme.ts";
 import { itemPaint } from "../src/kit/items.ts";
 import { check } from "../src/kit/check.ts";
+import { parseColour } from "../src/kit/colour.ts";
 import type { Ctx } from "../src/kit/parts.ts";
 import type { Bounds, Drawable } from "../src/kit/model.ts";
 import type { PartSpec, SceneSpec } from "../src/kit/spec.ts";
@@ -98,6 +99,13 @@ describe("text", () => {
     expect(ts.some((t) => t.startsWith("4文字"))).toBe(true);
     expect(tokens("≈\u00a010 ms")).toEqual(["≈\u00a010", " ", "ms"]);
     expect(tokens("a\u00a0b c")).toEqual(["a\u00a0b", " ", "c"]);
+  });
+
+  it("sets each role in its own family and weight, or sans's and body's", () => {
+    const g = createCanvas(1, 1).getContext("2d") as unknown as Context2D;
+    const css = (over: object) => (["sans", "bold", "black", "mono"] as const).map((r) => new Fonts(g, mergeTheme(over)).css(r, 10));
+    expect(css({ fonts: { sans: "Geist", mono: "Mono" } })).toEqual(["400 10px Geist", "700 10px Geist", "900 10px Geist", "400 10px Mono"]);
+    expect(css({ fonts: { sans: "Geist", mono: "Mono", black: "Fraunces" }, weights: { mono: 700 } })).toEqual(["400 10px Geist", "700 10px Geist", "900 10px Fraunces", "700 10px Mono"]);
   });
 
   it("splits narration into sentences, but not at a decimal point", () => {
@@ -458,6 +466,21 @@ describe("check", () => {
     // Out of the box onto the paper: fine. Half off the box: it spills.
     expect(await issues([246, 152])).toEqual([]);
     expect(await issues([92, 152])).toEqual(["f.t spills out of f.box"]);
+  });
+
+  it("reads any CSS colour: it blends, and its contrast is judged", async () => {
+    expect([parseColour("#fff"), parseColour("#ff000080"), parseColour("rgb(1, 2, 3)"), parseColour("rgba(1 2 3 / 50%)"), parseColour("tomato")]).toEqual([[255, 255, 255, 1], [255, 0, 0, 128 / 255], [1, 2, 3, 1], [1, 2, 3, 0.5], null]);
+    // Pale text on a named paper: caught now that "white" is a colour the checker reads.
+    const reel = await kit({ kit: 1, fonts, theme: { ...theme, paper: "white", ink: "#ddd" }, scenes: [{ parts: [{ type: "text", text: "Pale" }] }] });
+    await registerFonts(reel, ".");
+    expect((await reel.check(resolveView(reel.meta), await nodeEnv("."))).map((i) => i.kind)).toContain("contrast");
+    // A named colour blends: halfway from red to blue is not either.
+    const env = await nodeEnv(".");
+    const m = morph([{ at: 0, items: [{ id: "a", rect: [0, 0, 10, 10], fill: "red" }] }, { at: 1000, items: [{ id: "a", rect: [0, 0, 10, 10], fill: "blue" }] }], { env, width: 10, height: 10 });
+    const c = createCanvas(10, 10);
+    m.draw(patchContext(c.getContext("2d") as unknown as Context2D), 1000 + 750 / 2);
+    const [r, , bl] = c.getContext("2d").getImageData(5, 5, 1, 1).data;
+    expect(r! > 20 && bl! > 20).toBe(true);
   });
 
   it("finds characters no font has", async () => {

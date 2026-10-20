@@ -28,6 +28,7 @@ import { layoutScene, partBox, stageFrame } from "./stage.ts";
 import type { KitReelSpec, PartSpec, VoiceSpec } from "./spec.ts";
 import { Fonts, speechMs } from "./text.ts";
 import { LONG_SIDE, mergeTheme } from "./theme.ts";
+import { normalColours, normalTheme } from "./colour.ts";
 
 /** Narration starts this long into its scene, as the parts finish moving. */
 const LEAD_MS = 400;
@@ -77,7 +78,7 @@ export interface KitReel extends CanvasReel {
 export async function kit(spec: KitReelSpec): Promise<KitReel> {
   const scenes = normalize(spec);
   await loadYoga();
-  const theme = mergeTheme(spec.theme);
+  const baseTheme = mergeTheme(spec.theme);
   const captions = spec.captions ?? true;
   const burn = captions === "burn";
 
@@ -119,7 +120,10 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     const stage: Stage = { W: view.width / k, H: view.height / k };
     const ins = view.insets;
     const insets = { top: ins.top / k, right: ins.right / k, bottom: ins.bottom / k, left: ins.left / k };
-    const fonts = new Fonts(env.createCanvas(1, 1).getContext("2d"), theme);
+    const g0 = env.createCanvas(1, 1).getContext("2d");
+    // Colours in one form, so they blend and their contrast can be judged.
+    const theme = normalTheme(baseTheme, g0);
+    const fonts = new Fonts(g0, theme);
     const images = new Map<string, CanvasImageSource>();
     const sizes = new Map<string, { w: number; h: number }>();
     for (const src of imagesOf(scenes)) {
@@ -150,7 +154,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const cues: Record<string, number> = {};
       for (const [id, n] of s.cues) if (t.say[n]) cues[id] = t.say[n]!.atMs - t.start;
       const boxes = new Map<string, Bounds>();
-      const ds = layoutScene(s, ctx, boxes);
+      const ds = normalColours(layoutScene(s, ctx, boxes), g0);
       const at = (n: number) => (n && t.say[n] ? t.say[n]!.atMs - t.start : 0);
       // Steps move with their sentence, and `at` holds their delay after it.
       for (const d of ds) if (d.steps) d.steps = d.steps.map((st) => (st.cue !== undefined ? { ...st, at: at(st.cue) + (st.at ?? 0) } : st));
@@ -160,7 +164,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       if (!shots.length || shots[0]!.at > 0) shots.unshift({ at: 0, cam: { ...anchor, s: 1 } });
       return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, shots };
     });
-    return { k, stage, insets, fonts, images, ks, anchor, frame: fr };
+    return { k, stage, insets, fonts, images, ks, anchor, frame: fr, theme };
   }
 
   return {
@@ -177,7 +181,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     subtitles,
     timing,
     async check(view, env) {
-      const { ks, stage, insets, fonts } = await prepare(view, env);
+      const { ks, stage, insets, fonts, theme } = await prepare(view, env);
       // What is drawn as text: the parts', and the captions when they are burned in.
       const texts = ks.flatMap((k) => k.ds.flatMap((d) => [d, ...(d.steps?.map((st) => st.d) ?? [])].flatMap((f) => (f.t === "text" ? [{ s: f.lines.join(""), font: f.font, scene: k.id, id: d.id }] : []))));
       if (burn) timing.forEach((t) => t.say.forEach((l, i) => texts.push({ s: l.text, font: "bold", scene: t.id, id: `caption ${i}` })));

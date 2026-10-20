@@ -472,7 +472,10 @@ scenes:
   parts (the captions then sit over them).
 - `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
   `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
-  { sans, mono }`, `weights: { body, bold, black }`. The default is light
+  { sans, mono, bold?, black? }` (bold and black take sans's family unless
+  given: `black: Fraunces` sets headings in a serif), `weights: { body, bold,
+  black, mono? }`, and colours of your own (`brand: "#0b6"`, then `fill:
+  brand`). Any CSS colour works anywhere. The default is light
   (paper `#fafaf7`, card `#ffffff`, ink `#121212`, ink3 `#6e6e69`, rule
   `#d8d6cf`, accent `#d9662a`); there is no dark mode, so set the colours,
   e.g. paper `#0b0f1a`, card `#151b2b`, ink `#eef1ff`, ink3 `#8c95bc`, rule

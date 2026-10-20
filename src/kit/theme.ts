@@ -21,10 +21,10 @@ export interface Theme {
   accentTint: string;
   /** text on the accent */
   onAccent: string;
-  /** font families by role, as CSS lists */
-  fonts: { sans: string; mono: string };
-  /** weights the roles draw with */
-  weights: { body: number; bold: number; black: number };
+  /** font families by role, as CSS lists: bold and black (headings) take sans's unless given */
+  fonts: { sans: string; mono: string; bold?: string; black?: string };
+  /** weights the roles draw with: mono takes body's unless given */
+  weights: { body: number; bold: number; black: number; mono?: number };
 }
 
 export const DEFAULT_THEME: Theme = {
@@ -43,8 +43,19 @@ export const DEFAULT_THEME: Theme = {
   weights: { body: 400, bold: 700, black: 900 },
 };
 
+/**
+ * What a reel writes as its theme: any of the theme's fields (fonts and
+ * weights a key at a time), and colours of its own, named, to use as
+ * `fill: brand` wherever a colour goes.
+ */
+export type ThemeSpec = Partial<Omit<Theme, "fonts" | "weights">> & {
+  fonts?: Partial<Theme["fonts"]>;
+  weights?: Partial<Theme["weights"]>;
+  [colour: string]: unknown;
+};
+
 /** A theme with `over` laid on the default, one level deep. */
-export function mergeTheme(over: Partial<Theme> | undefined): Theme {
+export function mergeTheme(over: ThemeSpec | undefined): Theme {
   if (!over) return DEFAULT_THEME;
   return {
     ...DEFAULT_THEME,

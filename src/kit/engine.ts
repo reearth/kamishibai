@@ -6,6 +6,7 @@
 // Layout runs once per scene and view; playback only interpolates.
 // ------------------------------------------------------------------
 import { bezier, eases } from "../easing.ts";
+import { formatColour, parseColour, type RGBA } from "./colour.ts";
 import type { Drawable, ImageD, PaintD, PathD, TextD } from "./model.ts";
 import type { Transition } from "./spec.ts";
 
@@ -57,13 +58,10 @@ const FADE_MS = 400;
 const move = bezier(0.65, 0, 0.35, 1);
 const clamp01 = (p: number) => (p < 0 ? 0 : p > 1 ? 1 : p);
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
-const HEX = /^#[0-9a-f]{6}$/i;
-
 function lerpColor(a: string, b: string, p: number): string {
-  if (a === b || !HEX.test(a) || !HEX.test(b)) return p < 0.5 ? a : b;
-  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
-  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
-  return "#" + pa.map((v, i) => Math.round(lerp(v, pb[i]!, p)).toString(16).padStart(2, "0")).join("");
+  const [pa, pb] = [parseColour(a), parseColour(b)];
+  if (a === b || !pa || !pb) return p < 0.5 ? a : b;
+  return formatColour(pa.map((v, i) => lerp(v, pb[i]!, p)) as RGBA);
 }
 
 const num = (d: TextD) => (/^-?[\d,]+(\.\d+)?$/.test(d.lines.join("")) ? Number(d.lines.join("").replace(/,/g, "")) : null);
@@ -92,7 +90,7 @@ function tween(a: Drawable, b: Drawable, p: number): Live {
     const va = (a as Record<string, unknown>)[k];
     const vb = (b as Record<string, unknown>)[k];
     if (typeof va === "number" && typeof vb === "number") out[k] = lerp(va, vb, p);
-    else if (typeof va === "string" && typeof vb === "string" && va.startsWith("#") && vb.startsWith("#")) out[k] = lerpColor(va, vb, p);
+    else if (typeof va === "string" && typeof vb === "string" && (k === "fill" || k === "stroke" || k === "color")) out[k] = lerpColor(va, vb, p);
   }
   if (a.t === "path" && b.t === "path") out.pts = b.pts.map((q, i) => [lerp(a.pts[i]![0], q[0], p), lerp(a.pts[i]![1], q[1], p)]);
   if (a.t === "text" && b.t === "text" && b.enter === "count") {
