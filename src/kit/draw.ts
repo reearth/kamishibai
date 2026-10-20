@@ -83,6 +83,23 @@ function one(g: Context2D, d: Live, c: DrawCtx) {
       break;
     case "path": {
       if (d.prog <= 0) break;
+      if (d.fill) {
+        // A closed shape: its outline is drawn in, then it fills.
+        g.beginPath();
+        d.pts.forEach((q, i) => (i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])));
+        g.closePath();
+        if (d.prog >= 1) (g.fillStyle = d.fill), g.fill();
+        if (d.stroke) {
+          const pts = partial([...d.pts, d.pts[0]!], d.prog);
+          g.beginPath();
+          pts.forEach((q, i) => (i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])));
+          g.strokeStyle = d.stroke;
+          g.lineWidth = d.sw;
+          g.lineJoin = "round";
+          g.stroke();
+        }
+        break;
+      }
       const pts = partial(d.pts, d.prog);
       const tip = pts.at(-1)!;
       const showHead = d.head !== "none" && d.prog > 0.02;

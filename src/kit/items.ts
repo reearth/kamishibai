@@ -71,6 +71,7 @@ export function checkItems(items: unknown, at: string, extra: readonly string[])
     if (it.rect !== undefined && !isNums(it.rect, 4)) out.push(`${where}.rect: expected [x, y, w, h]`);
     if (it.circle !== undefined && !isNums(it.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
     if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p: unknown) => isNums(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
+    else if (it.line !== undefined && it.fill !== undefined && it.line.length < 3) out.push(`${where}.line: a filled line is a closed shape, so it needs three points or more`);
     if (it.text !== undefined && (typeof it.text !== "string" || !isNums(it.pos, 2))) out.push(`${where}: a text needs text and pos: [x, y]`);
     if (it.font !== undefined && !ROLES.includes(it.font)) out.push(`${where}.font: "${it.font}" is not one of ${ROLES.map((r) => `"${r}"`).join(", ")}`);
     if (it.width !== undefined && it.text === undefined) out.push(`${where}.width: only a text takes width (where it wraps); a line's or an outline's is lineWidth`);
@@ -153,7 +154,10 @@ export function itemPaint(it: FigureItem, base: { id: string; o: number; enter?:
     return { ...base, t: "circle", cx: X(cx), cy: Y(cy), r: rad * k, fill: it.fill || !it.stroke ? colour(it.fill, T, T.ink) : undefined, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k, ...dash };
   }
   if (it.line) {
-    return { ...base, t: "path", pts: it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]), stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none", ...dash };
+    const pts = it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]);
+    // With a fill, the points close into a shape, outlined only with a stroke.
+    if (it.fill) return { ...base, t: "path", pts, fill: colour(it.fill, T, T.ink), stroke: it.stroke ? colour(it.stroke, T, T.ink) : "", sw: (it.lineWidth ?? 2) * k, prog: 1, head: "none", ...dash };
+    return { ...base, t: "path", pts, stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none", ...dash };
   }
   const size = (it.size ?? SIZE.body) * k;
   const font: FontRole = it.font ?? (it.mono ? "mono" : it.bold ? "bold" : "sans");

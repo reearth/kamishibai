@@ -455,7 +455,8 @@ scenes:
   item; the part is never cut off). `focus: map.gate` aims at item `gate`
   of figure `map`.
 - `{ type: figure, width, height, items }` draws as data: items `rect: [x, y,
-  w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`), `text`
+  w, h]`, `circle: [cx, cy, r]`, `line: [[x, y], …]` (`arrow: true`; with a
+  `fill` it closes into a filled shape), `text`
   with `pos: [x, y]` (`font`, `width` to wrap at); colours by theme name
   (`accent`, `ink3`…); `opacity`, `dash: [on, off]`. Items keep
   ids across scenes, so a diagram can change shape; an item can have a `cue`.

@@ -672,6 +672,17 @@ describe("morph", () => {
     expect([font({}), font({ bold: true }), font({ mono: true })]).toEqual(["sans", "bold", "mono"]);
   });
 
+  it("closes a line with a fill into a filled shape", async () => {
+    const env = await nodeEnv(".");
+    const m = morph([{ at: 0, items: [{ line: [[0, 0], [100, 0], [0, 100]], fill: "#00ff00", enter: "none" }] }], { env, width: 100, height: 100 });
+    const c = createCanvas(100, 100);
+    m.draw(patchContext(c.getContext("2d") as unknown as Context2D), 2000);
+    const px = (x: number, y: number) => [...c.getContext("2d").getImageData(x, y, 1, 1).data].slice(0, 4);
+    expect(px(20, 20)).toEqual([0, 255, 0, 255]);
+    expect(px(80, 80)[3]).toBe(0);
+    expect(() => morph([{ at: 0, items: [{ line: [[0, 0], [1, 1]], fill: "red" }] }], { env, width: 10, height: 10 })).toThrow(/needs three points or more/);
+  });
+
   it("moves an item within its keyframe by its steps' delays", async () => {
     const env = await nodeEnv(".");
     const m = morph([{ at: 0, items: [{ id: "dot", circle: [50, 100, 20], fill: "#f00", then: [{ delay: 1000, circle: [350, 100, 20] }] }] }], { env, width: 400, height: 200 });

@@ -65,11 +65,14 @@ export type TextD = Base & {
 export type PathD = Base & {
   t: "path";
   pts: [number, number][];
+  /** "" for a filled shape with no outline */
   stroke: string;
   sw: number;
   /** 0..1 of the length drawn (for "draw") */
   prog: number;
   head: "none" | "end";
+  /** a closed shape filled with this, its outline drawn only with a stroke */
+  fill?: string;
 };
 
 export type CircleD = Base & {

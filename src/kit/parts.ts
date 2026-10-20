@@ -481,7 +481,7 @@ definePart<FigureSpec>("figure", {
   fields: {
     width: f.num("its units across", true),
     height: f.num("its units down", true),
-    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } | { text, pos: [x, y], size?, font? (sans|bold|black|mono), width? (wraps there), align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), opacity, dash: [on, off], id, enter, cue, then: [{ cue?, delay?, ms?, …the fields that change }]. pos is the top-left of a text (top-centre with align: center); size defaults to 44', true),
+    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } (with fill: a closed, filled shape) | { text, pos: [x, y], size?, font? (sans|bold|black|mono), width? (wraps there), align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), opacity, dash: [on, off], id, enter, cue, then: [{ cue?, delay?, ms?, …the fields that change }]. pos is the top-left of a text (top-centre with align: center); size defaults to 44', true),
     caption: f.str("a small line under it"),
   },
   check: (s, at) => checkItems(s.items, `${at}.items`, ["cue"]),
