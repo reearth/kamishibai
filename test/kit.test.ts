@@ -147,6 +147,27 @@ describe("text", () => {
     expect(css({ fonts: { sans: "Geist", mono: "Mono", black: "Fraunces" }, weights: { mono: 700 } })).toEqual(["400 10px Geist", "700 10px Geist", "900 10px Fraunces", "700 10px Mono"]);
   });
 
+  it("plays a scene's sounds from its start or from a sentence's, on the measured clock", async () => {
+    const reel = await kit({
+      kit: 1, fonts, theme, pace: { lead: 100, gap: 1000 },
+      scenes: [
+        { ms: 2000, parts: [title("A")] },
+        { say: ["あいうえお。", "かきくけこ。"], sounds: [{ src: "click.wav" }, { src: "click.wav", at: 250, gain: -6 }, { src: "ding.wav", cue: 1, at: 50 }], parts: [title("B")] },
+      ],
+    });
+    const [, b] = reel.timing;
+    expect(reel.audio!.filter((c) => !c.label?.includes("#"))).toEqual([
+      { src: "click.wav", atMs: b!.start, label: "s2 sound 0" },
+      { src: "click.wav", atMs: b!.start + 250, gain: -6, label: "s2 sound 1" },
+      { src: "ding.wav", atMs: b!.say[1]!.atMs + 50, label: "s2 sound 2" },
+    ]);
+    expect(problems({ kit: 1, scenes: [{ say: "one.", sounds: [{ at: 10 }, { src: "a.wav", cue: 3 }, "b.wav"], parts: [title("A")] }] })).toEqual([
+      'scenes[0].sounds[0]: "src" is required (a sound file, relative to the reel)',
+      "scenes[0].sounds[1].cue: 3 is not a sentence of this scene's say (it has 1)",
+      'scenes[0].sounds[2]: expected { src, at?, cue?, gain? }, got "b.wav"',
+    ]);
+  });
+
   it("times narration by the pace and each line's pause, and speaks a line as written out", async () => {
     const reel = await kit({
       kit: 1, fonts, theme, pace: { lead: 100, gap: 1000 },

@@ -93,6 +93,9 @@ export type PartSpec = BuiltinSpec | CustomSpec;
 /** Where the camera looks: a part's id (the camera moves in to frame it), or that with a cue and a zoom to stop at. */
 export type FocusSpec = string | { on: string; cue?: number; zoom?: number };
 
+/** A sound a scene plays: a file next to the reel, `at` ms after the scene starts (or after sentence `cue` starts), at `gain` dB. */
+export type SoundSpec = { src: string; at?: number; cue?: number; gain?: number };
+
 /** Room kept clear at the stage's edges, in layout units: one number for all four, or each edge. */
 export type MarginSpec = number | { top?: number; right?: number; bottom?: number; left?: number };
 
@@ -132,6 +135,8 @@ export type SceneSpec = {
   fill?: boolean | "max" | number;
   /** where the parts under the heading sit in their room (default "center"): an edge or a corner */
   place?: (typeof PLACES)[number];
+  /** sounds the scene plays: each `at` ms after it starts, or after sentence `cue` starts */
+  sounds?: SoundSpec[];
   /** this scene's margins, over the reel's (0 lets a picture reach the edge) */
   margin?: MarginSpec;
   [field: string]: unknown;

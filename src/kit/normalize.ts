@@ -36,6 +36,8 @@ export type NormScene = {
   place: (typeof PLACES)[number];
   /** its margins, the reel's laid under the scene's (an edge not given keeps the default) */
   margin: Partial<Edges>;
+  /** the sounds it plays, each from a sentence (0: the scene's start) and ms after it */
+  sounds: Array<{ src: string; cue: number; at: number; gain?: number }>;
 };
 
 /** When a part comes in, and how long it takes, where its enter says. */
@@ -88,6 +90,13 @@ function checkMargin(v: unknown, at: string): string[] {
   if (isObj(v)) return checkFields(v, EDGE_FIELDS, at);
   return [`${at}: expected a number, or { top?, right?, bottom?, left? }, got ${JSON.stringify(v)}`];
 }
+
+const SOUND_FIELDS: Fields = {
+  src: f.str("a sound file, relative to the reel", true),
+  at: f.ms("ms after the scene starts, or after sentence cue starts (default 0)"),
+  cue: f.num("a sentence of the scene's say to count from (default 0, the scene's start)"),
+  gain: f.num("its level in dB (default 0)"),
+};
 
 const PROGRESS_FIELDS: Fields = {
   color: f.str("the bar's colour: a theme colour's name or CSS (default accent)"),
@@ -195,7 +204,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", enter: {}, enters: new Map(), written: new Set(), focus: [], fill: true, place: "center", margin: {} };
+      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", enter: {}, enters: new Map(), written: new Set(), focus: [], fill: true, place: "center", margin: {}, sounds: [] };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -223,6 +232,18 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     problems.push(...checkMargin(sc.margin, `${where}.margin`));
     const say = sayLines(sc.say, `${where}.say`, problems);
     problems.push(...checkPace(sc.pace, `${where}.pace`));
+    const sounds: NormScene["sounds"] = [];
+    if (Array.isArray(sc.sounds)) {
+      sc.sounds.forEach((v, j) => {
+        const at = `${where}.sounds[${j}]`;
+        if (!isObj(v)) return void problems.push(`${at}: expected { src, at?, cue?, gain? }, got ${JSON.stringify(v)}`);
+        const bad = checkFields(v, SOUND_FIELDS, at);
+        const cue = typeof v.cue === "number" ? v.cue : 0;
+        if (!Number.isInteger(cue) || cue < 0 || cue >= Math.max(1, say.length)) bad.push(`${at}.cue: ${cue} is not a sentence of this scene's say (it has ${say.length})`);
+        if (bad.length) return void problems.push(...bad);
+        sounds.push({ src: v.src as string, cue, at: typeof v.at === "number" ? v.at : 0, ...(typeof v.gain === "number" ? { gain: v.gain } : {}) });
+      });
+    }
     const cues = new Map<string, number>();
     const enters = new Map<string, PartEnter>();
     const writtenIds = new Set<string>();
@@ -327,6 +348,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       fill: sc.fill === "max" || typeof sc.fill === "number" ? sc.fill : sc.fill !== false,
       place: (sc.place as NormScene["place"] | undefined) ?? "center",
       margin: { ...marginOf(spec.margin), ...marginOf(sc.margin) },
+      sounds,
     };
   });
   if (problems.length) throw new KitSpecError(problems);
