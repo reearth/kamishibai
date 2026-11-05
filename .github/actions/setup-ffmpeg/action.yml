@@ -1,0 +1,42 @@
+name: Set up ffmpeg
+description: >
+  A static ffmpeg and ffprobe for Linux x64 (7.0.2, with libx264, libopus,
+  libdav1d and libaom), from a pinned release of eugeneware/ffmpeg-static,
+  checked against their SHA-256 and cached. apt's mirror on the runners has
+  been slow enough to time a job out; GitHub's release downloads are not.
+
+runs:
+  using: composite
+  steps:
+    - name: Restore ffmpeg
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/ffmpeg
+        # The checksums are in the key: a new pin is a new cache.
+        key: ffmpeg-b6.1.1-linux-x64-bfe8a8fc-25d9b6cc
+
+    - name: Download ffmpeg
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/ffmpeg"
+        mkdir -p "$dir"
+        cd "$dir"
+        base=https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1
+        curl -fsSL --retry 3 -o ffmpeg.gz "$base/ffmpeg-linux-x64.gz"
+        curl -fsSL --retry 3 -o ffprobe.gz "$base/ffprobe-linux-x64.gz"
+        sha256sum -c - <<'EOF'
+        bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa  ffmpeg.gz
+        25d9b6ccb05e3d9de9e04e31e2506d8dd7f9f0418981965ac6df12e8d3afd067  ffprobe.gz
+        EOF
+        gunzip ffmpeg.gz ffprobe.gz
+        chmod +x ffmpeg ffprobe
+
+    - name: Put ffmpeg on PATH
+      shell: bash
+      run: |
+        echo "$RUNNER_TEMP/ffmpeg" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/ffmpeg/ffmpeg" -hide_banner -version | head -1
+        "$RUNNER_TEMP/ffmpeg/ffprobe" -hide_banner -version | head -1
