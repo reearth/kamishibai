@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { kit, kitBrief, kitSchema, morph, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
-import { camAt, frameAt, layersAt, settleMs, type Keyframe } from "../src/kit/engine.ts";
+import { camAt, enteredMs, frameAt, layersAt, settleMs, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences, parseMarks, lineMarks } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
@@ -475,10 +475,11 @@ describe("transitions and the camera", () => {
     const wipe = layersAt(two("wipe"), 1350, 100);
     expect(wipe[1]!.clipW).toBeGreaterThan(0);
     expect(wipe[1]!.clipW).toBeLessThan(100);
-    // A fade: the old scene goes out over the paper before the new parts come in.
+    // A fade crossfades: the new scene is there whole, under the old one going out.
     const fade = layersAt(two("fade"), 1200, 100);
     expect(fade).toHaveLength(2);
-    expect(fade[0]!.ds.map((d) => d.id)).toEqual(["stage"]);
+    expect(fade[0]!.ds.map((d) => [d.id, d.o])).toEqual([["stage", 1], ["a", 1]]);
+    expect(fade[1]!.o).toBeGreaterThan(0);
     expect(layersAt(two("fade"), 1800, 100)).toHaveLength(1);
   });
 
@@ -501,18 +502,18 @@ describe("transitions and the camera", () => {
   it("brings new parts in when the scene or the part says, over the length it says", () => {
     const ks = (more: Partial<Keyframe>): Keyframe[] => [
       { id: "1", start: 0, ms: 1000, ds: [paper] },
-      { id: "2", start: 1000, ms: 3000, ds: [paper, rect("b", 0), rect("c", 0)], transition: "fade", ...more },
+      { id: "2", start: 1000, ms: 3000, ds: [paper, rect("b", 0), rect("c", 0)], ...more },
     ];
     const o = (k: Keyframe[], t: number, id: string) => frameAt(k, t).find((d) => d.id === id)?.o ?? 0;
-    // By default a fade's parts wait for it (400 + 150), and the next starts 160 later.
-    expect(o(ks({}), 1500, "b")).toBe(0);
+    // By default new parts wait for what stays to mostly move (55% of 750 ms), and the next starts 160 later.
+    expect(o(ks({}), 1300, "b")).toBe(0);
     // A delay of 0 and 200 ms each: the first is in by 200, the next 160 after it.
     const quick = ks({ enter: { delay: 0, ms: 200 } });
     expect(o(quick, 1200, "b")).toBe(1);
     expect(o(quick, 1200, "c")).toBeLessThan(1);
     expect(o(quick, 1360, "c")).toBe(1);
     expect(o(ks({ enter: { delay: 0, ms: 200, stagger: 0 } }), 1200, "c")).toBe(1);
-    // A part's own delay, here in a fade, and its own length.
+    // A part's own delay, and its own length.
     const own = ks({ enters: { c: { delay: 900, ms: 100 } } });
     expect(o(own, 1890, "c")).toBe(0);
     expect(o(own, 2000, "c")).toBe(1);
@@ -520,6 +521,21 @@ describe("transitions and the camera", () => {
     const cut = ks({ transition: "cut", enters: { c: { delay: 900 } } });
     expect(o(cut, 1001, "b")).toBe(1);
     expect(o(cut, 1500, "c")).toBe(0);
+  });
+
+  it("crossfades a fade's parts in with it, but for those cued or given a delay", () => {
+    const ks = (more: Partial<Keyframe>): Keyframe[] => [
+      { id: "1", start: 0, ms: 1000, ds: [paper, rect("a", 0)] },
+      { id: "2", start: 1000, ms: 900, ds: [paper, rect("b", 0), rect("c", 0), rect("d", 0)], transition: "fade", transMs: 200, cues: { d: 500 }, ...more },
+    ];
+    const o = (k: Keyframe[], t: number, id: string) => frameAt(k, t).find((d) => d.id === id)?.o ?? 0;
+    expect(o(ks({}), 1001, "b")).toBe(1);
+    // A cued part still comes in with its sentence, and one with a delay of its own at it.
+    expect(o(ks({}), 1300, "d")).toBe(0);
+    expect(o(ks({ enters: { c: { delay: 300 } } }), 1200, "c")).toBe(0);
+    // Nothing comes in with the scene: it is all in at once.
+    expect(enteredMs(ks({}), 1)).toBe(0);
+    expect(enteredMs(ks({ enters: { c: { delay: 300, ms: 100 } } }), 1)).toBe(400);
   });
 
   it("waits for its longest part before its frames repeat", () => {
@@ -785,6 +801,21 @@ describe("filling the stage", () => {
     // Before, 60% of the stage (648 here), shorter than the room under the heading.
     expect(b.h).toBeGreaterThan(1080 * 0.6 + 50);
     expect(Math.abs(b.y + b.h - (r.y + r.h))).toBeLessThan(2);
+  });
+
+  it("says when a scene ends before its parts have been seen whole", async () => {
+    const reel = await kit({
+      kit: 1, fonts, theme,
+      scenes: [
+        { ms: 2000, parts: [title("Ready")] },
+        { id: "glance", ms: 900, parts: [{ type: "text", role: "display", text: "receipt" }] },
+        { id: "quick", ms: 900, enter: { delay: 0, ms: 0 }, parts: [{ type: "text", role: "display", text: "schedule" }] },
+        { id: "faded", ms: 900, transition: { type: "fade", ms: 200 }, parts: [{ type: "text", role: "display", text: "accommodation", shrink: true }] },
+      ],
+    });
+    const issues = (await reel.check(resolveView(reel.meta), await nodeEnv("."))).filter((i) => i.kind === "timing");
+    expect(issues.map((i) => i.scene)).toEqual(["glance"]);
+    expect(issues[0]!.msg).toMatch(/^its parts are all in for only 0\.\d\d s of its 0\.90 s/);
   });
 
   it("says when a card's width goes unused on every shape the reel lays out for", async () => {

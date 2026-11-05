@@ -4,13 +4,13 @@
 // ------------------------------------------------------------------
 import type { Context2D, Insets } from "../canvas/types.ts";
 import { parseColour } from "./colour.ts";
-import { MORPH_MS, stepAt, type Keyframe } from "./engine.ts";
+import { enteredMs, MORPH_MS, stepAt, type Keyframe } from "./engine.ts";
 import { bbox, type Bounds, type Drawable, type RectD } from "./model.ts";
 import type { Stage } from "./parts.ts";
 import { familyOf, type Fonts } from "./text.ts";
 import type { FontRole, Theme } from "./theme.ts";
 
-export type IssueKind = "off-stage" | "overflow" | "overlap" | "contrast" | "widow" | "glyph" | "unused";
+export type IssueKind = "off-stage" | "overflow" | "overlap" | "contrast" | "widow" | "glyph" | "unused" | "timing";
 export type Issue = { scene: string; kind: IssueKind; msg: string };
 
 const inter = (a: Bounds, b: Bounds) => {
@@ -73,11 +73,22 @@ function tweak(theme: Theme, fg: string, bg: string): string {
 
 const box = (b: Bounds) => `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}×${Math.round(b.h)}`;
 
+/** How long a scene shows all its parts at least, before check says it ends too soon after they are in: half a second, or half a shorter scene. */
+const WHOLE_MS = 500;
+
 /** The issues of every keyframe, for one stage, kept `margin` in from its edges (or a scene's own margin, where less). */
 export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme, margin = 48): Issue[] {
   const out: Issue[] = [];
-  for (const k of ks) {
+  ks.forEach((k, ki) => {
     const s = k.id;
+    // Parts still coming in until the scene is nearly over: it is gone before they are seen whole.
+    if (isFinite(k.ms) && k.ms > 0) {
+      const e = enteredMs(ks, ki);
+      const whole = Math.max(0, k.ms - e);
+      if (whole < Math.min(WHOLE_MS, k.ms / 2)) {
+        out.push({ scene: s, kind: "timing", msg: `its parts are all in for only ${(whole / 1000).toFixed(2)} s of its ${(k.ms / 1000).toFixed(2)} s (they take ${(e / 1000).toFixed(2)} s to come in): bring them in sooner or quicker (enter: { delay, ms }), or hold the scene longer` });
+      }
+    }
     // A scene that chose a smaller margin is held to that, not to the default safe area.
     const e = (side: keyof Insets) => Math.min(margin, k.margin?.[side] ?? margin);
     const safe = { x: e("left") + insets.left, y: e("top") + insets.top, w: stage.W - e("left") - e("right") - insets.left - insets.right, h: stage.H - e("top") - e("bottom") - insets.top - insets.bottom };
@@ -133,7 +144,7 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
         const hit = inter(parts.get(names[a]!)!, parts.get(names[b]!)!);
         if (hit) out.push({ scene: s, kind: "overlap", msg: `${names[a]} and ${names[b]} overlap by ${Math.round(hit.w)}×${Math.round(hit.h)}: put them in one row or col, or move one to another scene` });
       }
-  }
+  });
   return out;
 }
 
