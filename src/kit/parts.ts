@@ -5,7 +5,7 @@
 import { bbox, type RectD, type Verb } from "./model.ts";
 import { intrinsic, layout, type Box, type Paint, type Rect } from "./layout.ts";
 import { f, type Fields } from "./fields.ts";
-import { SIZE, type FontRole, type Theme } from "./theme.ts";
+import { MIN_FIT, SIZE, type FontRole, type Theme } from "./theme.ts";
 import type { Fonts } from "./text.ts";
 import { checkItems, colour, itemPaint, itemSteps, type FigureItem } from "./items.ts";
 import type {
@@ -35,6 +35,8 @@ export interface Ctx {
   frame: Frame;
   /** which way the enclosing group runs */
   flow?: "row" | "col";
+  /** the room under the heading, which a part may size itself to (unset outside a scene's layout) */
+  room?: { w: number; h: number };
   fonts: Fonts;
   theme: Theme;
   /** a text file relative to the reel */
@@ -96,6 +98,8 @@ export type TextOpts = {
   balance?: boolean;
   /** stay on one line while no wider than this (breaking only at "\n"), so a row that holds it narrows instead; longer text wraps */
   nowrap?: number;
+  /** set smaller, down to this size, until its longest word fits the width it gets */
+  shrinkTo?: number;
 };
 
 /** A run of text that wraps to the width it gets. */
@@ -106,18 +110,23 @@ export function textBox(id: string, s: string, ctx: Ctx, o: TextOpts = {}): Box 
   const track = o.track ?? 0;
   const F = ctx.fonts;
   const oneLine = o.nowrap !== undefined && Math.max(...s.split("\n").map((l) => F.measure(l, font, size, track))) <= o.nowrap;
-  const lines = (w: number) => (oneLine ? s.split("\n") : o.balance ? F.balance(s, font, size, w, track) : F.wrap(s, font, size, w, track));
-  const widest = (ls: string[]) => Math.max(0, ...ls.map((l) => F.measure(l, font, size, track)));
+  const lines = (w: number, sz: number) => (oneLine ? s.split("\n") : o.balance ? F.balance(s, font, sz, w, track) : F.wrap(s, font, sz, w, track));
+  const widest = (ls: string[], sz: number) => Math.max(0, ...ls.map((l) => F.measure(l, font, sz, track)));
+  // Its longest word (each on a line of its own at no width): text scales with its size, so the size it fits at is a ratio.
+  const word = o.shrinkTo !== undefined ? widest(F.wrap(s, font, size, 0, track), size) : 0;
+  const sizeAt = (w: number) => (word > w ? Math.max(o.shrinkTo!, (size * w) / word) : size);
   return {
     style: o.style,
     measure: (maxW) => {
-      const ls = lines(maxW);
-      return { w: Math.ceil(widest(ls)), h: ls.length * size * lh };
+      const sz = sizeAt(maxW);
+      const ls = lines(maxW, sz);
+      return { w: Math.ceil(widest(ls, sz)), h: ls.length * sz * lh };
     },
     paint: (r) => {
-      const ls = lines(r.w + 0.5);
+      const sz = sizeAt(r.w + 0.5);
+      const ls = lines(r.w + 0.5, sz);
       return [
-        { t: "text", id, x: r.x, y: r.y, w: r.w, h: r.h, lines: ls, font, size, lh, track, color: o.color ?? ctx.theme.ink, align: o.align ?? "start", o: 1, enter: o.enter, need: widest(ls) },
+        { t: "text", id, x: r.x, y: r.y, w: r.w, h: r.h, lines: ls, font, size: sz, lh, track, color: o.color ?? ctx.theme.ink, align: o.align ?? "start", o: 1, enter: o.enter, need: widest(ls, sz) },
       ];
     },
   };
@@ -156,13 +165,23 @@ definePart<TitleSpec>("title", {
 
 definePart<TextSpec>("text", {
   doc: 'Plain text. role "display" is a cover\'s title, "lead" is large, "note" is small and grey.',
-  fields: { text: f.str("the text", true), role: f.one(["display", "lead", "body", "note"], 'its size: "display" a cover title, "lead" large, "body" (default), "note" small and grey'), align: f.one(["start", "center", "end"], "default start (center for display)"), color: f.str("a theme colour's name or CSS (default: by role)") },
+  fields: {
+    text: f.str("the text", true),
+    role: f.one(["display", "lead", "body", "note"], 'its size: "display" a cover title, "lead" large, "body" (default), "note" small and grey'),
+    align: f.one(["start", "center", "end"], "default start (center for display)"),
+    color: f.str("a theme colour's name or CSS (default: by role)"),
+    shrink: f.any("set smaller until its longest word fits (a word never breaks): true (down to half its size) or the least share of it, 0.3 to 1"),
+  },
+  check: (s, at) => (s.shrink === undefined || s.shrink === true || s.shrink === false || (typeof s.shrink === "number" && s.shrink >= 0.3 && s.shrink <= 1) ? [] : [`${at}.shrink: expected true, false or a number from 0.3 to 1, got ${JSON.stringify(s.shrink)}`]),
   box: (s, ctx) => {
     const role = s.role ?? "body";
-    if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter, color: colour(s.color, ctx.theme, ctx.theme.ink) });
+    const least = (size: number) => (s.shrink === true ? size / 2 : typeof s.shrink === "number" ? size * s.shrink : undefined);
+    if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter, color: colour(s.color, ctx.theme, ctx.theme.ink), shrinkTo: least(SIZE.display) });
+    const size = role === "lead" ? SIZE.h2 : role === "note" ? SIZE.small : SIZE.body;
     return textBox(s.id, s.text, ctx, {
+      shrinkTo: least(size),
       font: role === "lead" ? "bold" : "sans",
-      size: role === "lead" ? SIZE.h2 : role === "note" ? SIZE.small : SIZE.body,
+      size,
       color: colour(s.color, ctx.theme, role === "note" ? ctx.theme.ink3 : ctx.theme.ink),
       enter: s.enter,
       align: s.align,
@@ -175,7 +194,7 @@ const groupFields: Fields = {
   parts: f.parts("the parts in it", true),
   gap: f.num("space between them"),
   align: f.one(["start", "center", "end", "stretch"], "how the parts line up across it (default: center in a row, stretch in a col)"),
-  narrow: f.one(["stack", "wrap", "keep"], 'a row that does not fit across: "stack" into a column (default), "wrap" like tiles, or "keep"'),
+  narrow: f.one(["stack", "wrap", "fit", "keep"], 'a row that does not fit across: "stack" into a column (default), "wrap" like tiles, "fit" (stays a row on a wide stage, the scene shrunk to fit it; stacks on a tall one), or "keep"'),
 };
 
 function groupBox(dir: "row" | "col", s: Placed<GroupSpec>, ctx: Ctx): Box {
@@ -196,7 +215,16 @@ function groupBox(dir: "row" | "col", s: Placed<GroupSpec>, ctx: Ctx): Box {
       return b.x + b.w <= room + 1 && (d.t !== "text" || d.need <= d.w + 1);
     });
   };
-  const narrow = dir === "row" && narrowAs !== "keep" && !fits() ? narrowAs : null;
+  // "fit" keeps the row whole for the scene to shrink, on a wide stage, when that shrinks it less than
+  // stacking it would have to (by the room under the heading).
+  const rowBetter = () => {
+    if (isTall(ctx.stage)) return false;
+    const kRow = room / intrinsic({ style: { dir: "row", gap }, kids: s.parts.map((p) => ctx.child(p, "row")) }).w;
+    const colH = layout({ style: { w: room }, kids: [{ style: { dir: "col", gap: Math.min(gap, 28), align: "center" }, kids: s.parts.map((p) => ctx.child(p, "col")) }] }, room, Infinity).reduce((h, d) => Math.max(h, bbox(d).y + bbox(d).h), 0);
+    const kCol = Math.min(1, (ctx.room?.h ?? ctx.stage.H) / Math.max(1, colH));
+    return kRow >= MIN_FIT && kRow > kCol;
+  };
+  const narrow = dir === "row" && narrowAs !== "keep" && !fits() ? (narrowAs === "fit" ? (rowBetter() ? "fit" : "stack") : narrowAs) : null;
   const d = narrow === "stack" ? "col" : dir;
   return {
     style: {
@@ -207,11 +235,12 @@ function groupBox(dir: "row" | "col", s: Placed<GroupSpec>, ctx: Ctx): Box {
       shrink: 1,
       // A centred row is as wide as its parts want: held to the room, they wrap instead.
       maxW: room,
-      ...(narrow ? { self: "stretch" as const } : {}),
+      ...(narrow && narrow !== "fit" ? { self: "stretch" as const } : {}),
       ...(narrow === "wrap" ? { wrap: true, align: "start" as const } : {}),
     },
     kids: s.parts.map((p) => {
       const b = ctx.child(p, d);
+      // In a row the parts narrow to fit, but for one kept whole for the scene to shrink.
       return { ...b, style: { ...b.style, ...(d === "row" && !narrow ? { shrink: 1, grow: b.style?.grow ?? 0 } : {}) } };
     }),
   };
@@ -431,16 +460,24 @@ definePart<ListSpec>("list", {
 });
 
 definePart<ImageSpec>("image", {
-  doc: "A picture from a file next to the reel, fitted to the room it gets.",
-  fields: { src: f.str("a path relative to the reel", true), width: f.num("at most this wide, in layout units (default its pixel width)"), height: f.num("at most this tall (default half the stage)"), caption: f.str("a small line under it") },
+  doc: "A picture from a file next to the reel, as large as the room it gets allows (its shape kept).",
+  fields: {
+    src: f.str("a path relative to the reel", true),
+    width: f.num("at most this wide, in layout units (default: as wide as the room allows)"),
+    height: f.num("at most this tall (default: the room under the heading, less the caption)"),
+    upscale: f.bool("false: never wider than the file's own pixels, so a small picture stays sharp (default true)"),
+    caption: f.str("a small line under it"),
+  },
   images: (s) => [s.src],
   box: (s, ctx) => {
     const im = ctx.image(s.src);
     const ratio = im && im.w > 0 ? im.h / im.w : 0.5625;
-    const maxH = s.height ?? ctx.stage.H * 0.5;
+    const captionH = s.caption ? SIZE.small * 1.45 + 16 : 0;
+    const maxH = s.height ?? (ctx.room ? ctx.room.h - captionH : ctx.stage.H * 0.5);
+    const most = Math.min(s.width ?? Infinity, s.upscale === false && im?.w ? im.w : Infinity);
     const pic: Box = {
       measure: (maxW) => {
-        let w = Math.min(maxW, s.width ?? im?.w ?? 960);
+        let w = Math.min(maxW, most);
         if (w * ratio > maxH) w = maxH / ratio;
         return { w, h: w * ratio };
       },

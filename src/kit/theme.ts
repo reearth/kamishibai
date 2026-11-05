@@ -76,6 +76,9 @@ export const SIZE = {
   stat: 200,
 } as const;
 
+/** The least a scene's parts are shrunk to fit their room; past it, check says what spills. */
+export const MIN_FIT = 0.5;
+
 /** The long side every layout is made at; other sizes are drawn scaled. */
 export const LONG_SIDE = 1920;
 

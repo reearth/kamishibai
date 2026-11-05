@@ -91,7 +91,7 @@ defineKata<{ title: string; steps: string[]; at?: number; note?: string }>("flow
         ...(i ? [arrow({ id: `flow.a${i}` })] : []),
         chip(s, { id: `flow.${i}`, n: i + 1, state: i === o.at ? "active" : o.at !== undefined && i < o.at ? "done" : undefined }),
       ]),
-      { id: "flow", gap: 20 },
+      { id: "flow", gap: 20, narrow: "fit" },
     ),
     ...(o.note ? [text(o.note, { id: "flow.note", role: "note" })] : []),
   ],
@@ -119,8 +119,8 @@ defineKata<{ title: string; code: string; highlight?: string; label?: string; no
   ],
 });
 
-defineKata<{ title: string; src: string; caption?: string }>("picture", {
-  doc: "A heading and one picture from a file next to the reel.",
-  fields: { title: f.str("the heading", true), src: f.str("a path relative to the reel", true), caption: f.str("a small line under it") },
-  parts: (o) => [title(o.title, { id: "title" }), image(o.src, { id: "picture", caption: o.caption })],
+defineKata<{ title: string; src: string; caption?: string; upscale?: boolean }>("picture", {
+  doc: "A heading and one picture from a file next to the reel, as large as the room allows.",
+  fields: { title: f.str("the heading", true), src: f.str("a path relative to the reel", true), caption: f.str("a small line under it"), upscale: f.bool("false: never wider than the file's own pixels (default true)") },
+  parts: (o) => [title(o.title, { id: "title" }), image(o.src, { id: "picture", caption: o.caption, upscale: o.upscale })],
 });

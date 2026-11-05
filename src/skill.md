@@ -514,7 +514,14 @@ scenes:
   they leave mostly empty, so there is rarely a reason to set widths. A
   scene with `fill: false` keeps its parts at their own size; `fill: max`
   grows them as large as the room allows, up to 4× (a full-frame figure), and
-  `fill: 2` up to 2×.
+  `fill: 2` up to 2×. Parts too large for the room are shrunk together to
+  fit it (to half at most; past that, check says what spills), whatever
+  `fill` says. A picture is as large as its room allows unless `width`,
+  `height` or `upscale: false` (no wider than its pixels) holds it. A long
+  word that can't break: `{ type: text, …, shrink: true }` sets it smaller
+  until it fits (half its size at most, or `shrink: 0.7`). A row with
+  `narrow: fit` stays a row on a wide stage, shrunk with the scene, when
+  stacking would shrink more (flow does this).
   Neither grows a scene with a `paint` part. `place: left|right|top|bottom`
   puts them at that edge of the room, `top-left` and the like at a corner
   (default center). The room is the stage

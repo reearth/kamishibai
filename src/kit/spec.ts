@@ -29,14 +29,16 @@ export type TextSpec = Common & {
   align?: "start" | "center" | "end";
   /** a theme colour's name or CSS (default: by role) */
   color?: string;
+  /** set smaller until its longest word fits: true (down to half its size) or the least share of it (0.3 to 1) */
+  shrink?: boolean | number;
 };
 export type GroupSpec = Common & {
   type: "row" | "col";
   parts: PartSpec[];
   gap?: number;
   align?: "start" | "center" | "end" | "stretch";
-  /** a row that doesn't fit across: "stack" into a column (default), "wrap" like tiles, or "keep" */
-  narrow?: "stack" | "wrap" | "keep";
+  /** a row that doesn't fit across: "stack" into a column (default), "wrap" like tiles, "fit" (stay a row on a wide stage, the scene shrunk to fit), or "keep" */
+  narrow?: "stack" | "wrap" | "fit" | "keep";
 };
 export type CardSpec = Common & {
   type: "card";
@@ -64,9 +66,11 @@ export type ImageSpec = Common & {
   type: "image";
   /** a path relative to the reel */
   src: string;
-  /** the box, in layout units (default: the image's own size, fitted to the stage) */
+  /** at most this wide and tall, in layout units (default: as large as the room under the heading allows) */
   width?: number;
   height?: number;
+  /** false: never wider than the file's own pixels (default true) */
+  upscale?: boolean;
   caption?: string;
 };
 /** A box drawn by code (only in a code reel): `fn` paints w×h at the reel's time. */

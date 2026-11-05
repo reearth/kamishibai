@@ -20,7 +20,7 @@ import { itemPaint } from "../src/kit/items.ts";
 import { check } from "../src/kit/check.ts";
 import { parseColour } from "../src/kit/colour.ts";
 import type { Ctx } from "../src/kit/parts.ts";
-import type { Bounds, Drawable } from "../src/kit/model.ts";
+import { bbox, type Bounds, type Drawable } from "../src/kit/model.ts";
 import type { PartSpec, SceneSpec } from "../src/kit/spec.ts";
 
 const GEIST = resolve("examples/canvas/fonts/Geist.ttf");
@@ -509,7 +509,7 @@ describe("transitions and the camera", () => {
 
 describe("filling the stage", () => {
   // A scene laid out on a stage, with Geist measured the way a render measures it.
-  const lay = async (sc: SceneSpec, W = 1920, H = 1080) => {
+  const lay = async (sc: SceneSpec, W = 1920, H = 1080, images: Record<string, { w: number; h: number }> = {}) => {
     const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [sc] });
     await registerFonts(reel, ".");
     await loadYoga();
@@ -521,7 +521,7 @@ describe("filling the stage", () => {
       fonts: new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), mergeTheme(theme)),
       theme: mergeTheme(theme),
       readText: () => "",
-      image: () => undefined,
+      image: (src) => (images[src] ? { img: {} as CanvasImageSource, ...images[src]! } : undefined),
       child: (p, flow) => partBox(p as PartSpec & { id: string }, { ...ctx, flow }),
     };
     const boxes = new Map<string, Bounds>();
@@ -529,14 +529,101 @@ describe("filling the stage", () => {
     return { ds, boxes, text: (id: string) => ds.find((d) => d.id === id) as Extract<Drawable, { t: "text" }> };
   };
 
+  const room = (W = 1920, H = 1080) => {
+    const fr = stageFrame({ W, H }, { top: 0, right: 0, bottom: 0, left: 0 }, false);
+    return { x: fr.left, y: fr.top, w: W - fr.left - fr.right, h: H - fr.top - fr.bottom };
+  };
+  const within = (b: Bounds, r: Bounds) => b.x >= r.x - 1 && b.y >= r.y - 1 && b.x + b.w <= r.x + r.w + 1 && b.y + b.h <= r.y + r.h + 1;
+
+  it("shrinks parts too tall for the room until they fit it, and never past half", async () => {
+    const cards = Array.from({ length: 6 }, (_, i) => card({ label: `Step ${i + 1}`, body: "A sentence on a card" }));
+    const { ds, boxes } = await lay({ fill: false, parts: [title("Many"), ...cards] });
+    const r = room();
+    for (const id of ["card", "card.6"]) expect(within(boxes.get(id)!, r)).toBe(true);
+    expect(ds.filter((d) => d.owner.startsWith("card")).every((d) => within(bbox(d), r))).toBe(true);
+    // Under the heading: the shrink leaves the title where it was.
+    expect(boxes.get("card")!.y).toBeGreaterThan(boxes.get("title")!.y + boxes.get("title")!.h);
+    const many = await lay({ parts: [title("Too many"), ...Array.from({ length: 30 }, () => card({ body: "x" }))] });
+    const t = many.ds.find((d) => d.id === "card.body") as Extract<Drawable, { t: "text" }>;
+    expect(t.size).toBeCloseTo((SIZE.h2 - 4) * 0.5);
+  });
+
+  it("keeps a flow a row on a wide stage, shrunk, when stacking would shrink it more", async () => {
+    const steps = ["Look", "Listen", "Remember", "Read it", "Use it", "Say it"];
+    const wide = await lay({ kata: "flow", title: "Five steps", steps, at: 2 });
+    const ys = steps.map((_, i) => wide.boxes.get(`flow.${i}`)!.y);
+    expect(new Set(ys.map(Math.round)).size).toBe(1);
+    expect(within(wide.boxes.get("flow")!, room())).toBe(true);
+    // A tall stage stacks it.
+    const tall = await lay({ kata: "flow", title: "Five steps", steps, at: 2 }, 1080, 1920);
+    expect(tall.boxes.get("flow.1")!.y).toBeGreaterThan(tall.boxes.get("flow.0")!.y);
+  });
+
+  it("makes a picture as large as its room allows, or no wider than its pixels with upscale: false", async () => {
+    const images = { "a.png": { w: 300, h: 200 } };
+    const big = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png" }] }, 1920, 1080, images);
+    const b = big.boxes.get("image")!;
+    const r = room();
+    // As tall as the room under the heading, its shape kept.
+    expect(Math.abs(b.y + b.h - (r.y + r.h))).toBeLessThan(2);
+    expect(b.w / b.h).toBeCloseTo(1.5);
+    const small = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png", upscale: false }] }, 1920, 1080, images);
+    expect(small.boxes.get("image")!.w).toBeCloseTo(300);
+    const capped = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png", width: 600, upscale: false }] }, 1920, 1080, images);
+    expect(capped.boxes.get("image")!.w).toBeCloseTo(300);
+    // With a caption, the picture leaves it room.
+    const cap = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png", caption: "A caption" }] }, 1920, 1080, images);
+    const c = cap.ds.find((d) => d.id === "image.caption")!;
+    expect(within(bbox(c), r)).toBe(true);
+  });
+
+  it("sets a text smaller until its longest word fits, with shrink", async () => {
+    const word = (shrink?: boolean | number) => lay({ fill: false, parts: [row([card({ body: "x", width: 900 }), { type: "text", role: "display", text: "accommodation", ...(shrink !== undefined ? { shrink } : {}) }], { narrow: "keep" })] });
+    const plain = (await word()).text("text");
+    expect(plain.need).toBeGreaterThan(plain.w + 1);
+    const fit = (await word(true)).text("text");
+    expect(fit.need).toBeLessThanOrEqual(fit.w + 1);
+    expect(fit.size).toBeLessThan(SIZE.display);
+    expect(fit.size).toBeGreaterThanOrEqual(SIZE.display / 2);
+    // No further than it says.
+    const floor = (await word(0.95)).text("text");
+    expect(floor.size).toBeCloseTo(SIZE.display * 0.95);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "text", text: "a", shrink: 0.1 }] }] })).toEqual(["scenes[0].parts[0] (text).shrink: expected true, false or a number from 0.3 to 1, got 0.1"]);
+  });
+
+  it("lays every built-in shape out at every shape of stage with nothing to fix", async () => {
+    const scenes: SceneSpec[] = [
+      { kata: "cover", kicker: "A short course", title: "Words for travel", sub: "Thirty words in four passes" },
+      { kata: "flow", title: "Four passes", steps: ["Look and listen", "Remember the meaning", "Read it at a glance", "Use it in a sentence"], at: 1, note: "One word at a time, four passes each" },
+      { kata: "flow", title: "Six steps", steps: ["Plan", "Write", "Check", "Fix", "Ship", "Watch"], at: 5 },
+      { kata: "compare", title: "Two ways", left: { label: "Before", body: "Every word read aloud" }, right: { label: "After", body: "Only the new words" } },
+      { kata: "stat", title: "Words learned", value: 120, unit: "words", label: "in four weeks" },
+      { kata: "points", title: "What helps", items: ["Short sessions", "Hearing it twice", "Using it the same day"], at: 1 },
+      { kata: "code", title: "The check", code: "const ok = words.every((w) => w.seen >= 4);\nif (!ok) review(words);", highlight: "w.seen >= 4", note: "Four passes each" },
+    ];
+    const reel = await kit({ kit: 1, fonts, theme, aspect: { min: "9:16", max: "16:9" }, scenes });
+    await registerFonts(reel, ".");
+    const env = await nodeEnv(".");
+    for (const aspect of ["16:9", "4:3", "1:1", "4:5", "9:16"]) {
+      const issues = await reel.check(resolveView(reel.meta, { aspect }), env);
+      expect(issues.filter((i) => i.kind !== "contrast").map((i) => `${aspect} ${i.scene} ${i.kind} ${i.msg}`)).toEqual([]);
+    }
+  });
+
   it("grows a few short parts to fill the room under the heading, and leaves a full scene be", async () => {
     const sparse = await lay({ kata: "points", title: "Why", items: ["One", "Two"] });
     expect(sparse.text("points.0").size).toBeCloseTo(SIZE.body * 1.6);
     expect(sparse.text("title").size).toBe(SIZE.h1);
     const off = await lay({ kata: "points", title: "Why", items: ["One", "Two"], fill: false });
     expect(off.text("points.0").size).toBe(SIZE.body);
-    const full = await lay({ kata: "points", title: "Why", items: Array.from({ length: 9 }, (_, i) => `Item number ${i}`) });
+    const full = await lay({ kata: "points", title: "Why", items: Array.from({ length: 8 }, (_, i) => `Item number ${i}`) });
     expect(full.text("points.0").size).toBe(SIZE.body);
+    // Too many for the room: shrunk to fit it, where the rows were squeezed into each other before.
+    const over = await lay({ kata: "points", title: "Why", items: Array.from({ length: 9 }, (_, i) => `Item number ${i}`) });
+    expect(over.text("points.0").size).toBeLessThan(SIZE.body);
+    const rows = Array.from({ length: 9 }, (_, i) => over.text(`points.${i}`));
+    rows.slice(1).forEach((t, i) => expect(t.y).toBeGreaterThanOrEqual(rows[i]!.y + rows[i]!.h));
+    expect(within(bbox(rows[8]!), room())).toBe(true);
   });
 
   it("places the parts under the heading at an edge of their room, and grows them as large as fits with fill: max", async () => {
