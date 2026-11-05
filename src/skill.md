@@ -481,7 +481,10 @@ scenes:
   [["w1.left", "w1.bottom+8"], …]` (left, right, top, bottom, cx, cy),
   measured in the reel's fonts; `box: [x1, y1, x2, y2]` is a rect by its
   corners. A script that writes a reel measures text with
-  `textMeasurer({ fonts, theme })` from `kamishibai`.
+  `textMeasurer({ fonts, theme })` from `kamishibai`. `{ path: "M…" |
+  icons/x.svg, pos, size: 48, color }` draws an icon in theme colours (path
+  data in a 24 box, or `view`; a file's fill="none"+stroke is drawn with
+  lines); reuse one in a file with a YAML anchor (`&check` / `*check`).
 - A scene's `sounds: [{ src, at?, cue?, gain? }]` plays files (a click on a
   beat) `at` ms after the scene, or sentence `cue`, starts.
   `kamishibai timing reel.yaml` prints every scene, sentence and sound on

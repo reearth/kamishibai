@@ -7,7 +7,7 @@
 // ------------------------------------------------------------------
 import { bezier, eases } from "../easing.ts";
 import { formatColour, parseColour, type RGBA } from "./colour.ts";
-import { VERB_MS, type Drawable, type ImageD, type PaintD, type PathD, type TextD } from "./model.ts";
+import { VERB_MS, type Drawable, type ImageD, type PaintD, type PathD, type TextD, type VectorD } from "./model.ts";
 import type { SceneEnter, Transition } from "./spec.ts";
 
 /** The camera: the stage point shown at the view's anchor (its frame's centre), and the zoom. */
@@ -107,6 +107,8 @@ function morphable(a: Drawable, b: Drawable): boolean {
   if (a.t === "path") return a.pts.length === (b as PathD).pts.length && a.head === (b as PathD).head;
   if (a.t === "paint") return a.key === (b as PaintD).key;
   if (a.t === "image") return a.src === (b as ImageD).src;
+  // The same path moves, grows and changes colour; another one crossfades.
+  if (a.t === "vector") return a.d === (b as VectorD).d;
   return true;
 }
 

@@ -5,6 +5,7 @@
 import type { Paint } from "./layout.ts";
 import type { Drawable, Step, Verb } from "./model.ts";
 import type { Fonts } from "./text.ts";
+import type { Vector } from "./svg.ts";
 import { SIZE, type FontRole, type Theme } from "./theme.ts";
 
 /**
@@ -24,7 +25,15 @@ export type FigureItem = {
   circle?: [Coord, Coord, number];
   line?: [Coord, Coord][];
   text?: string;
-  /** a text's anchor */
+  /** an SVG path: its data ("M…"), or an .svg file next to the reel, placed at pos, size tall */
+  path?: string;
+  /** a path's own box, for path data: its size (24 by default, as most icons) or [w, h] */
+  view?: number | [number, number];
+  /** fill a path by the even-odd rule (for icons whose holes need it) */
+  evenodd?: boolean;
+  /** the path the item draws, once read (set as items are resolved) */
+  vector?: Vector;
+  /** a text's or a path's anchor */
   pos?: [Coord, Coord];
   fill?: string;
   stroke?: string;
@@ -58,10 +67,25 @@ export type FigureItem = {
  */
 export type ItemStep = Partial<Pick<FigureItem, "rect" | "circle" | "line" | "text" | "pos" | "fill" | "stroke" | "lineWidth" | "r" | "size" | "color" | "opacity">> & { cue?: number; delay?: number; ms?: number };
 
-const SHAPES = ["rect", "box", "circle", "line", "text"] as const;
-const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "font", "width", "opacity", "dash", "align", "then"];
-const STEP_KEYS = [...SHAPES.filter((k) => k !== "box"), "pos", "fill", "stroke", "lineWidth", "r", "size", "color", "opacity", "ms"];
+const SHAPES = ["rect", "box", "circle", "line", "text", "path"] as const;
+const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "font", "width", "opacity", "dash", "align", "view", "evenodd", "then"];
+const STEP_KEYS = [...SHAPES.filter((k) => k !== "box" && k !== "path"), "pos", "fill", "stroke", "lineWidth", "r", "size", "color", "opacity", "ms"];
 const ROLES = ["sans", "bold", "black", "mono"];
+/** Path data written in the item (the rest is a file to read). */
+const isPathData = (s: string) => /^\s*[Mm]/.test(s);
+/** A path's size by default, in the figure's units. */
+const PATH_SIZE = 48;
+
+/** The path an item draws: its own data in its view (24 × 24 by default), or a file `read` reads. */
+function vectorOf(it: FigureItem, read?: (file: string) => Vector): Vector {
+  if (!isPathData(it.path!)) {
+    if (!read) throw new Error(`a path from a file (${it.path}) needs the reel's files`);
+    return read(it.path!);
+  }
+  const [vw, vh] = Array.isArray(it.view) ? it.view : [it.view ?? 24, it.view ?? 24];
+  return { d: it.path!, vx: 0, vy: 0, vw, vh };
+}
+
 /** An edge of an item, by id, and an offset: "syl1.right+16". */
 const REF = /^([A-Za-z0-9_-]+)\.(left|right|top|bottom|cx|cy)\s*(?:([+-])\s*(\d+(?:\.\d+)?))?$/;
 const isCoord = (v: unknown) => (typeof v === "number" && isFinite(v)) || typeof v === "string";
@@ -87,6 +111,12 @@ function itemBox(it: FigureItem, fonts: Fonts): { x: number; y: number; w: numbe
     const ys = it.line.map((p) => n(p[1]));
     return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
   }
+  if (it.vector) {
+    const h = it.size ?? PATH_SIZE;
+    const w = (h * it.vector.vw) / it.vector.vh;
+    const align = it.align ?? "start";
+    return { x: n(it.pos![0]) - (align === "center" ? w / 2 : align === "end" ? w : 0), y: n(it.pos![1]), w, h };
+  }
   // A text scales with its size, so it is measured at its own size, in the figure's units.
   const size = it.size ?? SIZE.body;
   const font: FontRole = it.font ?? (it.mono ? "mono" : it.bold ? "bold" : "sans");
@@ -102,7 +132,7 @@ function itemBox(it: FigureItem, fonts: Fonts): { x: number; y: number; w: numbe
  * and theme, plus the offset; a box becomes the rect between its corners.
  * checkItems has made sure each named item comes before.
  */
-export function resolveItems<T extends FigureItem>(items: T[], fonts: Fonts): T[] {
+export function resolveItems<T extends FigureItem>(items: T[], fonts: Fonts, read?: (file: string) => Vector): T[] {
   const boxes = new Map<string, { x: number; y: number; w: number; h: number }>();
   const at = (v: Coord): number => {
     if (typeof v === "number") return v;
@@ -123,6 +153,7 @@ export function resolveItems<T extends FigureItem>(items: T[], fonts: Fonts): T[
     if (it.circle) out.circle = [at(it.circle[0]), at(it.circle[1]), it.circle[2]];
     if (it.line) out.line = it.line.map(([x, y]) => [at(x), at(y)]);
     if (it.pos) out.pos = [at(it.pos[0]), at(it.pos[1])];
+    if (it.path) out.vector = vectorOf(it, read);
     if (it.id !== undefined) boxes.set(it.id, itemBox(out, fonts));
     return out;
   });
@@ -150,6 +181,15 @@ export function checkItems(items: unknown, at: string, extra: readonly string[])
     if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p: unknown) => coords(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
     else if (it.line !== undefined && it.fill !== undefined && it.line.length < 3) out.push(`${where}.line: a filled line is a closed shape, so it needs three points or more`);
     if (it.text !== undefined && (typeof it.text !== "string" || !coords(it.pos, 2))) out.push(`${where}: a text needs text and pos: [x, y]`);
+    if (it.path !== undefined) {
+      if (typeof it.path !== "string" || !(isPathData(it.path) || /\.svg$/i.test(it.path))) out.push(`${where}.path: expected path data ("M…") or an .svg file next to the reel`);
+      if (!coords(it.pos, 2)) out.push(`${where}: a path needs pos: [x, y], its top-left corner (top-centre with align: center)`);
+      if (it.size !== undefined && !(typeof it.size === "number" && it.size > 0)) out.push(`${where}.size: expected how tall it is, in the figure's units`);
+    }
+    if (it.view !== undefined) {
+      if (typeof it.path !== "string" || !isPathData(it.path)) out.push(`${where}.view: only path data takes view (an .svg file has its own viewBox)`);
+      else if (!((typeof it.view === "number" && it.view > 0) || (isNums(it.view, 2) && it.view.every((v: number) => v > 0)))) out.push(`${where}.view: expected the path's own size, 24, or [w, h]`);
+    }
     // An edge named in a coordinate is an item's before this one.
     for (const ref of refsOf(it)) {
       const m = REF.exec(ref);
@@ -245,6 +285,18 @@ export function itemPaint(it: FigureItem, base: { id: string; o: number; enter?:
     // With a fill, the points close into a shape, outlined only with a stroke.
     if (it.fill) return { ...base, t: "path", pts, fill: colour(it.fill, T, T.ink), stroke: it.stroke ? colour(it.stroke, T, T.ink) : "", sw: (it.lineWidth ?? 2) * k, prog: 1, head: "none", ...dash };
     return { ...base, t: "path", pts, stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none", ...dash };
+  }
+  if (it.vector) {
+    const v = it.vector;
+    const h = (it.size ?? PATH_SIZE) * k;
+    const w = (h * v.vw) / v.vh;
+    const align = it.align ?? "start";
+    const x = X(it.pos![0] as number) - (align === "center" ? w / 2 : align === "end" ? w : 0);
+    // Drawn as its file says: with lines (an outline icon) or filled; color is the one it is drawn in.
+    const lines = v.lineWidth !== undefined;
+    const fill = lines ? (it.fill ? colour(it.fill, T, T.ink) : undefined) : colour(it.fill ?? it.color, T, T.ink);
+    const stroke = lines ? colour(it.stroke ?? it.color, T, T.ink) : it.stroke ? colour(it.stroke, T, T.ink) : undefined;
+    return { ...base, t: "vector", x, y: Y(it.pos![1] as number), w, h, d: v.d, vx: v.vx, vy: v.vy, vw: v.vw, vh: v.vh, ...(fill ? { fill } : {}), ...(stroke ? { stroke } : {}), lw: it.lineWidth ?? v.lineWidth ?? 1, ...(it.evenodd ? { evenodd: true } : {}) } as Paint;
   }
   const size = (it.size ?? SIZE.body) * k;
   const font: FontRole = it.font ?? (it.mono ? "mono" : it.bold ? "bold" : "sans");

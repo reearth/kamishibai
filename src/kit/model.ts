@@ -119,7 +119,25 @@ export type PaintD = Base & {
   fn: (g: Context2D, ms: number, w: number, h: number) => void;
 };
 
-export type Drawable = RectD | TextD | PathD | CircleD | ImageD | PaintD;
+/** An SVG path (a figure's path item): its data in its own box (vx, vy, vw, vh), drawn into x, y, w, h, filled and/or stroked (lw in the path's units). */
+export type VectorD = Base & {
+  t: "vector";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  d: string;
+  vx: number;
+  vy: number;
+  vw: number;
+  vh: number;
+  fill?: string;
+  stroke?: string;
+  lw: number;
+  evenodd?: boolean;
+};
+
+export type Drawable = RectD | TextD | PathD | CircleD | ImageD | PaintD | VectorD;
 
 export type Bounds = { x: number; y: number; w: number; h: number };
 

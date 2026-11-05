@@ -28,6 +28,7 @@ import { layoutScene, partBox, stageFrame } from "./stage.ts";
 import type { CaptionStyle, KitReelSpec, OverlayInfo, PartSpec, VoiceSpec } from "./spec.ts";
 import type { Theme } from "./theme.ts";
 import { colour } from "./items.ts";
+import { svgVector, type Vector } from "./svg.ts";
 import { Fonts, speechMs } from "./text.ts";
 import { LONG_SIDE, mergeTheme } from "./theme.ts";
 import { normalColours, normalTheme } from "./colour.ts";
@@ -156,12 +157,15 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     const bar = spec.progress ? (spec.progress === true ? {} : spec.progress) : undefined;
     const keep = bar ? { [bar.at === "top" ? "top" : "bottom"]: bar.size ?? 10 } : {};
     const kept = !!captions && spec.captionRoom !== false;
+    const vectors = new Map<string, Vector>();
     const ctx: Ctx = {
       stage,
       frame: stageFrame(stage, insets, kept, marginOf(spec.margin), keep),
       fonts,
       theme,
       readText: (p) => env.readText(p),
+      // Read once per view: env.readText records it for export, like a quoted file.
+      vector: (file) => vectors.get(file) ?? (vectors.set(file, svgVector(env.readText(file), file)), vectors.get(file)!),
       image: (src) => {
         const img = images.get(src);
         const sz = sizes.get(src);

@@ -469,7 +469,7 @@ describe("kit", () => {
     expect(await reel.check(resolveView(reel.meta), await nodeEnv("."))).toEqual([]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ rect: [0, 0] }, { circle: [0, 0, 1], line: [[0, 0], [1, 1]] }] }] }] })).toEqual([
       "scenes[0].parts[0] (figure).items[0].rect: expected [x, y, w, h]",
-      "scenes[0].parts[0] (figure).items[1]: give one of rect, box, circle, line, text (got circle and line)",
+      "scenes[0].parts[0] (figure).items[1]: give one of rect, box, circle, line, text, path (got circle and line)",
     ]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ line: [[0, 0], [1, 1]], width: 4 }] }] }] })).toEqual([
       expect.stringMatching(/^scenes\[0\]\.parts\[0\] \(figure\)\.items\[0\]\.width: only a text takes width \(where it wraps\); a line's or an outline's is lineWidth$/),

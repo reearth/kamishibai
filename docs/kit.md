@@ -126,6 +126,15 @@ A `figure` draws in its own units, `width` × `height`, and is fitted to the roo
 
 Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head; with a `fill`, three points or more close into a filled shape, outlined only with a `stroke`), or `text` with `pos: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default), `font` (`sans`, `bold`, `black` or `mono`; `bold: true` and `mono: true` are short for two of them), and `width`, where it wraps (evenly; otherwise only at `\n`). `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, `lineWidth` is a line's or an outline's width, `dash: [on, off]` dashes a stroke, and `opacity` (0 to 1) fades an item. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
 
+An item can also draw an SVG path, an icon most often: `path` is path data (`"M…"`, in a 24 × 24 box unless `view` gives its size, `24` or `[w, h]`) or an `.svg` file next to the reel, placed at `pos` (its top-left corner, top-centre with `align: center`) and `size` tall (48 by default), in the theme's colours. A file's shapes (path, circle, ellipse, rect, line, polyline, polygon) become one path in its `viewBox`; one that says `fill="none"` and gives a stroke (outline icon sets do) is drawn with lines at its `stroke-width`, and any other is filled. `color` is the colour it is drawn in, `fill` and `stroke` set each, `lineWidth` a line icon's width in its own units, and `evenodd: true` fills by the even-odd rule. A file's own colours, gradients and transforms are not used; for a picture like that, use `image`. The same path under the same `id` in the next scene moves, grows and changes colour; another path crossfades. To write a path once and use it again in the same file, use a YAML anchor:
+
+```yaml
+items:
+  - { id: ok, path: &check "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z", pos: [40, 40], fill: accent }
+  - { id: user, path: icons/user.svg, pos: ["ok.right+24", 40] }
+  - { path: *check, pos: ["user.right+24", 40], size: 32 }
+```
+
 A coordinate can be an edge of an item before it, by its `id`, and an offset, so lines and frames line up with text however the reel's fonts set it. The edges are `left`, `right`, `top`, `bottom`, `cx` and `cy`, and the figure measures text in the reel's fonts and theme as it lays out. `box: [x1, y1, x2, y2]` is a rect by its corners, for a frame around items:
 
 ```yaml

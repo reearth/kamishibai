@@ -172,6 +172,27 @@ function one(g: Context2D, d: Live, c: DrawCtx) {
       });
       break;
     }
+    case "vector": {
+      // Path2D is the browser's; in Node the host puts Skia's in its place.
+      const P = (globalThis as { Path2D?: typeof Path2D }).Path2D;
+      if (!P || d.w <= 0 || d.h <= 0) break;
+      const p = new P(d.d);
+      g.translate(d.x, d.y);
+      g.scale(d.w / d.vw, d.h / d.vh);
+      g.translate(-d.vx, -d.vy);
+      if (d.fill) {
+        g.fillStyle = d.fill;
+        g.fill(p, d.evenodd ? "evenodd" : "nonzero");
+      }
+      if (d.stroke) {
+        g.strokeStyle = d.stroke;
+        g.lineWidth = d.lw;
+        g.lineCap = "round";
+        g.lineJoin = "round";
+        g.stroke(p);
+      }
+      break;
+    }
     case "image": {
       const img = c.images.get(d.src);
       if (!img) break;

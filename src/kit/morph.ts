@@ -9,6 +9,7 @@ import { check, type Issue } from "./check.ts";
 import { drawLayers } from "./draw.ts";
 import { layersAt, type Keyframe } from "./engine.ts";
 import { checkItems, itemPaint, itemSteps, resolveItems, type FigureItem } from "./items.ts";
+import { svgVector } from "./svg.ts";
 import type { Drawable } from "./model.ts";
 import { KitSpecError } from "./normalize.ts";
 import type { Transition } from "./spec.ts";
@@ -69,7 +70,7 @@ export function morph(frames: MorphFrame[], o: MorphOptions): Morph {
 
   const ks: Keyframe[] = frames.map((fr, i) => {
     const cues: Record<string, number> = {};
-    const ds = resolveItems(fr.items, fonts).map((it, j): Drawable => {
+    const ds = resolveItems(fr.items, fonts, (file) => svgVector(o.env.readText(file), file)).map((it, j): Drawable => {
       const id = it.id ?? String(j);
       // Items come in together, but for one with a delay, which takes its own turn.
       if (it.delay !== undefined) cues[id] = it.delay;

@@ -22,6 +22,8 @@ export async function loadSkia(): Promise<Skia> {
   if (skia) return skia;
   try {
     skia = await import("@napi-rs/canvas");
+    // A figure's path item draws with Path2D, which a browser has and Node doesn't.
+    (globalThis as { Path2D?: unknown }).Path2D ??= skia.Path2D;
   } catch {
     throw new Error(
       "rendering a canvas reel needs @napi-rs/canvas (Skia for Node): npm i -D @napi-rs/canvas",

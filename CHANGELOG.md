@@ -6,6 +6,10 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ## Unreleased
 
+### Added
+
+- **A figure draws SVG paths**: an item's `path` is path data (`"M…"`, 24 × 24 unless `view` says) or an `.svg` file next to the reel, placed at `pos` and `size` tall (48), in the theme's colours. A file's shapes become one path in its `viewBox`, drawn with lines when it says `fill="none"` with a stroke (outline icon sets) and filled otherwise. It moves, grows and recolours into the next scene under the same id, other items can use its edges, and `export` carries the file. Reuse a path within a file with a YAML anchor.
+
 ### Fixed
 
 - `kamishibai check` judged text on a filled circle or a filled closed shape (a figure's disc under a mark) against the paper, and reported white on a dark disc as unreadable. A filled circle or closed shape is now the ground of the text whose centre it holds, as a card or a filled rect already was.
