@@ -10,7 +10,7 @@ import type { Stage } from "./parts.ts";
 import { familyOf, type Fonts } from "./text.ts";
 import type { FontRole, Theme } from "./theme.ts";
 
-export type IssueKind = "off-stage" | "overflow" | "overlap" | "contrast" | "widow" | "glyph";
+export type IssueKind = "off-stage" | "overflow" | "overlap" | "contrast" | "widow" | "glyph" | "unused";
 export type Issue = { scene: string; kind: IssueKind; msg: string };
 
 const inter = (a: Bounds, b: Bounds) => {

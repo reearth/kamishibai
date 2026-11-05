@@ -12,6 +12,7 @@ can contain breaking changes, and they are called out under **Changed**.
 - **A scene says when its parts come in.** `enter: { delay, ms, stagger }` on a scene or the reel sets when the first new part starts, how long each takes to come in, and how far apart they start (150 ms in or after the transition, each verb's own length, and 160 ms were fixed). A part's `enter` can be written out as `{ type?, ms?, delay? }` for that part alone, and the parts inside it take it. A scene shown for under a second no longer spends half of it bringing its parts in.
 - **`progress: true` draws a bar that fills as the reel plays**, at the foot of the picture (or `at: top`), in the accent unless `color` says, `size` units thick, over an optional `track`. It sits in the stage's margin, so it covers no part, and frames are still drawn once each time it fills another pixel.
 - **A code reel draws over every scene with `overlay`**: `{ paint(g, ms, { W, H, durationMs, timing }), room? }`, outside the camera and under burned captions. `room` keeps its edges clear of the parts and of `kamishibai check`; `paint` returns a fingerprint, so frames that look the same are still drawn once. Before, the reel `kit()` returns had to be wrapped, and check never saw what the wrapper drew.
+- **`kamishibai check` says when a field goes unused** (`unused`): a card's `width` in a reel that lays out only for tall shapes, where a card in a column always takes the full width.
 - **`text` takes `shrink`**: `shrink: true` sets it smaller until its longest word fits, down to half its size (`shrink: 0.7`, to 70%), for a long word that can't break, such as *accommodation* beside a picture.
 - **`image` takes `upscale: false`**, to keep a picture no wider than the file's own pixels.
 - **A row takes `narrow: fit`**: on a wide stage it stays a row, its parts at their own width, and the scene is shrunk to fit it, when stacking would shrink it more; on a tall stage it stacks. The `flow` shape uses it.
@@ -20,6 +21,7 @@ can contain breaking changes, and they are called out under **Changed**.
 ### Changed
 
 - **Parts too large for their room are shrunk to fit it**, to half their size at most. Before, only `fill` scaled them, and only up: a list taller than the room had its lines squeezed into each other, and a stacked row ran into the heading. A part keeps its height in the body, so it is never squeezed into the next.
+- **A figure is as large as its room allows**, where it stopped at 60% of the stage's height.
 - **A picture is as large as its room allows.** It stopped at the file's pixel width, and at half the stage's height, so a photo stayed small in a large room with nothing said. `width` and `height` still hold it smaller.
 - **`enter` is a scene field now**, so a shape made with `defineKata` can't name one of its own fields `enter`.
 - **A `pause` on a scene's last sentence holds the scene that long after it**, instead of the tail. It was ignored before; a reel that set one there now ends that scene at the pause.

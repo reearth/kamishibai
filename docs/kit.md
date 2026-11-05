@@ -96,13 +96,13 @@ Every part is `{ type, … }`, with an optional `id`, `enter` and `cue`.
 | `title` | `text`\*, `kicker` | The scene's heading, pinned to the top. |
 | `text` | `text`\*, `role` (`display`, `lead`, `body`, `note`), `align`, `color`, `shrink` | Plain text, sized by what it is for: a cover's title, a large line, a sentence (the default), or a small grey note. A word never breaks, so a long one can be wider than its room: `shrink: true` sets the text smaller until its longest word fits, down to half its size (`shrink: 0.7`, to 70%). |
 | `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row is held to the stage's width, its cards wrapping their text to fit; one that still doesn't fit (a word would be cut, or a card would go under 360 units) stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), stays a row with its parts at their own width and the scene shrunk to fit it on a wide stage, stacking on a tall one or when stacking shrinks it less (`fit`, which `flow` uses), or stays a row (`keep`). |
-| `card` | `label`, `body`, `code`, `highlight`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. |
+| `card` | `label`, `body`, `code`, `highlight`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. On a tall stage a card in a column takes the full width instead of its `width`, so the column reads as one; in a row it keeps it. |
 | `arrow` | `kind` (`right`, `down`, `versus`, `equals`) | An arrow between parts; in a column it points down. |
 | `chip` | `text`\*, `state` (`active`, `done`), `n` | A pill, for a step. `n` puts a number in a badge before the label, a tick once it is done. |
 | `stat` | `value`\*, `unit`, `label`, `tone`, `digits` | A big number that counts up from its previous value. |
 | `list` | `items`\*, `at` | A bulleted list; `at` stresses one item. |
 | `image` | `src`\*, `width`, `height`, `upscale`, `caption` | A picture, as large as the room it gets allows, its shape kept: as tall as the room under the heading, less its caption. `width` and `height` hold it smaller; `upscale: false` keeps it no wider than the file's own pixels, so a small file stays sharp. |
-| `figure` | `width`\*, `height`\*, `items`\*, `caption` | A drawing as data (see below). |
+| `figure` | `width`\*, `height`\*, `items`\*, `caption` | A drawing as data (see below), as large as the room under the heading allows. |
 | `paint` | `width`\*, `height`\*, `fn`\*, `key` | A box drawn by code, `fn(g, ms, w, h)`, on the reel's clock. Only in a code reel. |
 
 ### Figures
@@ -234,6 +234,7 @@ The layout already knows every box, so these are found with no frame drawn (the 
 - `contrast`: text below WCAG contrast on what it sits on (3:1 for large text, 4.5:1 otherwise).
 - `widow`: one or two characters alone on a paragraph's last line, or one word under a line more than 2.5 times as long.
 - `glyph`: a character no font has, which would show as an empty box (the parts' text, and burned captions).
+- `unused`: a field the reel wrote that no shape it lays out for uses, such as a card's `width` in a reel that is only tall.
 
 Each issue ends with what usually fixes it. It exits 1 when it finds anything. What it can't judge is whether the result looks good: look at the frames of each shape you render.
 

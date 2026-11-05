@@ -510,7 +510,8 @@ scenes:
 - Tall from the same reel: `render reel.yaml --size 1080x1920 -o tall.mp4`
   (or `--aspect 9:16`); rows stack and the layout is redone.
 - Loop: `kamishibai check reel.yaml` (kinds `overlap`, `off-stage`,
-  `overflow`, `contrast`, `widow`, and `glyph` for characters no font has; at
+  `overflow`, `contrast`, `widow`, `glyph` for characters no font has, and
+  `unused` for a field no shape uses (a card's width in a tall-only reel); at
   meta's size and each end of `aspect`, no
   frames; `--json` for parsing; exit 1 on any; each issue says what usually
   fixes it), fix, then `render` and look at a few frames of each shape.
@@ -524,7 +525,7 @@ scenes:
   `fill` says. A picture is as large as its room allows unless `width`,
   `height` or `upscale: false` (no wider than its pixels) holds it. A long
   word that can't break: `{ type: text, …, shrink: true }` sets it smaller
-  until it fits (half its size at most, or `shrink: 0.7`). A row with
+  until it fits (half its size at most, or the share `shrink: 0.7` says). A row with
   `narrow: fit` stays a row on a wide stage, shrunk with the scene, when
   stacking would shrink more (flow does this).
   Neither grows a scene with a `paint` part. `place: left|right|top|bottom`

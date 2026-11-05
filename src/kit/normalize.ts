@@ -26,6 +26,8 @@ export type NormScene = {
   enter: SceneEnter;
   /** each part's own timing (and every part's inside it), by id */
   enters: Map<string, PartEnter>;
+  /** the ids of the parts the reel wrote (and those inside them), not a shape's */
+  written: Set<string>;
   /** where the camera moves in, in order of their sentences */
   focus: Focus[];
   /** grow the parts below the heading to fill the room they leave: some, as much as fits (up to n times), or not */
@@ -173,7 +175,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", enter: {}, enters: new Map(), focus: [], fill: true, place: "center" };
+      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", enter: {}, enters: new Map(), written: new Set(), focus: [], fill: true, place: "center" };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -202,6 +204,8 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     problems.push(...checkPace(sc.pace, `${where}.pace`));
     const cues = new Map<string, number>();
     const enters = new Map<string, PartEnter>();
+    const writtenIds = new Set<string>();
+    let fromShape = false;
     const used = new Set<string>();
     // Things inside parts that focus may aim at too (a figure's items, as "figure.item").
     const inner = new Set<string>();
@@ -232,6 +236,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
         for (let n = 2; used.has(id); n++) id = `${p.type}.${n}`;
       } else if (used.has(id)) problems.push(`${pat}: the id "${id}" is used twice in this scene`);
       used.add(id);
+      if (!fromShape) writtenIds.add(id);
       for (const t of def.targets?.({ ...p, id } as never) ?? []) inner.add(t);
       if (cue) cues.set(id, cue);
       // An enter written out: its verb stays on the part, its timing with the scene, and the parts inside take it.
@@ -262,7 +267,9 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       return placed as Placed<PartSpec>;
     };
     // The shape's ids are fixed: mark them first, so a written part never takes one.
+    fromShape = true;
     const kataParts = fromKata.map((p, j) => place(p, `${where} (kata ${String(sc.kata)}) part ${j}`));
+    fromShape = false;
     const written = Array.isArray(sc.parts) ? sc.parts.map((p, j) => place(p, `${where}.parts[${j}]`)) : [];
     const focus: Focus[] = [];
     if (sc.focus !== undefined) {
@@ -294,6 +301,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       ...transitionOf(spec.transition, sc.transition),
       enter: { ...(isObj(spec.enter) ? spec.enter : {}), ...(isObj(sc.enter) ? sc.enter : {}) } as SceneEnter,
       enters,
+      written: writtenIds,
       focus,
       fill: sc.fill === "max" || typeof sc.fill === "number" ? sc.fill : sc.fill !== false,
       place: (sc.place as NormScene["place"] | undefined) ?? "center",

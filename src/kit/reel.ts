@@ -160,7 +160,12 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     // The camera's home: the middle of the frame, where a focused part is brought.
     const fr = ctx.frame;
     const anchor = { x: (fr.left + stage.W - fr.right) / 2, y: (fr.top + stage.H - fr.bottom) / 2 };
+    // What the parts said as they were laid out, by scene: a field that goes unused on this stage.
+    const notes = new Map<string, Array<{ id: string; msg: string }>>();
     const ks: Keyframe[] = scenes.map((s, i) => {
+      const said: Array<{ id: string; msg: string }> = [];
+      notes.set(s.id, said);
+      ctx.note = (id, msg) => void (said.some((n) => n.msg === msg) || said.push({ id, msg }));
       const t = timing[i]!;
       // A cued part comes in as its sentence starts.
       const cues: Record<string, number> = {};
@@ -176,7 +181,8 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       if (!shots.length || shots[0]!.at > 0) shots.unshift({ at: 0, cam: { ...anchor, s: 1 } });
       return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, transMs: s.transMs, enter: s.enter, enters: Object.fromEntries(s.enters), shots };
     });
-    return { k, stage, insets, fonts, images, ks, anchor, frame: fr, theme };
+    ctx.note = undefined;
+    return { k, stage, insets, fonts, images, ks, anchor, frame: fr, theme, notes };
   }
 
   // One shape ("9:16") is a range of one, and the default view takes it.
@@ -198,12 +204,14 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     subtitles,
     timing,
     async check(view, env) {
-      const { ks, stage, insets, fonts, theme } = await prepare(view, env);
+      const { ks, stage, insets, fonts, theme, notes } = await prepare(view, env);
+      // A field the reel wrote that no shape it lays out for uses (on a wide one, a card's width is used).
+      const unused: Issue[] = range.max < 1 ? scenes.flatMap((s) => (notes.get(s.id) ?? []).filter((n) => s.written.has(n.id)).map((n) => ({ scene: s.id, kind: "unused" as const, msg: n.msg }))) : [];
       // What is drawn as text: the parts', and the captions when they are burned in.
       const texts = ks.flatMap((k) => k.ds.flatMap((d) => [d, ...(d.steps?.map((st) => st.d) ?? [])].flatMap((f) => (f.t === "text" ? [{ s: f.lines.join(""), font: f.font, scene: k.id, id: d.id }] : []))));
       if (burn) timing.forEach((t) => t.say.forEach((l, i) => texts.push({ s: l.text, font: spec.captionStyle?.font ?? "bold", scene: t.id, id: `caption ${i}` })));
       const g = env.createCanvas(64, 64).getContext("2d");
-      return [...check(ks, stage, insets, theme), ...missingGlyphs(texts, fonts, g)];
+      return [...check(ks, stage, insets, theme), ...unused, ...missingGlyphs(texts, fonts, g)];
     },
     async setup(view, env) {
       const { k, ks, fonts, images, anchor, stage, insets, frame, theme } = await prepare(view, env);

@@ -37,6 +37,8 @@ export interface Ctx {
   flow?: "row" | "col";
   /** the room under the heading, which a part may size itself to (unset outside a scene's layout) */
   room?: { w: number; h: number };
+  /** say something about a part that check may report (a field it can't use here) */
+  note?(id: string, msg: string): void;
   fonts: Fonts;
   theme: Theme;
   /** a text file relative to the reel */
@@ -170,9 +172,9 @@ definePart<TextSpec>("text", {
     role: f.one(["display", "lead", "body", "note"], 'its size: "display" a cover title, "lead" large, "body" (default), "note" small and grey'),
     align: f.one(["start", "center", "end"], "default start (center for display)"),
     color: f.str("a theme colour's name or CSS (default: by role)"),
-    shrink: f.any("set smaller until its longest word fits (a word never breaks): true (down to half its size) or the least share of it, 0.3 to 1"),
+    shrink: f.any("set smaller until its longest word fits (a word never breaks): true (down to half its size) or the least share of it, above 0 and up to 1"),
   },
-  check: (s, at) => (s.shrink === undefined || s.shrink === true || s.shrink === false || (typeof s.shrink === "number" && s.shrink >= 0.3 && s.shrink <= 1) ? [] : [`${at}.shrink: expected true, false or a number from 0.3 to 1, got ${JSON.stringify(s.shrink)}`]),
+  check: (s, at) => (s.shrink === undefined || typeof s.shrink === "boolean" || (typeof s.shrink === "number" && s.shrink > 0 && s.shrink <= 1) ? [] : [`${at}.shrink: expected true, false or a share above 0 and up to 1, got ${JSON.stringify(s.shrink)}`]),
   box: (s, ctx) => {
     const role = s.role ?? "body";
     const least = (size: number) => (s.shrink === true ? size / 2 : typeof s.shrink === "number" ? size * s.shrink : undefined);
@@ -324,9 +326,11 @@ definePart<CardSpec>("card", {
   box: (s, ctx) => {
     const T = ctx.theme;
     const tone = s.tone ?? "plain";
+    const full = isTall(ctx.stage) && ctx.flow !== "row";
+    if (full && s.width !== undefined) ctx.note?.(s.id, `${s.id}'s width (${s.width}) goes unused: on a tall stage a card in a column takes the full width. Drop it, or put the card in a row`);
     return {
       // In a column on a tall stage a card takes the full width instead of its own.
-      style: { pad: 44, gap: 20, shrink: 0, minW: 360, ...(isTall(ctx.stage) && ctx.flow !== "row" ? { self: "stretch" as const } : { w: s.width }) },
+      style: { pad: 44, gap: 20, shrink: 0, minW: 360, ...(full ? { self: "stretch" as const } : { w: s.width }) },
       paint: (r) => [
         rect(s.id, r, { fill: tone === "dim" ? T.well : T.card, stroke: tone === "accent" ? T.accent : T.rule, sw: tone === "accent" ? 4 : 2, r: 20, ground: true, enter: s.enter }),
       ],
@@ -533,7 +537,8 @@ definePart<FigureSpec>("figure", {
   targets: (s) => (Array.isArray(s.items) ? s.items.flatMap((it, i) => (typeof it?.id === "string" ? [itemId(s, it, i)] : [])) : []),
   box: (s, ctx) => {
     const T = ctx.theme;
-    const maxH = ctx.stage.H * 0.6;
+    // As tall as the room under the heading allows, less its caption (outside a scene's layout, 60% of the stage).
+    const maxH = ctx.room ? ctx.room.h - (s.caption ? SIZE.small * 1.45 + 16 : 0) : ctx.stage.H * 0.6;
     const pic: Box = {
       style: { shrink: 1 },
       measure: (maxW) => {

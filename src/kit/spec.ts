@@ -29,7 +29,7 @@ export type TextSpec = Common & {
   align?: "start" | "center" | "end";
   /** a theme colour's name or CSS (default: by role) */
   color?: string;
-  /** set smaller until its longest word fits: true (down to half its size) or the least share of it (0.3 to 1) */
+  /** set smaller until its longest word fits: true (down to half its size) or the least share of it (above 0, up to 1) */
   shrink?: boolean | number;
 };
 export type GroupSpec = Common & {

@@ -654,7 +654,35 @@ describe("filling the stage", () => {
     // No further than it says.
     const floor = (await word(0.95)).text("text");
     expect(floor.size).toBeCloseTo(SIZE.display * 0.95);
-    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "text", text: "a", shrink: 0.1 }] }] })).toEqual(["scenes[0].parts[0] (text).shrink: expected true, false or a number from 0.3 to 1, got 0.1"]);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "text", text: "a", shrink: 0.1 }] }] })).toEqual([]);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "text", text: "a", shrink: 0 }, { type: "text", text: "b", shrink: 1.5 }] }] })).toEqual([
+      "scenes[0].parts[0] (text).shrink: expected true, false or a share above 0 and up to 1, got 0",
+      "scenes[0].parts[1] (text).shrink: expected true, false or a share above 0 and up to 1, got 1.5",
+    ]);
+  });
+
+  it("makes a figure as tall as its room allows", async () => {
+    const fig = { type: "figure", width: 1000, height: 1000, items: [{ rect: [0, 0, 1000, 1000], fill: "accent" }] };
+    const { boxes } = await lay({ fill: false, parts: [title("A figure"), fig] });
+    const r = room();
+    const b = boxes.get("figure")!;
+    // Before, 60% of the stage (648 here), shorter than the room under the heading.
+    expect(b.h).toBeGreaterThan(1080 * 0.6 + 50);
+    expect(Math.abs(b.y + b.h - (r.y + r.h))).toBeLessThan(2);
+  });
+
+  it("says when a card's width goes unused on every shape the reel lays out for", async () => {
+    const reel = (aspect: KitReelSpec["aspect"], scene: SceneSpec) => kit({ kit: 1, fonts, theme, aspect, scenes: [scene] });
+    const issues = async (aspect: KitReelSpec["aspect"], scene: SceneSpec) => {
+      const r = await reel(aspect, scene);
+      return (await r.check(resolveView(r.meta), await nodeEnv("."))).filter((i) => i.kind === "unused");
+    };
+    const written: SceneSpec = { parts: [title("Cards"), card({ body: "Narrow", width: 600 })] };
+    expect((await issues("9:16", written)).map((i) => i.msg)).toEqual(["card's width (600) goes unused: on a tall stage a card in a column takes the full width. Drop it, or put the card in a row"]);
+    // Used on the wide shapes of the default range; used in a row; set by a shape, not the reel.
+    expect(await issues(undefined, written)).toEqual([]);
+    expect(await issues("9:16", { parts: [row([card({ body: "a", width: 400 }), card({ body: "b", width: 400 })], { narrow: "keep" })] })).toEqual([]);
+    expect(await issues("9:16", { kata: "compare", title: "Two", left: { body: "a" }, right: { body: "b" } })).toEqual([]);
   });
 
   it("lays every built-in shape out at every shape of stage with nothing to fix", async () => {
