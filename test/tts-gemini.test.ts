@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { mkdtemp } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { geminiAdapter } from "../src/tts/index.ts";
 import { createTTSEngine, pcmToWav } from "../src/tts/engine.ts";
+import { tempDir } from "./temp.ts";
 
 describe("pcmToWav", () => {
   it("writes a 44-byte RIFF header describing 16-bit mono PCM", () => {
@@ -62,7 +60,7 @@ describe("geminiAdapter", () => {
       );
       vi.stubGlobal("fetch", fetchMock);
 
-      const engine = createTTSEngine({ cacheDir: await mkdtemp(join(tmpdir(), "kamishibai-gemini-")) });
+      const engine = createTTSEngine({ cacheDir: await tempDir("kamishibai-gemini-") });
       const out = await engine.handle({
         adapter: geminiAdapter({ voice: "Puck", instructions: "Say cheerfully" }),
         items: { a: "Hello" },

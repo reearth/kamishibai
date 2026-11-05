@@ -1,7 +1,7 @@
 // A canvas capture across worker threads: the CPU counterpart of renderPool.
 // ------------------------------------------------------------------
 import { Worker } from "node:worker_threads";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { build } from "esbuild";
@@ -21,7 +21,10 @@ function workerScript(): Promise<string> {
   const built = join(here, "canvas-worker.js");
   if (existsSync(built)) return Promise.resolve(built);
   return (fromSource ??= (async () => {
-    const outfile = join(await mkdtemp(join(tmpdir(), "kamishibai-worker-")), "canvas-worker.mjs");
+    const dir = await mkdtemp(join(tmpdir(), "kamishibai-worker-"));
+    // Built once per process, and gone with it.
+    process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
+    const outfile = join(dir, "canvas-worker.mjs");
     await build({
       entryPoints: [join(here, "worker.ts")],
       bundle: true,

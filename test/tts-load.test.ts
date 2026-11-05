@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadTTSAdapters } from "../src/tts/load.ts";
+import { tempDir } from "./temp.ts";
 
 async function moduleFile(name: string, code: string): Promise<{ dir: string; file: string }> {
-  const dir = await mkdtemp(join(tmpdir(), "kamishibai-adapter-"));
+  const dir = await tempDir("kamishibai-adapter-");
   const file = join(dir, name);
   await writeFile(file, code);
   return { dir, file };
