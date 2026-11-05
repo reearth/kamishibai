@@ -4,17 +4,6 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
-## Unreleased
-
-### Added
-
-- **Kept frames say how much disk they take.** `render -f` (or `--keep-frames`) and `capture` end with the frames folder, its number of files and its size, and that a render with `-i` reuses them.
-- **A render lists frames a stopped render left behind**: temporary `kamishibai-frames-*` folders older than an hour, with their size, for you to delete once no render is running.
-
-### Fixed
-
-- A render stopped with Ctrl+C (or SIGTERM) left its temporary frames folder (at 1080p, around 45 to 130 MB a minute of reel, more with photographs). It removes it as it stops.
-
 ## 0.12.0
 
 ### Added
@@ -31,6 +20,8 @@ can contain breaking changes, and they are called out under **Changed**.
 - **A row takes `narrow: fit`**: on a wide stage it stays a row, its parts at their own width, and the scene is shrunk to fit it, when stacking would shrink it more; on a tall stage it stacks. The `flow` shape uses it.
 - **`kamishibai export` says how long it painted each view** (`painted 18000 frame(s) in 1.89 s`): it paints every frame of a canvas reel, small, to learn which characters each font draws, and that is quick (about 4.5 s for a 10-minute kit reel on an M1; see docs/benchmarks.md).
 - **`import words from "./words.yaml"` works in any script entry**, as `.json` already did: the data is bundled with the reel, so it is there in `render` and `check` (Node) and in `dev` and `export` (a browser) alike.
+- **Kept frames say how much disk they take.** `render -f` (or `--keep-frames`) and `capture` end with the frames folder, its number of files and its size, and that a render with `-i` reuses them.
+- **A render lists frames a stopped render left behind**: temporary `kamishibai-frames-*` folders older than an hour, with their size, for you to delete once no render is running.
 
 ### Changed
 
@@ -42,6 +33,7 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ### Fixed
 
+- A render stopped with Ctrl+C (or SIGTERM) left its temporary frames folder (at 1080p, around 45 to 130 MB a minute of reel, more with photographs). It removes it as it stops.
 - `flow` with four or more steps on a 16:9 stage stacked into a column taller than the room, over the heading and the note (`title and flow.0 overlap`, `flow.note spills out of flow.3`). It keeps a row and is shrunk to fit.
 - In a scene that comes in by a fade, push, wipe or cut, and in the first scene, the paper took the first turn to come in, so the first part waited a further 160 ms behind it.
 - A script entry that imports Node's own modules (`node:fs`) and failed as it loaded, such as reading a file next to it by `import.meta.url` (which points to the temporary bundle), was taken for a page and failed again with `Could not resolve "node:fs"`. It now stops with the error it threw, and says to import the data instead.
