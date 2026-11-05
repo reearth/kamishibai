@@ -57,6 +57,8 @@ Then, by kind of reel:
 - each font in `fonts`, cut to the characters drawn in it, as WOFF2 (a variable font keeps its weight axis). This needs `npm i -D subset-font`;
 - the files `setup` read with `env.readText` and `env.loadImage`, under the paths it asked for.
 
+Painting every frame is quick: the frames are a quarter of the size and never encoded. On an Apple M1, a 30-second kit reel exports in under a second and a 10-minute one in about 4.5 s, two views painted for each (see [Benchmarks](benchmarks.md#exporting-to-one-html-file)). Export prints how long it painted each view. Synthesizing the narration, the first time, takes longer than that.
+
 The file lays a canvas reel out for the window's shape, within `meta.aspect`, and again when the window changes, so a phone held upright plays it tall. The canvas example exports to 12 KB.
 
 No local paths end up in the file: a page's files go in under the paths they had on the server, and a canvas reel's under the paths it asked for.

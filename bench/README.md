@@ -8,6 +8,7 @@ The harness behind [docs/benchmarks.md](../docs/benchmarks.md): kamishibai next 
 | `run-speed.ts` | Render speed: a reference implementation of each brief per tool, with each tool's defaults and with one capture worker |
 | `run-agents.ts` | Agents: tokens, cost, turns and time for a headless Claude Code session to turn a brief into a passing `out.mp4`, with and without each tool's skills, and with no video tool at all (`bare`) |
 | `run-container.ts` | A kit reel rendered on the CPU in a Linux container with no browser, at a few CPU limits |
+| `run-export.ts` | `kamishibai export` of kit reels 30 s, 2.5 min and 10 min long: the time in all, and how much of it is painting every frame. It runs this checkout's `dist/cli.js`, so `pnpm build` first; it needs no `setup.sh` |
 | `lexicon/compare.ts` | Every drawing of the [Lexicon](https://reearth.github.io/kamishibai/lexicon/) on Skia with no browser, against Chromium |
 
 ## Files

@@ -121,12 +121,15 @@ export async function exportHtml(opts: ExportOptions): Promise<ExportResult> {
         const paint = await reel.setup(view, env);
         const g = patchContext(createCanvas(Math.ceil(view.width * view.pixelRatio), Math.ceil(view.height * view.pixelRatio)).getContext("2d") as unknown as Context2D);
         const n = frameCount(reel.meta);
+        const t0 = performance.now();
         for (let i = 0; i < n; i++) {
           g.reset?.();
           g.setTransform(view.pixelRatio, 0, 0, view.pixelRatio, 0, 0);
           paint(g, frameTimeMs(i, reel.meta.fps));
           frames++;
         }
+        // Small and quick: a quarter of the size, never encoded.
+        log(`  painted ${n} frame(s) in ${((performance.now() - t0) / 1000).toFixed(2)} s`);
       }
     } finally {
       recordText(undefined);
