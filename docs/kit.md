@@ -76,7 +76,7 @@ The reel's fields:
 
 ## Scenes
 
-A scene has a `say` (the narration, and its captions: a text, split into sentences, or a list of them, where a sentence may be written out as `{ text, caption?, voice?, pause? }`: what is spoken, what the caption shows instead, the voice's options for it alone (`{ speed: 0.9 }`), and the ms of silence after it: before the next sentence instead of the gap, or after the last one before the scene ends instead of the tail) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)). When the parts under the heading leave most of the stage empty, they grow together, up to 1.6 times and 90% of the room, to fill it; `fill: max` grows them as large as the room allows (up to 4×), a number such as `fill: 2` as large as the room allows up to that many times, and `fill: false` keeps them at their own size; a scene with a `paint` part does not grow. Parts that are too large for the room, such as a row of steps too wide for the stage or a long list, are shrunk together to fit it, whatever `fill` says, to half their size at most; past that, `kamishibai check` says what spills. `place` says where they sit in their room: `center` (the default), an edge (`left`, `right`, `top`, `bottom`) or a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`), and they grow from there. A scene with no `title` has no heading, so its room runs from the stage's top margin. `margin` sets that margin for the scene, over the reel's (see the reel's fields).
+A scene has a `say` (the narration, and its captions: a text, split into sentences, or a list of them, where a sentence may be written out as `{ text, caption?, voice?, pause? }`: what is spoken, what the caption shows instead, the voice's options for it alone (`{ speed: 0.9 }`), and the ms of silence after it: before the next sentence instead of the gap, or after the last one before the scene ends instead of the tail) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `sounds: [{ src, at?, cue?, gain? }]` plays files next to the reel (a click on a beat, say): each `at` ms after the scene starts, or after sentence `cue` starts, at `gain` dB, since a scene's times are known only once its voice is measured. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)). When the parts under the heading leave most of the stage empty, they grow together, up to 1.6 times and 90% of the room, to fill it; `fill: max` grows them as large as the room allows (up to 4×), a number such as `fill: 2` as large as the room allows up to that many times, and `fill: false` keeps them at their own size; a scene with a `paint` part does not grow. Parts that are too large for the room, such as a row of steps too wide for the stage or a long list, are shrunk together to fit it, whatever `fill` says, to half their size at most; past that, `kamishibai check` says what spills. `place` says where they sit in their room: `center` (the default), an edge (`left`, `right`, `top`, `bottom`) or a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`), and they grow from there. A scene with no `title` has no heading, so its room runs from the stage's top margin. `margin` sets that margin for the scene, over the reel's (see the reel's fields).
 
 | Shape | Fields (* required) | |
 |---|---|---|
@@ -126,6 +126,18 @@ A `figure` draws in its own units, `width` × `height`, and is fitted to the roo
 
 Each item is one of `rect: [x, y, w, h]` (with `r` for its corners), `circle: [cx, cy, r]`, `line: [[x, y], …]` (with `arrow: true` for a head; with a `fill`, three points or more close into a filled shape, outlined only with a `stroke`), or `text` with `pos: [x, y]`, its top-left corner (top-centre with `align: center`, top-right with `end`), `size` (44 by default), `font` (`sans`, `bold`, `black` or `mono`; `bold: true` and `mono: true` are short for two of them), and `width`, where it wraps (evenly; otherwise only at `\n`). `fill`, `stroke` and `color` take a theme colour's name (`accent`, `accentTint`, `ink3`, `rule`, …) or any CSS colour, `lineWidth` is a line's or an outline's width, `dash: [on, off]` dashes a stroke, and `opacity` (0 to 1) fades an item. An item may have an `id`, an `enter` verb and a `cue`. An item under the same id in the next scene's figure moves, resizes and changes colour, so a diagram can change from one scene to the next.
 
+A coordinate can be an edge of an item before it, by its `id`, and an offset, so lines and frames line up with text however the reel's fonts set it. The edges are `left`, `right`, `top`, `bottom`, `cx` and `cy`, and the figure measures text in the reel's fonts and theme as it lays out. `box: [x1, y1, x2, y2]` is a rect by its corners, for a frame around items:
+
+```yaml
+items:
+  - { id: syl1, text: re, pos: [100, 120], size: 64 }
+  - { id: syl2, text: CEIPT, pos: ["syl1.right+16", 120], size: 64, color: accent }
+  - { line: [["syl2.left", "syl2.bottom+10"], ["syl2.left+240", "syl2.bottom+10"]], stroke: accent }  # as long as it is read
+  - { box: ["syl1.left-12", "syl1.top-8", "syl2.right+12", "syl2.bottom+8"], stroke: accent, r: 12 }
+```
+
+A script that writes a reel can measure text the same way: `textMeasurer({ fonts, theme })` from `kamishibai` registers the reel's fonts as a render does and returns `measure(text, { size, font })`, a width in the units of the size.
+
 An item can also move within its scene. `then` lists what it becomes, in order, each with when it moves: `cue`, the sentence it moves with, and `delay`, ms after that sentence starts (after the scene starts, with no `cue`), so one sentence can carry several moves. Each gives the fields that change (its shape's own field, `pos`, `fill`, `stroke`, `color`, `lineWidth`, `r`, `size`, `text`), and `ms` for how long the move takes (750 by default). A step can also change `opacity`. A rect stays a rect, and a line keeps its number of points. A number text with `enter: count` counts to its new value. The next scene starts from the item as its last step left it.
 
 ```yaml
@@ -170,17 +182,17 @@ A scene comes in after the one before it by its `transition`:
 |---|---|
 | `morph` | The default: parts under the same id move, the rest fade out, and new parts come in with their verbs. |
 | `cut` | The new scene is there at once, whole. |
-| `fade` | The scene before fades out to the paper, then the new parts come in with their verbs. |
+| `fade` | A crossfade: the new scene is there whole under the one before as it fades out. |
 | `push` | The new scene slides in from the right and pushes the one before out to the left. |
 | `wipe` | The new scene is uncovered over the one before, from left to right. |
 
-With `cut`, `push` and `wipe`, a part with a `cue` (or a `delay` of its own) still comes in with its sentence. Nothing carries over from the scene before, so a change of topic reads as one.
+With `cut`, `fade`, `push` and `wipe`, a part with a `cue` (or a `delay` of its own) still comes in with its sentence, and with its verb. Nothing carries over from the scene before, so a change of topic reads as one.
 
 A transition takes its own time: a morph moves what stays over 750 ms, a fade takes 400 ms to go out, and a push or a wipe 700 ms. `transition: { type: fade, ms: 200 }` sets it. A `transition` on the reel is every scene's, and a scene's fields go over it: with `transition: { type: fade, ms: 200 }` on the reel, a scene's `transition: push` pushes in 200 ms, and `transition: { ms: 300 }` fades in 300.
 
 ### When parts come in
 
-New parts start coming in 150 ms into a scene; after a fade, 150 ms after it has gone out; after a morph, once what stays has mostly moved. Each verb takes its own time (a `rise` 550 ms, a `fade` 400, a `count` 1100), and parts that come in together start 160 ms apart. A scene shown for a moment needs them sooner and quicker, and `enter` says so:
+New parts start coming in 150 ms into a scene; after a morph, once what stays has mostly moved (after a cut, fade, push or wipe the scene is there at once). Each verb takes its own time (a `rise` 550 ms, a `fade` 400, a `count` 1100), and parts that come in together start 160 ms apart. A scene shown for a moment needs them sooner and quicker, and `enter` says so:
 
 ```yaml
 transition: { type: fade, ms: 200 }
@@ -237,6 +249,7 @@ The layout already knows every box, so these are found with no frame drawn (the 
 - `contrast`: text below WCAG contrast on what it sits on (3:1 for large text, 4.5:1 otherwise).
 - `widow`: one or two characters alone on a paragraph's last line, or one word under a line more than 2.5 times as long.
 - `glyph`: a character no font has, which would show as an empty box (the parts' text, and burned captions).
+- `timing`: a scene that ends less than half a second (or half the scene) after its parts are all in, so it is gone before it is seen whole. Parts cued to a later sentence don't count.
 - `unused`: a field the reel wrote that no shape it lays out for uses, such as a card's `width` in a reel that is only tall.
 
 Each issue ends with what usually fixes it. It exits 1 when it finds anything. What it can't judge is whether the result looks good: look at the frames of each shape you render.
