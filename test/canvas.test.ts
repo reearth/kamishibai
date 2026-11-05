@@ -171,7 +171,9 @@ export default canvasReel({
 });
 
 
-describe("export", () => {
+// Each export bundles and minifies the player and cuts a font, about a
+// second apiece, and a test runs up to four: 5 s was too close on a busy machine.
+describe("export", { timeout: 30_000 }, () => {
   let dir: string;
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "kamishibai-export-test-"));
