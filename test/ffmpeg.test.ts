@@ -117,9 +117,7 @@ describe("volumeExpr", () => {
     expect(at(1.1)).toBeCloseTo(0.1, 4);
   });
 
-  // It runs ffmpeg over 30 s of audio: under a second alone, but past vitest's
-  // default 5 s with every test file's worker busy at once.
-  it("stays parseable by ffmpeg with hundreds of keyframes", { timeout: 30_000 }, () => {
+  it("stays parseable by ffmpeg with hundreds of keyframes", () => {
     // ffmpeg rejects expressions nested ~100 deep; a long ducked reel has more keyframes.
     const kf = Array.from({ length: 300 }, (_, i) => ({ atMs: i * 100, gain: i % 2 === 0 ? 0 : -20 }));
     const at = sampleExpr(volumeExpr(kf), 30);
