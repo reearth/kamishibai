@@ -17,6 +17,7 @@ can contain breaking changes, and they are called out under **Changed**.
 - **`text` takes `shrink`**: `shrink: true` sets it smaller until its longest word fits, down to half its size (`shrink: 0.7`, to 70%), for a long word that can't break, such as *accommodation* beside a picture.
 - **`image` takes `upscale: false`**, to keep a picture no wider than the file's own pixels.
 - **A row takes `narrow: fit`**: on a wide stage it stays a row, its parts at their own width, and the scene is shrunk to fit it, when stacking would shrink it more; on a tall stage it stacks. The `flow` shape uses it.
+- **`kamishibai export` says how long it painted each view** (`painted 18000 frame(s) in 1.89 s`): it paints every frame of a canvas reel, small, to learn which characters each font draws, and that is quick (about 4.5 s for a 10-minute kit reel on an M1; see docs/benchmarks.md).
 - **`import words from "./words.yaml"` works in any script entry**, as `.json` already did: the data is bundled with the reel, so it is there in `render` and `check` (Node) and in `dev` and `export` (a browser) alike.
 
 ### Changed
