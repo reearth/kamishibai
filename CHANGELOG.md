@@ -8,14 +8,18 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ### Added
 
+- **A transition takes a length.** `transition: { type: fade, ms: 200 }` makes a short crossfade, and sets a morph's, a push's or a wipe's length the same way (750, 400 and 700 ms were fixed). A `transition` on the reel is every scene's default; a scene's fields go over it.
+- **A scene says when its parts come in.** `enter: { delay, ms, stagger }` on a scene or the reel sets when the first new part starts, how long each takes to come in, and how far apart they start (150 ms in or after the transition, each verb's own length, and 160 ms were fixed). A part's `enter` can be written out as `{ type?, ms?, delay? }` for that part alone, and the parts inside it take it. A scene shown for under a second no longer spends half of it bringing its parts in.
 - **`import words from "./words.yaml"` works in any script entry**, as `.json` already did: the data is bundled with the reel, so it is there in `render` and `check` (Node) and in `dev` and `export` (a browser) alike.
 
 ### Changed
 
+- **`enter` is a scene field now**, so a shape made with `defineKata` can't name one of its own fields `enter`.
 - **A `pause` on a scene's last sentence holds the scene that long after it**, instead of the tail. It was ignored before; a reel that set one there now ends that scene at the pause.
 
 ### Fixed
 
+- In a scene that comes in by a fade, push, wipe or cut, and in the first scene, the paper took the first turn to come in, so the first part waited a further 160 ms behind it.
 - A script entry that imports Node's own modules (`node:fs`) and failed as it loaded, such as reading a file next to it by `import.meta.url` (which points to the temporary bundle), was taken for a page and failed again with `Could not resolve "node:fs"`. It now stops with the error it threw, and says to import the data instead.
 
 ## 0.11.0

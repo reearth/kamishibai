@@ -45,8 +45,8 @@ export interface Ctx {
   child(spec: PartSpec, flow?: "row" | "col"): Box;
 }
 
-/** A spec with its id filled in. */
-export type Placed<S> = S & { id: string };
+/** A spec with its id filled in, and its enter as the verb alone (its timing is the scene's to keep). */
+export type Placed<S> = Omit<S, "enter"> & { id: string; enter?: Verb };
 
 export interface PartDef<S = Record<string, unknown>> {
   /** the fields it takes, besides `type`, `id` and `enter` */
@@ -128,10 +128,16 @@ export const rect = (id: string, r: Rect, p: Partial<Omit<RectD, "t" | "id" | "o
 // ---- the parts --------------------------------------------------------------
 
 export const VERBS = ["fade", "rise", "draw", "type", "count", "pop", "none", "from-left", "from-right", "from-top", "from-bottom", "wipe", "blur"] as const;
+/** An enter written out. */
+export const ENTER_FIELDS: Fields = {
+  type: f.one(VERBS, "the verb (default: the part's own)"),
+  ms: f.ms("how long it takes to come in"),
+  delay: f.ms("ms from the scene's start (or its cue's sentence) to when it starts coming in"),
+};
 /** Fields every part takes. */
 export const COMMON: Fields = {
   id: f.str("same id in the next scene: the part moves there"),
-  enter: f.one(VERBS, "how it comes in when it first appears"),
+  enter: f.oneOr(VERBS, ENTER_FIELDS, "how it comes in when it first appears: a verb, or { type?, ms?, delay? } with how long it takes and when it starts"),
   cue: f.num("come in as this sentence of the scene's say starts (0 = the first)"),
 };
 

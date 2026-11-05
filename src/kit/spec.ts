@@ -14,8 +14,8 @@ export const KIT_VERSION = 1;
 type Common = {
   /** Same id in the next scene: the part moves there. Default: its type, numbered when repeated. */
   id?: string;
-  /** how it comes in when it first appears */
-  enter?: Verb;
+  /** how it comes in when it first appears: a verb, or { type?, ms?, delay? } to set how long it takes and when it starts */
+  enter?: EnterSpec;
   /** come in as this sentence of the scene's say starts (0 = the first, with the scene) */
   cue?: number;
 };
@@ -89,6 +89,17 @@ export type FocusSpec = string | { on: string; cue?: number; zoom?: number };
 
 /** How a scene comes in after the one before it. */
 export type Transition = "morph" | "cut" | "fade" | "push" | "wipe";
+/** A transition, or one with its length: `{ type: "fade", ms: 200 }`. A field left out takes the reel's. */
+export type TransitionSpec = Transition | { type?: Transition; ms?: number };
+
+/**
+ * How a part comes in: a verb, or the verb with its length (`ms`, the whole
+ * of it) and `delay`, the ms from the scene's start (or its cue's sentence)
+ * to when it starts.
+ */
+export type EnterSpec = Verb | { type?: Verb; ms?: number; delay?: number };
+/** When a scene's new parts come in, by default: `delay` before the first, `ms` each takes, and `stagger` between one and the next. */
+export type SceneEnter = { delay?: number; ms?: number; stagger?: number };
 
 /** One keyframe: what the screen shows while `say` is spoken. */
 export type SceneSpec = {
@@ -102,8 +113,10 @@ export type SceneSpec = {
   /** a scene shape from `kata`, filled in with the fields beside it */
   kata?: string;
   parts?: PartSpec[];
-  /** how it comes in: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe" */
-  transition?: Transition;
+  /** how it comes in: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe", or { type, ms } with its length */
+  transition?: TransitionSpec;
+  /** when its new parts come in, unless a part says: { delay?, ms?, stagger? } */
+  enter?: SceneEnter;
   /** move the camera in on a part, or a list of those, each with a cue */
   focus?: FocusSpec | FocusSpec[];
   /** grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6×), "max" (as large as the room allows, up to 4×), or false */
@@ -151,6 +164,10 @@ export type KitReelSpec = {
   music?: { src: string; gain?: number; duck?: boolean | { amountDb?: number; attackMs?: number; releaseMs?: number }; fadeInMs?: number; fadeOutMs?: number; trimStartMs?: number };
   /** narration timing for every scene (default lead 400, gap 250, tail 700) */
   pace?: Pace;
+  /** how every scene comes in, unless it says (default "morph") */
+  transition?: TransitionSpec;
+  /** when new parts come in, in every scene, unless it says */
+  enter?: SceneEnter;
   /** captions from each scene's `say`: a subtitle track (true, the default), drawn into the picture ("burn"), or none */
   captions?: boolean | "burn";
   /** how burned captions look */

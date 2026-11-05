@@ -130,7 +130,7 @@ An item can also move within its scene. `then` lists what it becomes, in order, 
 
 ### What moves between scenes
 
-A part is the same part in the next scene when it has the same `id`. Then it moves there, changing size and colour on the way; a part that is gone fades out, and a new one comes in with its `enter` verb (`rise` by default, `draw` for lines; also `fade`, `pop`, `type`, `count`, `none`, `from-left`, `from-right`, `from-top` and `from-bottom` to slide in from that side, `wipe` to be uncovered from the left, and `blur` to come into focus). New parts come in one after another, after the movers have mostly settled. A number under the same id counts from its old value to its new one, and a line of code still on screen slides to its new place instead of being typed again.
+A part is the same part in the next scene when it has the same `id`. Then it moves there, changing size and colour on the way; a part that is gone fades out, and a new one comes in with its `enter` verb (`rise` by default, `draw` for lines; also `fade`, `pop`, `type`, `count`, `none`, `from-left`, `from-right`, `from-top` and `from-bottom` to slide in from that side, `wipe` to be uncovered from the left, and `blur` to come into focus). New parts come in one after another, 160 ms apart, after the movers have mostly settled. A number under the same id counts from its old value to its new one, and a line of code still on screen slides to its new place instead of being typed again.
 
 A part without an `id` gets its type as its id, numbered when the type repeats in the scene (`card`, `card.2`). So a `title` in every scene is the same title, and it stays put while the rest changes. The shapes use fixed ids (`title`, `flow.0`, `flow.1`, …), so moving `at` along a flow from one scene to the next fills the next pill.
 
@@ -167,7 +167,26 @@ A scene comes in after the one before it by its `transition`:
 | `push` | The new scene slides in from the right and pushes the one before out to the left. |
 | `wipe` | The new scene is uncovered over the one before, from left to right. |
 
-With `cut`, `push` and `wipe`, a part with a `cue` still comes in with its sentence. Nothing carries over from the scene before, so a change of topic reads as one.
+With `cut`, `push` and `wipe`, a part with a `cue` (or a `delay` of its own) still comes in with its sentence. Nothing carries over from the scene before, so a change of topic reads as one.
+
+A transition takes its own time: a morph moves what stays over 750 ms, a fade takes 400 ms to go out, and a push or a wipe 700 ms. `transition: { type: fade, ms: 200 }` sets it. A `transition` on the reel is every scene's, and a scene's fields go over it: with `transition: { type: fade, ms: 200 }` on the reel, a scene's `transition: push` pushes in 200 ms, and `transition: { ms: 300 }` fades in 300.
+
+### When parts come in
+
+New parts start coming in 150 ms into a scene; after a fade, 150 ms after it has gone out; after a morph, once what stays has mostly moved. Each verb takes its own time (a `rise` 550 ms, a `fade` 400, a `count` 1100), and parts that come in together start 160 ms apart. A scene shown for a moment needs them sooner and quicker, and `enter` says so:
+
+```yaml
+transition: { type: fade, ms: 200 }
+enter: { delay: 0, ms: 250, stagger: 60 }   # every scene's new parts
+scenes:
+  - say: accommodation
+    ms: 900
+    enter: { delay: 50 }                    # this scene's, over the reel's
+    parts:
+      - { type: text, role: display, text: accommodation, enter: { type: pop, ms: 150 } }
+```
+
+On the reel or a scene, `enter` takes `delay` (ms from the scene's start to the first new part), `ms` (how long each takes) and `stagger` (ms between one and the next). A part's `enter` is a verb, or `{ type?, ms?, delay? }`: the verb (the part's own when left out), how long it takes, and when it starts, in ms from the scene's start, or from its sentence with a `cue`. Parts inside it take its timing.
 
 ### Camera
 

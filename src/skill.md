@@ -447,10 +447,17 @@ scenes:
   (scales in), `draw` (traces a line; the default for lines), `type` (types
   text out), `count` (counts a number up), `none`, `from-left|right|top|bottom`
   (slides in 160 units from that side), `wipe` (uncovered from the left),
-  `blur` (comes into focus).
+  `blur` (comes into focus). Written out, `enter: { type: rise, ms: 250,
+  delay: 0 }` sets how long it takes and when it starts (ms from the scene's
+  start, or from its cue's sentence). A scene's (or the reel's) `enter: {
+  delay, ms, stagger }` does so for all its new parts: by default the first
+  starts 150 ms in (a fade's 400 + 150, a morph's movers 55% done) and the
+  next 160 after, which eats into a scene held under a second.
 - A scene's `transition`: `morph` (default; same ids move over 750 ms, gone
   ones fade, new ones come in after), `cut` (at once), `fade` (through the
-  paper), `push` (slides in from the right), `wipe` (uncovers left to right).
+  paper, 400 ms), `push` (slides in from the right), `wipe` (uncovers left to
+  right; both 700 ms). `transition: { type: fade, ms: 200 }` sets its length;
+  the reel's `transition` is every scene's default, a scene's fields over it.
   A camera move takes 900 ms. `focus: gate` moves the camera in on a part;
   `focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]` moves with the
   sentences (`zoom` sets how close, past the default 2.5× for a small
@@ -526,8 +533,8 @@ scenes:
   as wide as its widest child) and draws with `paint(rect) → drawables`, each
   with an id from the part's. `textBox(id, text, ctx, opts)` is a text leaf.
   `defineKata(name, { doc, fields, parts(o) })` adds a scene shape; its fields
-  can't reuse a scene field (`id`, `say`, `ms`, `kata`, `parts`, `transition`,
-  `focus`, `fill`, `place`). `schema` lists only the built-in ones.
+  can't reuse a scene field (`id`, `say`, `pace`, `ms`, `kata`, `parts`,
+  `transition`, `enter`, `focus`, `fill`, `place`). `schema` lists only the built-in ones.
 - YAML anchors and merge keys (`<<: *base`) work.
 
 Give it font files for every script it draws (a container has few fonts).

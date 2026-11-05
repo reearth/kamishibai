@@ -7,8 +7,8 @@
 // ------------------------------------------------------------------
 import { bezier, eases } from "../easing.ts";
 import { formatColour, parseColour, type RGBA } from "./colour.ts";
-import type { Drawable, ImageD, PaintD, PathD, TextD } from "./model.ts";
-import type { Transition } from "./spec.ts";
+import { VERB_MS, type Drawable, type ImageD, type PaintD, type PathD, type TextD } from "./model.ts";
+import type { SceneEnter, Transition } from "./spec.ts";
 
 /** The camera: the stage point shown at the view's anchor (its frame's centre), and the zoom. */
 export type Cam = { x: number; y: number; s: number };
@@ -24,6 +24,12 @@ export type Keyframe = {
   cues?: Record<string, number>;
   /** how it comes in after the keyframe before (default "morph") */
   transition?: Transition;
+  /** how long the transition takes (default: its own, MORPH_MS, FADE_MS or TRANS_MS) */
+  transMs?: number;
+  /** when its new parts come in, unless a part says: delay before the first, how long each takes, ms between them */
+  enter?: SceneEnter;
+  /** a part's own delay and length, by owner (or turn) */
+  enters?: Record<string, { delay?: number; ms?: number }>;
   /** where the camera goes, in order; the first is at 0. None: the camera stays home. */
   shots?: Shot[];
 };
@@ -55,8 +61,30 @@ export const CAM_MS = 900;
 /** A push or a wipe takes this long; a fade spends this long going out. */
 const TRANS_MS = 700;
 const FADE_MS = 400;
+/** New parts coming in together start this far apart, by default. */
+const STAGGER_MS = 160;
+
+/** How long what stays takes to move into keyframe `k` (a morph). */
+const moveMs = (k: Keyframe) => k.transMs ?? MORPH_MS;
+/** How long the scene before stays on screen as `k` comes in. */
+export function outMs(k: Keyframe): number {
+  switch (k.transition ?? "morph") {
+    case "morph":
+      return moveMs(k);
+    case "cut":
+      return 0;
+    case "fade":
+      return k.transMs ?? FADE_MS;
+    default:
+      return k.transMs ?? TRANS_MS;
+  }
+}
+/** A drawable's own timing in its keyframe, if its part (or its turn) has one. */
+const ownEnter = (k: Keyframe, d: Drawable) => k.enters?.[d.turn ?? d.owner] ?? k.enters?.[d.owner];
 const move = bezier(0.65, 0, 0.35, 1);
 const clamp01 = (p: number) => (p < 0 ? 0 : p > 1 ? 1 : p);
+/** How far through something `len` ms long it is at `t`: one that takes no time is done. */
+const done = (t: number, len: number) => (len > 0 ? clamp01(t / len) : 1);
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 function lerpColor(a: string, b: string, p: number): string {
   const [pa, pb] = [parseColour(a), parseColour(b)];
@@ -102,10 +130,15 @@ function tween(a: Drawable, b: Drawable, p: number): Live {
 
 const SLIDE: Record<string, [number, number]> = { "from-left": [-1, 0], "from-right": [1, 0], "from-top": [0, -1], "from-bottom": [0, 1] };
 
-/** A part coming in for the first time, `e` ms after its turn began. */
-function enter(d: Drawable, e: number): Live | null {
+/** A part coming in for the first time, `e` ms after its turn began, over `ms` (default: its verb's own length). */
+function enter(d: Drawable, e: number, ms?: number): Live | null {
   if (e < 0) return null;
   const verb = d.enter ?? (d.t === "path" ? "draw" : "rise");
+  // A length of its own: the verb runs at that pace (0 is there at once).
+  if (ms !== undefined) {
+    const own = verb === "draw" && d.t !== "path" ? VERB_MS.fade : VERB_MS[verb];
+    e = ms <= 0 ? Infinity : (e * own) / ms;
+  }
   switch (verb) {
     case "from-left":
     case "from-right":
@@ -187,16 +220,21 @@ function turns(ks: Keyframe[], i: number): Map<string, number> {
   const k = ks[i]!;
   const prev = morphFrom(ks, i);
   const before = new Set(prev?.ds.map((d) => d.id));
-  const base = prev ? MORPH_MS * 0.55 : i > 0 && k.transition === "fade" ? FADE_MS + 150 : 150;
+  const base = k.enter?.delay ?? (prev ? moveMs(k) * 0.55 : i > 0 && k.transition === "fade" ? outMs(k) + 150 : 150);
+  const stagger = k.enter?.stagger ?? STAGGER_MS;
   const out = new Map<string, number>();
   const rank = new Map<number, number>();
   for (const d of k.ds) {
     const who = d.turn ?? d.owner;
-    if (before.has(d.id) || out.has(who)) continue;
-    const at = k.cues?.[who] ?? k.cues?.[d.owner] ?? base;
+    // The paper is there from the first frame: it takes no turn, so the first part doesn't wait behind it.
+    if (d.owner === "stage" || before.has(d.id) || out.has(who)) continue;
+    // With a cue, from its sentence (and its own delay after it); without, its own delay or the scene's.
+    const cue = k.cues?.[who] ?? k.cues?.[d.owner];
+    const own = ownEnter(k, d)?.delay;
+    const at = cue !== undefined ? cue + (own ?? 0) : (own ?? base);
     const n = rank.get(at) ?? 0;
     rank.set(at, n + 1);
-    out.set(who, at + n * 160);
+    out.set(who, at + n * stagger);
   }
   return out;
 }
@@ -205,9 +243,12 @@ function turns(ks: Keyframe[], i: number): Map<string, number> {
 export function settleMs(ks: Keyframe[], i: number): number {
   const last = Math.max(0, ...turns(ks, i).values());
   const shot = ks[i]!.shots?.at(-1)?.at ?? 0;
-  const step = Math.max(0, ...ks[i]!.ds.flatMap((d) => d.steps?.map((s) => (s.at ?? 0) + (s.ms ?? MORPH_MS)) ?? []));
-  // the last turn, its staggered drawables, and the longest verb (a count, or typing); the camera; a transition; the last step
-  return Math.max(MORPH_MS, last + 12 * 35 + 1500, shot + CAM_MS, i > 0 ? TRANS_MS : 0, step);
+  const k = ks[i]!;
+  const step = Math.max(0, ...k.ds.flatMap((d) => d.steps?.map((s) => (s.at ?? 0) + (s.ms ?? MORPH_MS)) ?? []));
+  // The longest a part takes to come in: the longest verb's own (a count, or typing), or a length given.
+  const longest = Math.max(1500, k.enter?.ms ?? 0, ...Object.values(k.enters ?? {}).map((e) => e.ms ?? 0));
+  // the last turn, its staggered drawables, and the longest verb; the camera; a transition; the last step
+  return Math.max(moveMs(k), last + 12 * 35 + longest, shot + CAM_MS, i > 0 ? outMs(k) : 0, step);
 }
 
 const lerpCam = (a: Cam, b: Cam, p: number): Cam => ({ x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), s: lerp(a.s, b.s, p) });
@@ -243,9 +284,10 @@ export function layersAt(ks: Keyframe[], t: number, W: number): Layer[] {
   if (tr === "morph" || tr === "cut") return [now];
   const prev = ks[i - 1]!;
   const old = (o: Partial<Layer>): Layer => ({ ds: settled(prev, t), cam: prev.shots?.at(-1)?.cam, ...o });
-  if (tr === "fade") return tau < FADE_MS ? [now, old({ o: 1 - eases.smooth(tau / FADE_MS) })] : [now];
-  if (tau >= TRANS_MS) return [now];
-  const p = move(tau / TRANS_MS);
+  const len = outMs(k);
+  if (tr === "fade") return tau < len ? [now, old({ o: 1 - eases.smooth(tau / len) })] : [now];
+  if (tau >= len) return [now];
+  const p = move(tau / len);
   if (tr === "push") return [old({ dx: -W * p }), { ...now, dx: W * (1 - p) }];
   return [old({}), { ...now, clipW: W * p }];
 }
@@ -259,7 +301,8 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
   // The scene before as it ended, its steps all taken.
   const before = new Map(prev?.ds.map((d) => [d.id, final(d)]));
   const now = new Set(k.ds.map((d) => d.id));
-  const p = move(clamp01(tau / MORPH_MS));
+  const mv = moveMs(k);
+  const p = move(done(tau, mv));
 
   // New parts come in one owner at a time, after the movers have mostly settled (or with their cue).
   const turn = turns(ks, i);
@@ -269,7 +312,7 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
   const exiting: Live[] = [];
   for (const d of prev?.ds.map(final) ?? []) {
     if (now.has(d.id)) continue;
-    exiting.push({ ...d, o: d.o * (1 - clamp01(tau / EXIT_MS)) });
+    exiting.push({ ...d, o: d.o * (1 - done(tau, (EXIT_MS * mv) / MORPH_MS)) });
   }
   for (const d of k.ds.map((d) => stepAt(d, tau))) {
     const a = before.get(d.id);
@@ -278,7 +321,7 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
     } else if (a) {
       // Changed content under the same id: the old one fades as both move.
       const ghost = tween(d, a, 1 - p);
-      const fading = { ...ghost, id: d.id + "~", o: ghost.o * (1 - clamp01(tau / (MORPH_MS * 0.6))) } as Live;
+      const fading = { ...ghost, id: d.id + "~", o: ghost.o * (1 - done(tau, mv * 0.6)) } as Live;
       if (d.t === "paint" || d.t === "image") {
         // An opaque box: show the new one whole underneath and dissolve the
         // old one off the top, so the paper never shows through.
@@ -286,18 +329,18 @@ export function frameAt(ks: Keyframe[], t: number): Live[] {
       } else {
         out.push(fading);
         // Verbs are for first appearances; changed content just fades in (a number still counts).
-        const fresh = enter({ ...d, enter: d.enter === "count" ? "count" : "fade" }, tau - MORPH_MS * 0.3);
+        const fresh = enter({ ...d, enter: d.enter === "count" ? "count" : "fade" }, tau - mv * 0.3);
         if (fresh) out.push(fresh);
       }
-    } else if (d.owner === "stage" || (i > 0 && whole(k) && k.cues?.[d.turn ?? d.owner] === undefined && k.cues?.[d.owner] === undefined)) {
-      // The paper is there from the first frame; so is a scene that cuts, pushes or wipes in.
+    } else if (d.owner === "stage" || (i > 0 && whole(k) && k.cues?.[d.turn ?? d.owner] === undefined && k.cues?.[d.owner] === undefined && ownEnter(k, d)?.delay === undefined)) {
+      // The paper is there from the first frame; so is a scene that cuts, pushes or wipes in (but for a part cued or given a delay).
       out.push(d);
     } else {
       const who = d.turn ?? d.owner;
       const n = seen.get(who) ?? 0;
       seen.set(who, n + 1);
       const delay = turn.get(who)! + Math.min(n, 12) * 35;
-      const e = enter(d, tau - delay);
+      const e = enter(d, tau - delay, ownEnter(k, d)?.ms ?? k.enter?.ms);
       if (e) out.push(e);
     }
   }

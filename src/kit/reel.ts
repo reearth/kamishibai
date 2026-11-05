@@ -19,7 +19,7 @@ import {
 } from "../tts/index.ts";
 import { check, missingGlyphs, type Issue } from "./check.ts";
 import { drawLayers } from "./draw.ts";
-import { keyframeAt, layersAt, settleMs, type Cam, type Keyframe, type Shot } from "./engine.ts";
+import { keyframeAt, layersAt, outMs, settleMs, type Cam, type Keyframe, type Shot } from "./engine.ts";
 import { bbox, type Bounds } from "./model.ts";
 import { normalize, type NormScene } from "./normalize.ts";
 import { partDef, type Ctx, type Stage } from "./parts.ts";
@@ -171,7 +171,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const target = (on: string) => boxes.get(on) ?? bbox(ds.find((d) => d.id === on)!);
       const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(target(fc.on), fc.zoom, stage, fr, anchor) }));
       if (!shots.length || shots[0]!.at > 0) shots.unshift({ at: 0, cam: { ...anchor, s: 1 } });
-      return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, shots };
+      return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, transMs: s.transMs, enter: s.enter, enters: Object.fromEntries(s.enters), shots };
     });
     return { k, stage, insets, fonts, images, ks, anchor, frame: fr, theme };
   }
@@ -220,7 +220,7 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
         const cue = caption?.(g, ms) ?? -1;
         g.restore();
         // A painted part changes every frame, and so does the scene before it while this one comes in.
-        if (painted[i] || (i > 0 && painted[i - 1] && ms - ks[i]!.start < 800)) return undefined;
+        if (painted[i] || (i > 0 && painted[i - 1] && ms - ks[i]!.start < outMs(ks[i]!))) return undefined;
         if (ms - ks[i]!.start >= settle[i]!) return `${rest[i]}#${cue}`;
         return `${view.width}x${view.height}:${fnv1a64(JSON.stringify(layers))}#${cue}`;
       };

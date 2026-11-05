@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { kit, kitBrief, kitSchema, morph, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
-import { camAt, frameAt, layersAt, type Keyframe } from "../src/kit/engine.ts";
+import { camAt, frameAt, layersAt, settleMs, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
@@ -52,6 +52,43 @@ describe("normalize", () => {
     expect(flow.parts.map((p) => p.id)).toEqual(["flow.0", "flow.a1", "flow.1"]);
     expect(flow.parts[2]!.state).toBe("active");
     expect(s2!.parts.map((p) => p.id)).toEqual(["title", "card", "card.2"]);
+  });
+
+  it("takes a transition and an enter written out, the reel's under the scene's", () => {
+    const [a, b, c] = normalize({
+      kit: 1,
+      transition: { type: "fade", ms: 200 },
+      enter: { delay: 0, stagger: 80 },
+      scenes: [
+        { parts: [{ type: "title", text: "T" }] },
+        { transition: { ms: 300 }, enter: { ms: 250 }, parts: [{ type: "row", enter: { delay: 500 }, parts: [{ type: "card", body: "x" }, { type: "card", body: "y", enter: { type: "pop", ms: 100 } }] }] },
+        { transition: "cut", parts: [{ type: "text", text: "t", enter: "fade" }] },
+      ],
+    });
+    expect([a!.transition, a!.transMs, a!.enter]).toEqual(["fade", 200, { delay: 0, stagger: 80 }]);
+    expect([b!.transition, b!.transMs, b!.enter]).toEqual(["fade", 300, { delay: 0, stagger: 80, ms: 250 }]);
+    // A name is the type alone: the reel's ms still holds.
+    expect([c!.transition, c!.transMs]).toEqual(["cut", 200]);
+    // The parts inside take the row's timing; a part's own fields go over it, and its enter is left as the verb.
+    expect(Object.fromEntries(b!.enters)).toEqual({ row: { delay: 500 }, card: { delay: 500 }, "card.2": { delay: 500, ms: 100 } });
+    const row = b!.parts[0] as unknown as { enter?: string; parts: Array<{ enter?: string }> };
+    expect([row.enter, row.parts[0]!.enter, row.parts[1]!.enter]).toEqual([undefined, undefined, "pop"]);
+    expect(c!.parts[0]!.enter).toBe("fade");
+    expect(c!.enters.size).toBe(0);
+  });
+
+  it("names what is wrong in a transition or an enter written out", () => {
+    expect(problems({
+      kit: 1,
+      transition: { type: "dissolve" },
+      scenes: [{ transition: { ms: -1 }, enter: { wait: 1 }, parts: [{ type: "title", text: "T", enter: { type: "rise", ms: "fast" } }, { type: "text", text: "t", enter: 3 }] }],
+    })).toEqual([
+      'reel.transition.type: "dissolve" is not one of "morph", "cut", "fade", "push", "wipe"',
+      "scenes[0].transition.ms: -1 is under 0",
+      'scenes[0].enter: unknown field "wait"',
+      'scenes[0].parts[0] (title).enter.ms: expected a number, got string "fast"',
+      "scenes[0].parts[1] (text).enter: expected a string or an object, got number 3",
+    ]);
   });
 
   it("says to quote text that YAML read as a map", () => {
@@ -305,6 +342,52 @@ describe("transitions and the camera", () => {
     expect(fade).toHaveLength(2);
     expect(fade[0]!.ds.map((d) => d.id)).toEqual(["stage"]);
     expect(layersAt(two("fade"), 1800, 100)).toHaveLength(1);
+  });
+
+  it("takes a transition's length", () => {
+    const at = (tr: Keyframe["transition"], transMs: number, t: number) => {
+      const ks = two(tr);
+      ks[1]!.transMs = transMs;
+      return layersAt(ks, t, 100);
+    };
+    expect(at("fade", 200, 1150)).toHaveLength(2);
+    expect(at("fade", 200, 1250)).toHaveLength(1);
+    expect(at("push", 200, 1150)).toHaveLength(2);
+    expect(at("push", 200, 1250)).toHaveLength(1);
+    // A morph of 300 ms has what stays where it ends up by then (750 by default).
+    expect((at("morph", 300, 1300)[0]!.ds[1] as { x: number }).x).toBeCloseTo(50);
+    expect((at(undefined, 750, 1300)[0]!.ds[1] as { x: number }).x).toBeLessThan(50);
+    expect((at("morph", 0, 1000)[0]!.ds[1] as { x: number }).x).toBe(50);
+  });
+
+  it("brings new parts in when the scene or the part says, over the length it says", () => {
+    const ks = (more: Partial<Keyframe>): Keyframe[] => [
+      { id: "1", start: 0, ms: 1000, ds: [paper] },
+      { id: "2", start: 1000, ms: 3000, ds: [paper, rect("b", 0), rect("c", 0)], transition: "fade", ...more },
+    ];
+    const o = (k: Keyframe[], t: number, id: string) => frameAt(k, t).find((d) => d.id === id)?.o ?? 0;
+    // By default a fade's parts wait for it (400 + 150), and the next starts 160 later.
+    expect(o(ks({}), 1500, "b")).toBe(0);
+    // A delay of 0 and 200 ms each: the first is in by 200, the next 160 after it.
+    const quick = ks({ enter: { delay: 0, ms: 200 } });
+    expect(o(quick, 1200, "b")).toBe(1);
+    expect(o(quick, 1200, "c")).toBeLessThan(1);
+    expect(o(quick, 1360, "c")).toBe(1);
+    expect(o(ks({ enter: { delay: 0, ms: 200, stagger: 0 } }), 1200, "c")).toBe(1);
+    // A part's own delay, here in a fade, and its own length.
+    const own = ks({ enters: { c: { delay: 900, ms: 100 } } });
+    expect(o(own, 1890, "c")).toBe(0);
+    expect(o(own, 2000, "c")).toBe(1);
+    // In a cut a part with a delay of its own still comes in.
+    const cut = ks({ transition: "cut", enters: { c: { delay: 900 } } });
+    expect(o(cut, 1001, "b")).toBe(1);
+    expect(o(cut, 1500, "c")).toBe(0);
+  });
+
+  it("waits for its longest part before its frames repeat", () => {
+    const ks = (more: Partial<Keyframe>): Keyframe[] => [{ id: "1", start: 0, ms: 9000, ds: [paper, rect("b", 0)], ...more }];
+    expect(settleMs(ks({ enters: { b: { ms: 4000 } } }), 0)).toBeGreaterThan(settleMs(ks({}), 0) + 2000);
+    expect(settleMs(ks({ enters: { b: { delay: 3000 } } }), 0)).toBeGreaterThan(3000);
   });
 
   it("brings a part in from a side, wiped on, or out of a blur", () => {
@@ -594,7 +677,7 @@ describe("schema", () => {
     const b = kitBrief();
     expect(b).toContain("  flow: title*, steps* [..], at #, note");
     expect(b).toContain("  chip: text*, state (active|done)");
-    expect(b).toMatch(/^Scene: .*transition \(morph\|cut\|fade\|push\|wipe\)/m);
+    expect(b).toMatch(/^Scene: .*transition \(morph\|cut\|fade\|push\|wipe\|\{\.\.\}\)/m);
     expect(b).not.toMatch(/^ {2}paint:/m);
     expect(b.length).toBeLessThan(JSON.stringify(kitSchema()).length / 5);
   });

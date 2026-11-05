@@ -13,9 +13,21 @@ export interface KataDef {
   parts(o: Record<string, unknown>): PartSpec[];
 }
 
-const TRANSITIONS = ["morph", "cut", "fade", "push", "wipe"] as const;
+export const TRANSITIONS = ["morph", "cut", "fade", "push", "wipe"] as const;
 
 export const PLACES = ["center", "left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"] as const;
+
+/** A transition written out: its type and how long it takes. */
+export const TRANSITION_FIELDS: Fields = {
+  type: f.one(TRANSITIONS, "the transition (default: the reel's, or morph)"),
+  ms: f.ms("how long it takes: what stays moving (morph, 750), the scene before fading out (fade, 400), or the push or wipe (700)"),
+};
+/** When a scene's new parts come in, unless a part says. */
+export const SCENE_ENTER_FIELDS: Fields = {
+  delay: f.ms("ms from the scene's start to when the first new part starts (default: 150, or once the scene before has faded or what stays has mostly moved)"),
+  ms: f.ms("how long each part takes to come in (default: its verb's own)"),
+  stagger: f.ms("ms between one part and the next coming in together (default 160)"),
+};
 
 /** A scene's own fields. A shape's fields sit beside them, so a shape can't take these names. */
 export const SCENE_FIELDS: Fields = {
@@ -25,7 +37,8 @@ export const SCENE_FIELDS: Fields = {
   ms: f.num("hold this long instead of the narration's length (a scene with no say holds 3000)"),
   kata: f.str("a scene shape, filled in with the fields beside it"),
   parts: f.parts("parts, after the shape's"),
-  transition: f.one(TRANSITIONS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe"'),
+  transition: f.oneOr(TRANSITIONS, TRANSITION_FIELDS, 'how it comes in after the scene before: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe", or { type?, ms? } with how long it takes; fields left out take the reel\'s'),
+  enter: f.obj("when its new parts come in, unless a part's enter says: { delay?, ms?, stagger? }, over the reel's", false, SCENE_ENTER_FIELDS),
   focus: f.any("move the camera in on a part, or a figure's item (figure.item): its id, { on, cue?, zoom? }, or a list of those in sentence order; as close as frames it, 2.5× at most unless zoom says how close"),
   fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows, up to 4×), a number (as large as the room allows, up to that many times), or false'),
   place: f.one(PLACES, 'where the parts under the heading sit in their room: "center" (default), an edge ("left", "right", "top", "bottom") or a corner ("top-left", …)'),
