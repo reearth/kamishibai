@@ -4,6 +4,17 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Added
+
+- **Kept frames say how much disk they take.** `render -f` (or `--keep-frames`) and `capture` end with the frames folder, its number of files and its size, and that a render with `-i` reuses them.
+- **A render lists frames a stopped render left behind**: temporary `kamishibai-frames-*` folders older than an hour, with their size, for you to delete once no render is running.
+
+### Fixed
+
+- A render stopped with Ctrl+C (or SIGTERM) left its temporary frames folder (at 1080p, around 45 to 130 MB a minute of reel, more with photographs). It removes it as it stops.
+
 ## 0.12.0
 
 ### Added

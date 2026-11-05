@@ -1,6 +1,7 @@
 // The orchestrator: serve -> probe -> split -> capture -> assemble.
 // ------------------------------------------------------------------
 import { mkdtemp, mkdir, rm, readdir, unlink } from "node:fs/promises";
+import { folderSize, formatBytes, removeOnExit, strayFrames, strayFramesNote, TEMP_FRAMES_PREFIX } from "./frames-disk.ts";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve, extname, isAbsolute } from "node:path";
@@ -691,9 +692,14 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
   // Explicit framesDir -> keep it. Otherwise a temp dir, removed afterwards
   // (unless keepFrames). The temp case skips persisting manifest/sidecar.
   const usingTempFrames = !opts.framesDir;
+  // Frames a render that was killed couldn't remove: say where, and how much.
+  const stray = strayFramesNote(await strayFrames(tmpdir()));
+  if (stray) log(stray);
   const framesDir = opts.framesDir
     ? resolve(opts.framesDir)
-    : await mkdtemp(join(tmpdir(), "kamishibai-frames-"));
+    : await mkdtemp(join(tmpdir(), TEMP_FRAMES_PREFIX));
+  // Temporary frames go with the process, even when Ctrl+C stops it.
+  const unwatch = usingTempFrames && !opts.keepFrames ? removeOnExit(framesDir) : () => {};
 
   const out = resolve(opts.out);
   await mkdir(dirname(out), { recursive: true });
@@ -758,10 +764,14 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     log(`Done → ${out} (${(elapsedMs / 1000).toFixed(1)}s)`);
     return { out, meta: cap.meta, frames: cap.frames, workers: cap.workers, elapsedMs };
   } finally {
-    // Keep frames when the user picked the directory, or asked to keep them.
+    // Keep frames when the user picked the directory, or asked to keep them, and say how much they take.
     const keep = opts.keepFrames || !usingTempFrames;
-    if (keep) log(`Frames kept in ${framesDir}`);
-    else await rm(framesDir, { recursive: true, force: true });
+    if (keep) {
+      const { files, bytes } = await folderSize(framesDir);
+      const why = usingTempFrames ? "delete it when you are done with them" : "a render with -i reuses them; delete the folder when you are done";
+      log(`Frames kept in ${framesDir}: ${files} file${files === 1 ? "" : "s"}, ${formatBytes(bytes)} (${why})`);
+    } else await rm(framesDir, { recursive: true, force: true });
+    unwatch();
   }
 }
 
