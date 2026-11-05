@@ -61,6 +61,8 @@ There's no GUI editor; you're the editor. The loop is **edit → look → render
 
 **Requirements:** Node.js ≥ 20 · `ffmpeg` on `PATH` (not bundled) · a Chromium for Playwright (`npx playwright install chromium`), for page reels only.
 
+If npm says it didn't run esbuild's install script (`npm warn install-scripts esbuild@… (postinstall: node install.js)`), nothing is missing: the script only checks esbuild's binary, and esbuild runs from its platform package (`@esbuild/<platform>`) without it.
+
 ---
 
 ## Kinds of reel
