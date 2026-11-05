@@ -50,15 +50,39 @@ export function contrast(a: string, b: string): number | null {
   return (x + 0.05) / (y + 0.05);
 }
 
-/** The ground a drawable sits on: the innermost one painted before it that holds its centre. */
-function groundOf(ds: Drawable[], i: number): RectD | null {
+/** What a text sits on: its id and colour, its size (the innermost wins), and its box when it is a rect (a card), which the text must stay inside. */
+type Ground = { id: string; fill: string; area: number; rect?: RectD };
+
+/** Whether (x, y) is inside the polygon `pts` (even-odd). */
+function inPolygon(x: number, y: number, pts: [number, number][]): boolean {
+  let hit = false;
+  for (let a = 0, b = pts.length - 1; a < pts.length; b = a++) {
+    const [xa, ya] = pts[a]!;
+    const [xb, yb] = pts[b]!;
+    if (ya > y !== yb > y && x < ((xb - xa) * (y - ya)) / (yb - ya) + xa) hit = !hit;
+  }
+  return hit;
+}
+
+/**
+ * The ground a drawable sits on: the innermost one painted before it that
+ * holds its centre. A card or a filled rect, and a filled circle or closed
+ * shape (a disc under a mark), not the paper.
+ */
+function groundOf(ds: Drawable[], i: number): Ground | null {
   const b = bbox(ds[i]!);
-  const c = { x: b.x + b.w / 2, y: b.y + b.h / 2, w: 0, h: 0 };
-  let best: RectD | null = null;
+  const [x, y] = [b.x + b.w / 2, b.y + b.h / 2];
+  let best: Ground | null = null;
+  const take = (g: Ground) => void ((!best || g.area <= best.area) && (best = g));
   for (let j = 0; j < i; j++) {
     const g = ds[j]!;
-    if (g.t !== "rect" || !g.ground || g.id === "stage") continue;
-    if (inside(c, g, 0) && (!best || g.w * g.h <= best.w * best.h)) best = g;
+    if (g.id === "stage") continue;
+    if (g.t === "rect" && g.ground && inside({ x, y, w: 0, h: 0 }, g, 0)) take({ id: g.id, fill: g.fill ?? "", area: g.w * g.h, rect: g });
+    else if (g.t === "circle" && g.fill && (x - g.cx) ** 2 + (y - g.cy) ** 2 <= g.r ** 2) take({ id: g.id, fill: g.fill, area: Math.PI * g.r ** 2 });
+    else if (g.t === "path" && g.fill && g.pts.length >= 3 && inPolygon(x, y, g.pts)) {
+      const gb = bbox(g);
+      take({ id: g.id, fill: g.fill, area: gb.w * gb.h });
+    }
   }
   return best;
 }
@@ -113,8 +137,8 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
         const last = widow(d.lines);
         if (last) say({ scene: s, kind: "widow", msg: `${d.id} leaves "${last}" alone on its last line: reword it, or change its card's width` });
         const g = groundOf(now, i);
-        if (g && !inside(b, g)) say({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
-        const bg = g?.fill ?? theme.paper;
+        if (g?.rect && !inside(b, g.rect)) say({ scene: s, kind: "overflow", msg: `${d.id} spills out of ${g.id}: use fewer words, or make ${g.id} larger (a card's width, a figure item's rect)` });
+        const bg = g?.fill || theme.paper;
         const need = d.size >= 40 || (d.size >= 30 && d.font !== "sans") ? 3 : 4.5;
         const c = contrast(d.color, bg);
         if (c !== null && c < need) say({ scene: s, kind: "contrast", msg: `${d.id} is ${c.toFixed(2)}:1 on ${bg} (needs ${need}:1): ${tweak(theme, d.color, bg)}` });

@@ -8,6 +8,7 @@ can contain breaking changes, and they are called out under **Changed**.
 
 ### Fixed
 
+- `kamishibai check` judged text on a filled circle or a filled closed shape (a figure's disc under a mark) against the paper, and reported white on a dark disc as unreadable. A filled circle or closed shape is now the ground of the text whose centre it holds, as a card or a filled rect already was.
 - A YAML reel with more than 100 aliases (`&a1`, `*a1`) stopped with "Excessive alias count indicates a resource exhaustion attack". yaml's `stringify` writes an alias for every object a generator repeats (a shared `transition`, say), so a long reel passed that cap. A reel is trusted like code, so its aliases are no longer counted.
 
 ## 0.13.0

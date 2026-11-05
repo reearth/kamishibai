@@ -843,6 +843,24 @@ describe("filling the stage", () => {
     expect(Math.abs(b.y + b.h - (r.y + r.h))).toBeLessThan(2);
   });
 
+  it("judges a mark's contrast on the disc or filled shape under it, not the paper", async () => {
+    const purple = "#6b3fa0";
+    const issues = async (items: unknown[]) => {
+      const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [{ parts: [{ type: "figure", width: 400, height: 200, items } as PartSpec] }] });
+      return (await reel.check(resolveView(reel.meta), await nodeEnv("."))).filter((i) => i.kind === "contrast").map((i) => i.msg);
+    };
+    const mark = (color: string, pos: [number, number] = [100, 72]) => ({ id: "mark", text: "A", pos, align: "center", size: 56, bold: true, color });
+    // White on a purple disc, and on a purple triangle: readable, nothing to say.
+    expect(await issues([{ circle: [100, 100, 60], fill: purple }, mark("#ffffff")])).toEqual([]);
+    expect(await issues([{ line: [[20, 180], [100, 10], [180, 180]], fill: purple }, mark("#ffffff", [100, 100])])).toEqual([]);
+    // A dark mark on the disc is judged on the disc.
+    expect(await issues([{ circle: [100, 100, 60], fill: purple }, mark("#3a1f5c")])).toEqual([expect.stringMatching(/^figure\.mark is 1\.\d\d:1 on #6b3fa0/)]);
+    // Beside the disc, white is on the paper.
+    expect(await issues([{ circle: [100, 100, 60], fill: purple }, mark("#ffffff", [300, 72])])).toEqual([expect.stringMatching(/^figure\.mark is 1\.\d\d:1 on #fafaf7/)]);
+    // An outline alone is no ground.
+    expect(await issues([{ circle: [100, 100, 60], stroke: purple }, mark("#ffffff")])).toEqual([expect.stringMatching(/on #fafaf7/)]);
+  });
+
   it("says when a scene ends before its parts have been seen whole", async () => {
     const reel = await kit({
       kit: 1, fonts, theme,
