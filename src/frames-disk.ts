@@ -1,8 +1,7 @@
 // The disk a render's frames take. A minute of 1080p frames at 30 fps is
 // roughly 45 to 130 MB of PNGs, more with photographs: kept frames say how
-// much, a render stopped by Ctrl+C
-// removes its temporary ones, and the next render points out any that a
-// stopped render left behind.
+// much, a render stopped by Ctrl+C removes its temporary ones, and the next
+// render points out any that a stopped render left behind.
 // ------------------------------------------------------------------
 import { rmSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
