@@ -21,7 +21,7 @@ import { check, missingGlyphs, type Issue } from "./check.ts";
 import { drawLayers } from "./draw.ts";
 import { keyframeAt, layersAt, outMs, settleMs, type Cam, type Keyframe, type Shot } from "./engine.ts";
 import { bbox, type Bounds } from "./model.ts";
-import { normalize, type NormScene } from "./normalize.ts";
+import { marginOf, normalize, type NormScene } from "./normalize.ts";
 import { partDef, type Ctx, type Stage } from "./parts.ts";
 import { loadYoga } from "./layout.ts";
 import { layoutScene, partBox, stageFrame } from "./stage.ts";
@@ -144,9 +144,13 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       images.set(src, img);
       sizes.set(src, { w: im.naturalWidth || im.width || 0, h: im.naturalHeight || im.height || 0 });
     }
+    // A progress bar keeps its edge clear, however small the margin there.
+    const bar = spec.progress ? (spec.progress === true ? {} : spec.progress) : undefined;
+    const keep = bar ? { [bar.at === "top" ? "top" : "bottom"]: bar.size ?? 10 } : {};
+    const kept = !!captions && spec.captionRoom !== false;
     const ctx: Ctx = {
       stage,
-      frame: stageFrame(stage, insets, !!captions && spec.captionRoom !== false),
+      frame: stageFrame(stage, insets, kept, marginOf(spec.margin), keep),
       fonts,
       theme,
       readText: (p) => env.readText(p),
@@ -166,20 +170,22 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       const said: Array<{ id: string; msg: string }> = [];
       notes.set(s.id, said);
       ctx.note = (id, msg) => void (said.some((n) => n.msg === msg) || said.push({ id, msg }));
+      // The scene's own margins, over the reel's.
+      const sc: Ctx = { ...ctx, frame: stageFrame(stage, insets, kept, s.margin, keep) };
       const t = timing[i]!;
       // A cued part comes in as its sentence starts.
       const cues: Record<string, number> = {};
       for (const [id, n] of s.cues) if (t.say[n]) cues[id] = t.say[n]!.atMs - t.start;
       const boxes = new Map<string, Bounds>();
-      const ds = normalColours(layoutScene(s, ctx, boxes), g0);
+      const ds = normalColours(layoutScene(s, sc, boxes), g0);
       const at = (n: number) => (n && t.say[n] ? t.say[n]!.atMs - t.start : 0);
       // Steps move with their sentence, and `at` holds their delay after it.
       for (const d of ds) if (d.steps) d.steps = d.steps.map((st) => (st.cue !== undefined ? { ...st, at: at(st.cue) + (st.at ?? 0) } : st));
       // A part has its box; a thing inside one (a figure's item) has only its drawable.
       const target = (on: string) => boxes.get(on) ?? bbox(ds.find((d) => d.id === on)!);
-      const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(target(fc.on), fc.zoom, stage, fr, anchor) }));
+      const shots: Shot[] = s.focus.map((fc) => ({ at: at(fc.cue), cam: aim(target(fc.on), fc.zoom, stage, sc.frame, anchor) }));
       if (!shots.length || shots[0]!.at > 0) shots.unshift({ at: 0, cam: { ...anchor, s: 1 } });
-      return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, transMs: s.transMs, enter: s.enter, enters: Object.fromEntries(s.enters), shots };
+      return { id: s.id, start: t.start, ms: t.ms, ds, cues, transition: s.transition, transMs: s.transMs, enter: s.enter, enters: Object.fromEntries(s.enters), shots, margin: s.margin };
     });
     ctx.note = undefined;
     return { k, stage, insets, fonts, images, ks, anchor, frame: fr, theme, notes };

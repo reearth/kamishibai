@@ -34,6 +34,8 @@ export type NormScene = {
   fill: boolean | "max" | number;
   /** where the parts below the heading sit in their room */
   place: (typeof PLACES)[number];
+  /** its margins, the reel's laid under the scene's (an edge not given keeps the default) */
+  margin: Partial<Edges>;
 };
 
 /** When a part comes in, and how long it takes, where its enter says. */
@@ -61,6 +63,7 @@ export const REEL_FIELDS: Fields = {
   captions: f.any('captions from each scene\'s say: true (a subtitle track, the default), "burn" (drawn into the picture) or false'),
   captionStyle: f.obj('how burned captions look: { color? (#fff), box? (rgba(0,0,0,0.62)), size? (40 wide, 48 tall), font? (bold) }, colours by theme name or CSS'),
   captionRoom: f.bool("keep room at the foot for the captions (default true when there are captions); false gives it to the parts"),
+  margin: f.any("room kept clear at the stage's edges, in layout units: a number for all four, or { top?, right?, bottom?, left? } (default 88 at the top and 96 elsewhere on a wide stage, 120 and 72 on a tall one); captions and the view's insets take room beyond it"),
   progress: f.any('a bar that fills as the reel plays: true (at the foot, in the accent, 10 units thick), or { color?, size?, at? ("bottom" | "top"), track? (a colour under it) }, colours by theme name or CSS'),
   overlay: f.obj("drawn over every scene, outside the camera (only in a code reel): { paint(g, ms, { W, H, durationMs, timing }) returning a fingerprint, room?: { top?, right?, bottom?, left? } kept clear for it }", false, {
     paint: f.fn("(g, ms, { W, H, durationMs, timing }) => fingerprint | void", true),
@@ -69,6 +72,22 @@ export const REEL_FIELDS: Fields = {
   scenes: f.any("the scenes, in order", true),
 };
 
+
+type Edges = { top: number; right: number; bottom: number; left: number };
+const EDGE_FIELDS: Fields = { top: f.ms(), right: f.ms(), bottom: f.ms(), left: f.ms() };
+
+/** A margin as its edges: a number is all four. */
+export function marginOf(v: unknown): Partial<Edges> {
+  if (typeof v === "number") return { top: v, right: v, bottom: v, left: v };
+  return isObj(v) ? (v as Partial<Edges>) : {};
+}
+
+function checkMargin(v: unknown, at: string): string[] {
+  if (v === undefined) return [];
+  if (typeof v === "number") return isFinite(v) && v >= 0 ? [] : [`${at}: ${v} is under 0`];
+  if (isObj(v)) return checkFields(v, EDGE_FIELDS, at);
+  return [`${at}: expected a number, or { top?, right?, bottom?, left? }, got ${JSON.stringify(v)}`];
+}
 
 const PROGRESS_FIELDS: Fields = {
   color: f.str("the bar's colour: a theme colour's name or CSS (default accent)"),
@@ -157,6 +176,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
   };
   if (isObj(spec.aspect)) (ratio(spec.aspect.min, "reel.aspect.min"), ratio(spec.aspect.max, "reel.aspect.max"));
   else ratio(spec.aspect, "reel.aspect");
+  problems.push(...checkMargin(spec.margin, "reel.margin"));
   if (isObj(spec.progress)) problems.push(...checkFields(spec.progress, PROGRESS_FIELDS, "reel.progress"));
   else if (spec.progress !== undefined && typeof spec.progress !== "boolean") problems.push(`reel.progress: expected true, false or { color?, size?, at?, track? }, got ${JSON.stringify(spec.progress)}`);
   if (spec.captions !== undefined && typeof spec.captions !== "boolean" && spec.captions !== "burn") {
@@ -175,7 +195,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", enter: {}, enters: new Map(), written: new Set(), focus: [], fill: true, place: "center" };
+      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", enter: {}, enters: new Map(), written: new Set(), focus: [], fill: true, place: "center", margin: {} };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -200,6 +220,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     if (sc.fill !== undefined && typeof sc.fill !== "boolean" && sc.fill !== "max" && !(typeof sc.fill === "number" && sc.fill >= 1)) problems.push(`${where}.fill: expected true, false, "max" or a number from 1, got ${JSON.stringify(sc.fill)}`);
     if (sc.kata === undefined && !sc.parts) problems.push(`${where}: a scene needs kata or parts`);
 
+    problems.push(...checkMargin(sc.margin, `${where}.margin`));
     const say = sayLines(sc.say, `${where}.say`, problems);
     problems.push(...checkPace(sc.pace, `${where}.pace`));
     const cues = new Map<string, number>();
@@ -305,6 +326,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       focus,
       fill: sc.fill === "max" || typeof sc.fill === "number" ? sc.fill : sc.fill !== false,
       place: (sc.place as NormScene["place"] | undefined) ?? "center",
+      margin: { ...marginOf(spec.margin), ...marginOf(sc.margin) },
     };
   });
   if (problems.length) throw new KitSpecError(problems);

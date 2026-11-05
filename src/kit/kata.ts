@@ -41,6 +41,7 @@ export const SCENE_FIELDS: Fields = {
   enter: f.obj("when its new parts come in, unless a part's enter says: { delay?, ms?, stagger? }, over the reel's", false, SCENE_ENTER_FIELDS),
   focus: f.any("move the camera in on a part, or a figure's item (figure.item): its id, { on, cue?, zoom? }, or a list of those in sentence order; as close as frames it, 2.5× at most unless zoom says how close"),
   fill: f.any('grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6× and 90% of the room), "max" (as large as the room allows, up to 4×), a number (as large as the room allows, up to that many times), or false'),
+  margin: f.any("this scene's margins, over the reel's, in layout units: a number for all four edges, or { top?, right?, bottom?, left? }; 0 lets a picture reach the edge"),
   place: f.one(PLACES, 'where the parts under the heading sit in their room: "center" (default), an edge ("left", "right", "top", "bottom") or a corner ("top-left", …)'),
 };
 

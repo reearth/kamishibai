@@ -492,6 +492,10 @@ scenes:
   foot of the stage is kept for them; `captionRoom: false` gives it to the
   parts (the captions then sit over them). `captionStyle: { color, box,
   size, font }` styles burned ones (white on a dark box, 40/48, bold).
+- `margin: 40` (or `{ top, right, bottom, left }`) on the reel or a scene
+  sets the room kept at the stage's edges (default 88/96 wide, 120/72 tall);
+  a scene's `margin: 0` lets a picture fill the frame (square corners at the edge). Captions and insets
+  take room beyond it, and check holds a scene to its own margin.
 - `progress: true` draws a bar at the foot that fills as the reel plays
   (`{ color, size: 10, at: bottom|top, track }`). A code reel draws its own
   over every scene with `overlay: { paint(g, ms, { W, H, durationMs, timing
@@ -549,7 +553,7 @@ scenes:
   with an id from the part's. `textBox(id, text, ctx, opts)` is a text leaf.
   `defineKata(name, { doc, fields, parts(o) })` adds a scene shape; its fields
   can't reuse a scene field (`id`, `say`, `pace`, `ms`, `kata`, `parts`,
-  `transition`, `enter`, `focus`, `fill`, `place`). `schema` lists only the built-in ones.
+  `transition`, `enter`, `focus`, `fill`, `place`, `margin`). `schema` lists only the built-in ones.
 - YAML anchors and merge keys (`<<: *base`) work.
 
 Give it font files for every script it draws (a container has few fonts).

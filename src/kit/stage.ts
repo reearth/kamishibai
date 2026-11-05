@@ -4,19 +4,28 @@
 // ------------------------------------------------------------------
 import type { Insets } from "../canvas/types.ts";
 import { layout, type Box } from "./layout.ts";
-import { bbox, type Bounds, type Drawable } from "./model.ts";
+import { bbox, type Bounds, type Drawable, type ImageD } from "./model.ts";
 import type { NormScene } from "./normalize.ts";
 import { isTall, partDef, rect, type Ctx, type Frame, type Stage } from "./parts.ts";
 import type { PartSpec } from "./spec.ts";
 import { MIN_FIT } from "./theme.ts";
 
-/** The margins of a stage, plus the room captions take and the view's insets (in stage units). */
-export function stageFrame(s: Stage, insets: Insets, captions: boolean): Frame {
-  const tall = isTall(s);
-  const side = tall ? 72 : 96;
-  const top = tall ? 120 : 88;
-  const foot = captions ? (tall ? 360 : 200) : tall ? 120 : 96;
-  return { top: top + insets.top, right: side + insets.right, bottom: foot + insets.bottom, left: side + insets.left };
+/** The margins a stage keeps by default, wide or tall (in stage units). */
+export function defaultMargin(s: Stage): Frame {
+  return isTall(s) ? { top: 120, right: 72, bottom: 120, left: 72 } : { top: 88, right: 96, bottom: 96, left: 96 };
+}
+
+/**
+ * The margins of a stage (the reel's or the scene's `margin` over the
+ * defaults, and no less than `keep` at an edge, where a progress bar is),
+ * plus the room captions take at the foot and the view's insets.
+ */
+export function stageFrame(s: Stage, insets: Insets, captions: boolean, margin: Partial<Frame> = {}, keep: Partial<Frame> = {}): Frame {
+  const m = { ...defaultMargin(s), ...margin };
+  const at = (k: keyof Frame) => Math.max(m[k], keep[k] ?? 0) + insets[k];
+  // Captions take a band above the foot's margin: 104 wide, 240 tall.
+  const room = captions ? (isTall(s) ? 240 : 104) : 0;
+  return { top: at("top"), right: at("right"), bottom: at("bottom") + room, left: at("left") };
 }
 
 /** The box of one part, owned by it. */
@@ -87,7 +96,15 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
     }
   }
   for (const [id, b] of placed) boxes?.set(id, b);
-  return ds;
+  // A picture that reaches the frame's edge has square corners there, not a rounded one cut against it.
+  return ds.map((d) => (d.t === "image" ? edged(d, W, H) : d));
+}
+
+/** An image with the corners square where it meets the stage's edge. */
+function edged(d: ImageD, W: number, H: number): ImageD {
+  const at = { l: d.x <= 0.5, t: d.y <= 0.5, r: d.x + d.w >= W - 0.5, b: d.y + d.h >= H - 0.5 };
+  const square: ImageD["square"] = [at.l || at.t, at.r || at.t, at.r || at.b, at.l || at.b];
+  return square.some(Boolean) ? { ...d, square } : d;
 }
 
 /** A part's id and the ids of every part inside it. */

@@ -93,6 +93,9 @@ export type PartSpec = BuiltinSpec | CustomSpec;
 /** Where the camera looks: a part's id (the camera moves in to frame it), or that with a cue and a zoom to stop at. */
 export type FocusSpec = string | { on: string; cue?: number; zoom?: number };
 
+/** Room kept clear at the stage's edges, in layout units: one number for all four, or each edge. */
+export type MarginSpec = number | { top?: number; right?: number; bottom?: number; left?: number };
+
 /** How a scene comes in after the one before it. */
 export type Transition = "morph" | "cut" | "fade" | "push" | "wipe";
 /** A transition, or one with its length: `{ type: "fade", ms: 200 }`. A field left out takes the reel's. */
@@ -129,6 +132,8 @@ export type SceneSpec = {
   fill?: boolean | "max" | number;
   /** where the parts under the heading sit in their room (default "center"): an edge or a corner */
   place?: (typeof PLACES)[number];
+  /** this scene's margins, over the reel's (0 lets a picture reach the edge) */
+  margin?: MarginSpec;
   [field: string]: unknown;
 };
 
@@ -187,6 +192,8 @@ export type KitReelSpec = {
   music?: { src: string; gain?: number; duck?: boolean | { amountDb?: number; attackMs?: number; releaseMs?: number }; fadeInMs?: number; fadeOutMs?: number; trimStartMs?: number };
   /** narration timing for every scene (default lead 400, gap 250, tail 700) */
   pace?: Pace;
+  /** room kept clear at the stage's edges (default 88 at the top and 96 elsewhere on a wide stage, 120 and 72 on a tall one) */
+  margin?: MarginSpec;
   /** how every scene comes in, unless it says (default "morph") */
   transition?: TransitionSpec;
   /** when new parts come in, in every scene, unless it says */

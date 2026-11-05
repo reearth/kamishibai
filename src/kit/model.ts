@@ -103,6 +103,8 @@ export type ImageD = Base & {
   /** the path it was loaded from: the same src under the same id moves */
   src: string;
   r: number;
+  /** corners drawn square, as they meet the frame's edge: top-left, top-right, bottom-right, bottom-left */
+  square?: [boolean, boolean, boolean, boolean];
 };
 
 /** A box drawn by code: fn paints a w×h area at the reel's time ms. */
