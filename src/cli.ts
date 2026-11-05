@@ -546,7 +546,9 @@ async function main(): Promise<void> {
       ...view,
       onLog: (msg) => process.stderr.write(`${msg}\n`),
     });
-    process.stderr.write(`Captured ${cap.frames} frame(s) → ${cap.framesDir}\n`);
+    const { folderSize, formatBytes } = await import("./frames-disk.ts");
+    const { bytes } = await folderSize(cap.framesDir);
+    process.stderr.write(`Captured ${cap.frames} frame(s) → ${cap.framesDir} (${formatBytes(bytes)}; delete the folder when you are done)\n`);
     return;
   }
 
