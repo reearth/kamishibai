@@ -8,6 +8,8 @@ kamishibai next to [Remotion](https://www.remotion.dev/) and [HyperFrames](https
 2. **Render speed:** how long does a short reel take from a cold start?
 3. **Agents:** how many tokens does a coding agent spend turning a brief into a video?
 
+And one about kamishibai alone: [how long `kamishibai export` takes](#exporting-to-one-html-file).
+
 These are one machine's numbers, from October 2026. They are not a guarantee. The harness, with the briefs and every tool's reference implementation, is in [`bench/`](../bench/README.md), so you can run it on your own machine.
 
 ## Setup
@@ -99,6 +101,24 @@ Each condition ran once as a warm-up and then 5 more times. The table shows the 
   - For the three reel, Remotion runs with `--gl=angle`, so all three tools draw WebGL on the GPU. Without that flag, Remotion uses SwiftShader, its default.
   - kamishibai turns the GPU on only for reels that create a WebGL context. Its three reel also passes `--probe-timeout 60`.
 - **Fonts:** Remotion's reels load Inter with `@remotion/google-fonts`, so each of its renders fetches the font over the network.
+
+## Exporting to one HTML file
+
+`kamishibai export` paints every frame of a canvas reel once, for its default view and each end of its `aspect`, to learn which characters each font draws, so it can cut the fonts down to them. That sounds slow for a long reel. It isn't, because the frames are painted at a quarter of the size and never encoded or written.
+
+[`bench/run-export.ts`](../bench/run-export.ts) writes kit reels of three lengths (a scene every 5 s: a heading and a word, a list, a number that counts, a pair of cards, each with a burned caption) and exports each three times, after a warm-up. The default range of shapes is two views, so a reel is painted twice. Medians, on an Apple M1, with 0.11.0 (`3aebdb5`) and the line export now prints about its painting, and no voice to synthesize. The machine wasn't idle (load average 2.3), and the three runs of each length were within 0.03 s of each other.
+
+| Reel | Frames painted | Export, in all | Painting | File |
+|---|---:|---:|---:|---:|
+| 30 s | 1,800 | 0.8 s | 0.2 s (25%) | 218 KB |
+| 2.5 min | 9,000 | 1.5 s | 0.9 s (62%) | 222 KB |
+| 10 min | 36,000 | 4.4 s | 3.8 s (85%) | 233 KB |
+
+- Painting takes about 0.1 ms a frame per view, so it grows with the reel's length; the rest (bundling the reel and the player, cutting the fonts) stays under a second.
+- A reel with a `voice` synthesizes its narration first, when it isn't cached yet. That takes longer than all of the above.
+- Export prints how long it painted each view (`painted 18000 frame(s) in 1.89 s`).
+
+**Not painting a kit reel.** A kit reel measures all its text as it lays a view out, so `setup` alone sees nearly every character it will draw. The exceptions are the digits a counting number passes through, and whatever a `paint` part draws. Export could skip the painting for a kit reel that says what it draws, and the table above is the case against it. The saving is the painting column, under a second for a 2.5-minute reel. For that, the canvas reel contract would gain a method, and export would trust a reel's list of characters instead of watching it draw. A character missing from that list would show as an empty box in the file, with nothing to say so, and every feature that draws text would have to keep the list right. Painting can't miss a character, so export keeps painting.
 
 ## Agents
 
