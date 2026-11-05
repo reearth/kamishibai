@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { elevenLabsAdapter, geminiAdapter, googleAdapter, kokoroAdapter, openaiAdapter, pollyAdapter } from "../src/tts/index.ts";
 import { createTTSEngine } from "../src/tts/engine.ts";
+import { tempDir } from "./temp.ts";
 
 const geminiResponse = () =>
   new Response(
@@ -33,7 +31,7 @@ async function requestedUrl(
 ): Promise<{ url: string; init: RequestInit }> {
   const fetchMock = vi.fn(async () => response());
   vi.stubGlobal("fetch", fetchMock);
-  const engine = createTTSEngine({ cacheDir: await mkdtemp(join(tmpdir(), "kamishibai-baseurl-")) });
+  const engine = createTTSEngine({ cacheDir: await tempDir("kamishibai-baseurl-") });
   await engine.handle({ adapter, items: { a: "Hello" } }).catch(() => {});
   const [url, init] = fetchMock.mock.calls[0] as unknown as [string | URL, RequestInit];
   return { url: String(url), init };
@@ -102,7 +100,7 @@ describe("TTS base URL", () => {
       vi.stubEnv(e, "");
     const fetchMock = vi.fn(async () => new Response("x"));
     vi.stubGlobal("fetch", fetchMock);
-    const engine = createTTSEngine({ cacheDir: await mkdtemp(join(tmpdir(), "kamishibai-baseurl-")) });
+    const engine = createTTSEngine({ cacheDir: await tempDir("kamishibai-baseurl-") });
     await expect(
       engine.handle({ adapter: p.adapter({ voiceId: "v" } as never), items: { a: "Hello" } }),
     ).rejects.toThrow(`${p.env[0]}`);
@@ -142,7 +140,7 @@ describe("TTS base URL", () => {
     vi.stubEnv("KOKORO_BASE_URL", "");
     // What undici throws when the connection is refused.
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed", { cause: Object.assign(new AggregateError([]), { code: "ECONNREFUSED" }) }); }));
-    const engine = createTTSEngine({ cacheDir: await mkdtemp(join(tmpdir(), "kamishibai-baseurl-")) });
+    const engine = createTTSEngine({ cacheDir: await tempDir("kamishibai-baseurl-") });
     await expect(engine.handle({ adapter: kokoroAdapter(), items: { a: "Hello" } })).rejects.toThrow(
       /no Kokoro server at http:\/\/localhost:8880\/v1 .*docker run/,
     );

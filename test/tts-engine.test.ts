@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { chmod, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { chmod, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { createTTSEngine, pcmToWav, type TTSAdapter, type TTSStats } from "../src/tts/engine.ts";
+import { tempDir } from "./temp.ts";
 
 /** A fake provider that records what it was asked to speak. */
 function fakeAdapter(spoken: string[], fail = false): TTSAdapter {
@@ -22,7 +22,7 @@ const ref = { id: "fake:1", provider: "fake" };
 describe("TTS engine", () => {
   it("speaks `text` but returns `caption` as the clip text, without re-synthesizing", async () => {
     const spoken: string[] = [];
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
 
     const a = await engine.handle({ adapter: ref, items: { k: { text: "まちあざ", caption: "町字" } } });
@@ -49,7 +49,7 @@ describe("TTS engine", () => {
         return { audio: pcmToWav(new Uint8Array(4800), 24000), format: "wav" };
       },
     };
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const items = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`k${i}`, `line ${i}`]));
     const out = await createTTSEngine({ adapters: [slow], cacheDir }).handle({ adapter: ref, items });
     expect(Object.keys(out)).toHaveLength(6);
@@ -69,7 +69,7 @@ describe("TTS engine", () => {
         return { audio: pcmToWav(new Uint8Array(4800), 24000), format: "wav" };
       },
     };
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const engine = createTTSEngine({ adapters: [flaky], cacheDir, retryDelayMs: 1 });
     await engine.handle({ adapter: ref, items: { a: "drop", b: "busy" } });
     await expect(engine.handle({ adapter: ref, items: { c: "bad" } })).rejects.toThrow("400");
@@ -92,7 +92,7 @@ describe("TTS engine", () => {
   it("reports progress for cache misses only", async () => {
     const spoken: string[] = [];
     const events: TTSStats[] = [];
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const engine = createTTSEngine({
       adapters: [fakeAdapter(spoken)],
       cacheDir,
@@ -111,7 +111,7 @@ describe("TTS engine", () => {
 
   it("cacheOnly serves cached lines and estimates the rest without calling the provider", async () => {
     const spoken: string[] = [];
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const baked = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
       adapter: ref,
       items: { a: "one" },
@@ -128,14 +128,14 @@ describe("TTS engine", () => {
   });
 
   it("records failures with the last error", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const engine = createTTSEngine({ adapters: [fakeAdapter([], true)], cacheDir });
     await expect(engine.handle({ adapter: ref, items: { a: "x" } })).rejects.toThrow("boom");
     expect(engine.stats()).toMatchObject({ total: 1, done: 0, failed: 1, lastError: "boom" });
   });
 
   it("keeps cache keys stable (file name = hash of id, text and override)", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const engine = createTTSEngine({ adapters: [fakeAdapter([])], cacheDir });
     const r = await engine.handle({
       adapter: ref,
@@ -147,7 +147,7 @@ describe("TTS engine", () => {
   });
 
   it("fails a line whose audio ffprobe can't read, and never caches it", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     let calls = 0;
     const garbage: TTSAdapter = {
       provider: "fake",
@@ -173,7 +173,7 @@ describe("TTS engine", () => {
   });
 
   it("deletes an unreadable clip found in the cache and counts it as failed", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     // The cache file name for (fake:1, "hello"), see the cache-key test above.
     const poisoned = join(cacheDir, "5a6cf92566a58561be9f68fcd3a161ed.wav");
     await writeFile(poisoned, "not audio");
@@ -194,7 +194,7 @@ describe("TTS engine", () => {
   });
 
   it("keeps a cached clip when ffprobe itself can't run", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const spoken: string[] = [];
     const r = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
       adapter: ref,
@@ -217,14 +217,14 @@ describe("TTS engine", () => {
   });
 
   it("keeps a cached clip when ffprobe fails for a reason other than its content", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const spoken: string[] = [];
     const r = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
       adapter: ref,
       items: { a: "hello" },
     });
     // A broken ffprobe install: it runs, but exits non-zero before reading anything.
-    const bin = await mkdtemp(join(tmpdir(), "kamishibai-bin-"));
+    const bin = await tempDir("kamishibai-bin-");
     await writeFile(join(bin, "ffprobe"), "#!/bin/sh\necho 'dyld: Library not loaded' >&2\nexit 134\n");
     await chmod(join(bin, "ffprobe"), 0o755);
     const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
@@ -243,7 +243,7 @@ describe("TTS engine", () => {
   });
 
   it.skipIf(process.getuid?.() === 0)("keeps a cached clip ffprobe can't open", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const spoken: string[] = [];
     const r = await createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir }).handle({
       adapter: ref,
@@ -263,7 +263,7 @@ describe("TTS engine", () => {
   });
 
   it("keeps freshly synthesized audio when ffprobe can't run, and measures it next run", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const spoken: string[] = [];
     const engine = createTTSEngine({ adapters: [fakeAdapter(spoken)], cacheDir });
     const path = process.env.PATH;
@@ -287,7 +287,7 @@ describe("TTS engine", () => {
   });
 
   it("names ffprobe when it is missing from PATH", async () => {
-    const cacheDir = await mkdtemp(join(tmpdir(), "kamishibai-tts-"));
+    const cacheDir = await tempDir("kamishibai-tts-");
     const engine = createTTSEngine({ adapters: [fakeAdapter([])], cacheDir });
     const path = process.env.PATH;
     process.env.PATH = "";
