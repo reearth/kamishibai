@@ -273,6 +273,72 @@ describe("kit", () => {
     expect([...c.getContext("2d").getImageData(view.width / 2, 940, 1, 1).data].slice(0, 3)).toEqual([255, 0, 0]);
   });
 
+  it("draws a progress bar at the foot that fills as the reel plays", async () => {
+    const make = (progress: KitReelSpec["progress"]) => kit({ kit: 1, fonts, theme: { ...theme, accent: "#ff0000" }, captions: false, progress, scenes: [{ ms: 2000, parts: [title("A")] }, { ms: 2000, parts: [title("B")] }] });
+    const reel = await make(true);
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    const g = patchContext(c.getContext("2d") as unknown as Context2D);
+    const px = (t: number, x: number, y: number) => {
+      paint(g, t);
+      return [...c.getContext("2d").getImageData(x, y, 1, 1).data].slice(0, 3);
+    };
+    const foot = c.height - 1;
+    // A quarter through, the first quarter of the foot is filled; past it, the paper.
+    expect(px(1000, c.width * 0.2, foot)).toEqual([255, 0, 0]);
+    expect(px(1000, c.width * 0.3, foot)).not.toEqual([255, 0, 0]);
+    expect(px(3900, c.width * 0.9, foot)).toEqual([255, 0, 0]);
+    // A frame that fills it further differs, even with the scene settled.
+    expect(paint(g, 1700)).not.toBe(paint(g, 1900));
+    const top = await make({ at: "top", size: 40, color: "#0000ff", track: "#00ff00" });
+    const paintTop = await top.setup(view, await nodeEnv("."));
+    paintTop(g, 1000);
+    const at = (x: number, y: number) => [...c.getContext("2d").getImageData(x, y, 1, 1).data].slice(0, 3);
+    expect(at(c.width * 0.2, 2)).toEqual([0, 0, 255]);
+    expect(at(c.width * 0.8, 2)).toEqual([0, 255, 0]);
+    expect(problems({ kit: 1, progress: { size: 0, at: "side" }, scenes: [{ kata: "cover", title: "x" }] })).toEqual([
+      "reel.progress.size: 0 is under 1",
+      'reel.progress.at: "side" is not one of "bottom", "top"',
+    ]);
+    expect(problems({ kit: 1, progress: "yes", scenes: [{ kata: "cover", title: "x" }] })).toEqual(['reel.progress: expected true, false or { color?, size?, at?, track? }, got "yes"']);
+  });
+
+  it("paints an overlay over every scene, keeping its room clear of the parts", async () => {
+    const seen: Array<{ ms: number; W: number; durationMs: number; scenes: number }> = [];
+    const overlay = (fingerprint: boolean) => ({
+      room: { bottom: 540 },
+      paint: (g: Context2D, ms: number, o: { W: number; H: number; durationMs: number; timing: readonly unknown[] }) => {
+        seen.push({ ms, W: o.W, durationMs: o.durationMs, scenes: o.timing.length });
+        g.fillStyle = "#00ff00";
+        g.fillRect(0, o.H - 20, 20, 20);
+        return fingerprint ? "same" : undefined;
+      },
+    });
+    const reel = await kit({ kit: 1, fonts, theme, captions: false, overlay: overlay(true), scenes: [{ ms: 3000, fill: "max", parts: [{ type: "text", role: "display", text: "Hello" }] }] });
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    const g = patchContext(c.getContext("2d") as unknown as Context2D);
+    expect(paint(g, 2500)).toBe(paint(g, 2900));
+    expect(seen.at(-1)).toEqual({ ms: 2900, W: 1920, durationMs: 3000, scenes: 1 });
+    // Its corner, and nothing of the parts below the middle (its room).
+    expect([...c.getContext("2d").getImageData(5, view.height - 5, 1, 1).data].slice(0, 3)).toEqual([0, 255, 0]);
+    const lower = c.getContext("2d").getImageData(40, view.height / 2 + 4, view.width - 80, view.height / 2 - 60).data;
+    const paper = [...lower.slice(0, 3)];
+    let ink = 0;
+    for (let i = 0; i < lower.length; i += 4) if (lower[i] !== paper[0] || lower[i + 1] !== paper[1] || lower[i + 2] !== paper[2]) ink++;
+    expect(ink).toBe(0);
+    expect((await reel.check(view, await nodeEnv("."))).length).toBe(0);
+    // With no fingerprint, every frame is drawn.
+    const bare = await kit({ kit: 1, fonts, theme, captions: false, overlay: overlay(false), scenes: [{ ms: 3000, parts: [title("A")] }] });
+    expect((await bare.setup(view, await nodeEnv(".")))(g, 2900)).toBeUndefined();
+    expect(problems({ kit: 1, overlay: { room: { top: -1 } }, scenes: [{ kata: "cover", title: "x" }] })).toEqual([
+      'reel.overlay: "paint" is required ((g, ms, { W, H, durationMs, timing }) => fingerprint | void)',
+      "reel.overlay.room.top: -1 is under 0",
+    ]);
+  });
+
   it("refuses a cue past the scene's sentences", () => {
     expect(problems({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", text: "x", cue: 2 }] }] })[0]).toMatch(/cue: 2 is not a sentence of this scene's say \(it has 2/);
   });

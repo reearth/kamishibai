@@ -59,9 +59,21 @@ export const REEL_FIELDS: Fields = {
   captions: f.any('captions from each scene\'s say: true (a subtitle track, the default), "burn" (drawn into the picture) or false'),
   captionStyle: f.obj('how burned captions look: { color? (#fff), box? (rgba(0,0,0,0.62)), size? (40 wide, 48 tall), font? (bold) }, colours by theme name or CSS'),
   captionRoom: f.bool("keep room at the foot for the captions (default true when there are captions); false gives it to the parts"),
+  progress: f.any('a bar that fills as the reel plays: true (at the foot, in the accent, 10 units thick), or { color?, size?, at? ("bottom" | "top"), track? (a colour under it) }, colours by theme name or CSS'),
+  overlay: f.obj("drawn over every scene, outside the camera (only in a code reel): { paint(g, ms, { W, H, durationMs, timing }) returning a fingerprint, room?: { top?, right?, bottom?, left? } kept clear for it }", false, {
+    paint: f.fn("(g, ms, { W, H, durationMs, timing }) => fingerprint | void", true),
+    room: f.obj("layout units kept clear at each edge: { top?, right?, bottom?, left? }", false, { top: f.ms(), right: f.ms(), bottom: f.ms(), left: f.ms() }),
+  }),
   scenes: f.any("the scenes, in order", true),
 };
 
+
+const PROGRESS_FIELDS: Fields = {
+  color: f.str("the bar's colour: a theme colour's name or CSS (default accent)"),
+  size: { kind: "number", min: 1, doc: "its thickness in layout units, 1 or more (default 10)" },
+  at: f.one(["bottom", "top"], 'which edge (default "bottom")'),
+  track: f.str("a colour under the bar's whole length (default none)"),
+};
 
 const FOCUS_FIELDS: Fields = {
   on: f.str("the id of the part to frame", true),
@@ -143,6 +155,8 @@ export function normalize(spec: KitReelSpec): NormScene[] {
   };
   if (isObj(spec.aspect)) (ratio(spec.aspect.min, "reel.aspect.min"), ratio(spec.aspect.max, "reel.aspect.max"));
   else ratio(spec.aspect, "reel.aspect");
+  if (isObj(spec.progress)) problems.push(...checkFields(spec.progress, PROGRESS_FIELDS, "reel.progress"));
+  else if (spec.progress !== undefined && typeof spec.progress !== "boolean") problems.push(`reel.progress: expected true, false or { color?, size?, at?, track? }, got ${JSON.stringify(spec.progress)}`);
   if (spec.captions !== undefined && typeof spec.captions !== "boolean" && spec.captions !== "burn") {
     problems.push(`reel.captions: expected true, false or "burn", got ${JSON.stringify(spec.captions)}`);
   }

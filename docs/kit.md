@@ -67,6 +67,10 @@ The reel's fields:
 | `captions` | Captions from each scene's `say`: `true` (the default) for a subtitle track and an `.srt` next to the video, `burn` to draw them into the picture (light on a dark box, in the room kept at the foot), or `false`. |
 | `captionStyle` | How burned captions look: `{ color, box, size, font }`, the text colour (`#fff`), the box's (`rgba(0,0,0,0.62)`), each a theme colour's name or CSS, the size in layout units (40 on a wide stage, 48 on a tall one) and the font role (`bold`). |
 | `captionRoom` | `false` gives the room kept at the foot for the captions to the parts, so they fill more of the stage; the captions then sit over them. For a reel whose captions are often off, or are a player's own. Default `true` when there are captions. |
+| `transition` | How every scene comes in, unless it says: a name, or `{ type, ms }` with how long it takes (see [Transitions](#transitions)). |
+| `enter` | When every scene's new parts come in, unless it says: `{ delay, ms, stagger }` (see [When parts come in](#when-parts-come-in)). |
+| `progress` | A bar that fills as the reel plays, at the foot of the picture: `true` (the accent, 10 units thick), or `{ color, size, at, track }`, its colour, its thickness, `top` for the top edge, and a colour under its whole length. It sits in the stage's margin, inside the view's insets, so it never covers a part. |
+| `overlay` | Only in a code reel: drawn over every scene, outside the camera, under burned captions. `{ paint(g, ms, { W, H, durationMs, timing }), room? }`: `paint` draws in stage units and returns a fingerprint of what it drew (frames with the same one are drawn once; with none, every frame is drawn), and `room: { top, right, bottom, left }` keeps that much clear, so the parts and `kamishibai check` stay out of it. |
 | `scenes` | The scenes, in order. |
 
 ## Scenes
@@ -265,7 +269,28 @@ export default await kit({
 });
 ```
 
-The functions build the same objects a YAML reel holds, and `kit()` checks them the same way. A code reel can also use `paint` parts and parts of its own. A code reel that builds its scenes from data imports it, `import words from "./words.yaml"` (or `.json`), so the data is bundled with the reel and is there in `kamishibai dev` and `export` too, which run it in a browser where `node:fs` is not. A canvas reel can have the kit's motion without its layout, from [`morph`](canvas.md#moving-items-between-keyframes-morph).
+The functions build the same objects a YAML reel holds, and `kit()` checks them the same way. A code reel can also use `paint` parts, parts of its own, and an `overlay` drawn over every scene:
+
+```ts
+export default await kit({
+  kit: 1,
+  // a chapter mark in the corner, kept clear of the parts
+  overlay: {
+    room: { top: 60 },
+    paint(g, ms, { W, timing }) {
+      const n = timing.findIndex((t) => ms < t.start + t.ms) + 1;
+      g.font = "700 28px Geist";
+      g.fillStyle = "#6e6e69";
+      g.textAlign = "right";
+      g.fillText(`${n} / ${timing.length}`, W - 96, 64);
+      return String(n);
+    },
+  },
+  scenes: [/* … */],
+});
+```
+
+Wrap the reel `kit()` returns instead only for what an overlay can't do: an overlay is laid out with the reel, and `kamishibai check` keeps its room clear. A code reel that builds its scenes from data imports it, `import words from "./words.yaml"` (or `.json`), so the data is bundled with the reel and is there in `kamishibai dev` and `export` too, which run it in a browser where `node:fs` is not. A canvas reel can have the kit's motion without its layout, from [`morph`](canvas.md#moving-items-between-keyframes-morph).
 
 ### Parts of your own
 

@@ -21,7 +21,7 @@ export type Fields = Record<string, Field>;
 export const f = {
   str: (doc?: string, required = false): Field => ({ kind: "string", doc, required }),
   num: (doc?: string, required = false): Field => ({ kind: "number", doc, required }),
-  /** a length of time in ms: 0 or more */
+  /** a length (of time in ms, or of room): 0 or more */
   ms: (doc?: string): Field => ({ kind: "number", min: 0, doc }),
   bool: (doc?: string): Field => ({ kind: "boolean", doc }),
   strs: (doc?: string, required = false): Field => ({ kind: "strings", doc, required }),

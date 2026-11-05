@@ -492,6 +492,11 @@ scenes:
   foot of the stage is kept for them; `captionRoom: false` gives it to the
   parts (the captions then sit over them). `captionStyle: { color, box,
   size, font }` styles burned ones (white on a dark box, 40/48, bold).
+- `progress: true` draws a bar at the foot that fills as the reel plays
+  (`{ color, size: 10, at: bottom|top, track }`). A code reel draws its own
+  over every scene with `overlay: { paint(g, ms, { W, H, durationMs, timing
+  }), room: { bottom: 60 } }` (return a fingerprint string; `room` keeps the
+  parts and check clear of it) instead of wrapping the reel kit() returns.
 - `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
   `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
   { sans, mono, bold?, black? }` (bold and black take sans's family unless

@@ -25,7 +25,8 @@ import { normalize, type NormScene } from "./normalize.ts";
 import { partDef, type Ctx, type Stage } from "./parts.ts";
 import { loadYoga } from "./layout.ts";
 import { layoutScene, partBox, stageFrame } from "./stage.ts";
-import type { CaptionStyle, KitReelSpec, PartSpec, VoiceSpec } from "./spec.ts";
+import type { CaptionStyle, KitReelSpec, OverlayInfo, PartSpec, VoiceSpec } from "./spec.ts";
+import type { Theme } from "./theme.ts";
 import { colour } from "./items.ts";
 import { Fonts, speechMs } from "./text.ts";
 import { LONG_SIDE, mergeTheme } from "./theme.ts";
@@ -128,7 +129,9 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
     const k = Math.max(view.width, view.height) / LONG_SIDE;
     const stage: Stage = { W: view.width / k, H: view.height / k };
     const ins = view.insets;
-    const insets = { top: ins.top / k, right: ins.right / k, bottom: ins.bottom / k, left: ins.left / k };
+    // An overlay's room is kept clear like the view's insets: the parts and the checks stay out of it.
+    const or = spec.overlay?.room ?? {};
+    const insets = { top: ins.top / k + (or.top ?? 0), right: ins.right / k + (or.right ?? 0), bottom: ins.bottom / k + (or.bottom ?? 0), left: ins.left / k + (or.left ?? 0) };
     const g0 = env.createCanvas(1, 1).getContext("2d");
     // Colours in one form, so they blend and their contrast can be judged.
     const theme = normalTheme(baseTheme, g0);
@@ -203,9 +206,14 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       return [...check(ks, stage, insets, theme), ...missingGlyphs(texts, fonts, g)];
     },
     async setup(view, env) {
-      const { k, ks, fonts, images, anchor, stage, insets, frame } = await prepare(view, env);
+      const { k, ks, fonts, images, anchor, stage, insets, frame, theme } = await prepare(view, env);
       const lines = timing.flatMap((t) => t.say);
       const caption = burn ? captionPainter(lines, fonts, stage, insets, frame, spec.captionStyle) : undefined;
+      // The bar sits at the picture's edge, inside the view's own insets (not an overlay's room).
+      const ins = { top: view.insets.top / k, bottom: view.insets.bottom / k };
+      const bar = progressPainter(spec.progress, theme, stage, ins, durationMs, view.width * view.pixelRatio);
+      const overlay = spec.overlay;
+      const info: OverlayInfo = { W: stage.W, H: stage.H, durationMs, timing };
       const painted = ks.map((kf) => kf.ds.some((d) => d.t === "paint"));
       const settle = ks.map((_, i) => settleMs(ks, i));
       // A scene's frames after its last part came in all look the same.
@@ -217,12 +225,23 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
         g.save();
         g.scale(k, k);
         drawLayers(g, layers, dc, anchor, stage.H);
+        // Over every scene and outside the camera: the bar, the reel's overlay, then the captions on top.
+        const filled = bar?.(g, ms) ?? -1;
+        let over: string | void = "";
+        if (overlay) {
+          g.save();
+          over = overlay.paint(g, ms, info);
+          g.restore();
+        }
         const cue = caption?.(g, ms) ?? -1;
         g.restore();
+        // An overlay that gives no fingerprint may change every frame.
+        if (typeof over !== "string") return undefined;
+        const tail = `#${cue}#${filled}#${over}`;
         // A painted part changes every frame, and so does the scene before it while this one comes in.
         if (painted[i] || (i > 0 && painted[i - 1] && ms - ks[i]!.start < outMs(ks[i]!))) return undefined;
-        if (ms - ks[i]!.start >= settle[i]!) return `${rest[i]}#${cue}`;
-        return `${view.width}x${view.height}:${fnv1a64(JSON.stringify(layers))}#${cue}`;
+        if (ms - ks[i]!.start >= settle[i]!) return `${rest[i]}${tail}`;
+        return `${view.width}x${view.height}:${fnv1a64(JSON.stringify(layers))}${tail}`;
       };
     },
   };
@@ -290,6 +309,37 @@ function captionPainter(
     g.textBaseline = "middle";
     ls.forEach((s, i) => g.fillText(s, stage.W / 2, y + padY + (i + 0.5) * size * lh));
     g.restore();
+    return n;
+  };
+}
+
+/**
+ * The progress bar: filled to the reel's time, in whole output pixels, so
+ * frames that fill it alike are alike. Returns the painter, which returns
+ * how many pixels it filled.
+ */
+function progressPainter(
+  p: KitReelSpec["progress"],
+  T: Theme,
+  stage: { W: number; H: number },
+  insets: { top: number; bottom: number },
+  durationMs: number,
+  px: number,
+) {
+  if (!p) return undefined;
+  const o = p === true ? {} : p;
+  const size = o.size ?? 10;
+  const y = o.at === "top" ? insets.top : stage.H - insets.bottom - size;
+  const fill = colour(o.color, T, T.accent);
+  const track = o.track ? colour(o.track, T, T.rule) : undefined;
+  return (g: Context2D, ms: number): number => {
+    const n = Math.round(Math.min(1, Math.max(0, ms / Math.max(1, durationMs))) * px);
+    if (track) {
+      g.fillStyle = track;
+      g.fillRect(0, y, stage.W, size);
+    }
+    g.fillStyle = fill;
+    g.fillRect(0, y, (n / px) * stage.W, size);
     return n;
   };
 }

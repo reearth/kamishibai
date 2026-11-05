@@ -144,6 +144,23 @@ export type SayLine = { text: string; caption?: string; voice?: Record<string, u
 /** Burned captions: text and box colours (a theme name or CSS), size in layout units (40 wide, 48 tall), and font role (bold). */
 export type CaptionStyle = { color?: string; box?: string; size?: number; font?: "sans" | "bold" | "black" | "mono" };
 
+/** A bar across the foot (or the top) of the picture that fills as the reel plays: its colour, its thickness in layout units, and the colour of the track under it. */
+export type ProgressSpec = { color?: string; size?: number; at?: "bottom" | "top"; track?: string };
+
+/** What an overlay is told as it paints: the stage's size, the reel's length, and its scenes on the clock. */
+export type OverlayInfo = { W: number; H: number; durationMs: number; timing: ReadonlyArray<{ id: string; start: number; ms: number }> };
+
+/**
+ * Drawn over every scene (only in a code reel), outside the camera, in stage
+ * units. `room` keeps that much clear at each edge, so the parts and the
+ * checks stay out of it. `paint` returns a fingerprint of what it drew, so
+ * frames that look the same are drawn once; with none, every frame is drawn.
+ */
+export type OverlaySpec = {
+  paint: (g: Context2D, ms: number, o: OverlayInfo) => string | void;
+  room?: { top?: number; right?: number; bottom?: number; left?: number };
+};
+
 /** Narration timing, in ms: before the first sentence, between sentences, and after the last before the scene ends. */
 export type Pace = { lead?: number; gap?: number; tail?: number };
 
@@ -178,5 +195,9 @@ export type KitReelSpec = {
   captionStyle?: CaptionStyle;
   /** keep room at the foot of the stage for the captions (default true when there are captions); false lets the parts use it, and a player's captions cover them */
   captionRoom?: boolean;
+  /** a bar at the foot that fills as the reel plays: true (the accent, 10 units), or how it looks */
+  progress?: boolean | ProgressSpec;
+  /** drawn over every scene, by code (only in a code reel) */
+  overlay?: OverlaySpec;
   scenes: SceneSpec[];
 };
