@@ -8,6 +8,7 @@ import { bbox, type Bounds, type Drawable } from "./model.ts";
 import type { NormScene } from "./normalize.ts";
 import { isTall, partDef, rect, type Ctx, type Frame, type Stage } from "./parts.ts";
 import type { PartSpec } from "./spec.ts";
+import { MIN_FIT } from "./theme.ts";
 
 /** The margins of a stage, plus the room captions take and the view's insets (in stage units). */
 export function stageFrame(s: Stage, insets: Insets, captions: boolean): Frame {
@@ -38,8 +39,8 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
   const body = scene.parts
     .filter((p) => !header.includes(p) && !corner.includes(p))
     .sort((a, b) => Number(isCorner(b)) - Number(isCorner(a)));
-  const own = (p: PartSpec & { id: string }) => partBox(p, ctx);
   const top: Box[] = [];
+  const own = (p: PartSpec & { id: string }) => partBox(p, ctx);
   if (header.length || corner.length) {
     top.push({
       style: { dir: "row", gap: 48, align: "start" },
@@ -52,18 +53,24 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
       ],
     });
   }
+  // The room under the heading, which a part may size itself to (a picture fills it).
+  const room = { w: W - fr.left - fr.right, h: H - fr.top - fr.bottom - (top.length ? headH(top[0]!, W, H, fr) + GAP_TOP : 0) };
+  const inRoom: Ctx = { ...ctx, room, child: (p, flow) => partBox(p as PartSpec & { id: string }, { ...inRoom, flow }) };
   const root: Box = {
-    style: { w: W, h: H, pad: [fr.top, fr.right, fr.bottom, fr.left], gap: 56 },
+    style: { w: W, h: H, pad: [fr.top, fr.right, fr.bottom, fr.left], gap: GAP_TOP },
     paint: (r) => [rect("stage", r, { fill: ctx.theme.paper, ground: true, enter: "none" })],
-    kids: [...top, { style: { grow: 1, gap: 48, ...PLACE[scene.place] }, kids: body.map(own), owner: BODY }],
+    // The parts keep their own height: one too tall for the room is shrunk whole below, never squeezed into the next.
+    kids: [...top, { style: { grow: 1, gap: 48, ...PLACE[scene.place] }, kids: body.map((p) => unsqueezed(partBox(p, inRoom))), owner: BODY }],
   };
-  const room = new Map<string, Bounds>();
-  const ds = layout(root, W, H, room);
-  const area = room.get(BODY)!;
-  room.delete(BODY);
+  const placed = new Map<string, Bounds>();
+  const ds = layout(root, W, H, placed);
+  const area = placed.get(BODY)!;
+  placed.delete(BODY);
   const inBody = new Set(body.flatMap(ids));
-  const k = scene.fill ? fillScale(ds, inBody, area, scene.fill === "max" ? MAX_FILL : typeof scene.fill === "number" ? scene.fill : undefined) : 1;
-  if (k > 1) {
+  // Too large for the room: shrunk to fit it, whatever fill says. Room to spare: grown with fill.
+  const fit = fitScale(ds, inBody, area);
+  const k = fit < 1 ? fit : scene.fill ? fillScale(ds, inBody, area, scene.fill === "max" ? MAX_FILL : typeof scene.fill === "number" ? scene.fill : undefined) : 1;
+  if (k !== 1) {
     // Grown about where it is placed in the room, so it stays there: its middle, or an edge.
     const c = bounds(ds.filter((d) => inBody.has(d.owner)).flatMap(reach));
     const pl = scene.place;
@@ -73,13 +80,13 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
     };
     const move = (x: number, y: number): [number, number] => [at.x + (x - c.x - c.w / 2) * k, at.y + (y - c.y - c.h / 2) * k];
     for (let i = 0; i < ds.length; i++) if (inBody.has(ds[i]!.owner)) ds[i] = grow(ds[i]!, k, move);
-    for (const [id, b] of room) {
+    for (const [id, b] of placed) {
       if (!inBody.has(id)) continue;
       const [x, y] = move(b.x, b.y);
-      room.set(id, { x, y, w: b.w * k, h: b.h * k });
+      placed.set(id, { x, y, w: b.w * k, h: b.h * k });
     }
   }
-  for (const [id, b] of room) boxes?.set(id, b);
+  for (const [id, b] of placed) boxes?.set(id, b);
   return ds;
 }
 
@@ -91,6 +98,28 @@ function ids(p: PartSpec & { id: string }): string[] {
 
 /** The owner of the box the body is laid out in (never a part's id: it has a dot-less "@"). */
 const BODY = "@body";
+/** Space between the heading and the body. */
+const GAP_TOP = 56;
+
+/** A box that keeps its height in a column that is too short for it. */
+const unsqueezed = (b: Box): Box => ({ ...b, style: { ...b.style, shrink: 0 } });
+
+/** How tall the heading row is, laid out across the stage. */
+function headH(top: Box, W: number, H: number, fr: Frame): number {
+  const at = new Map<string, Bounds>();
+  layout({ style: { w: W, pad: [0, fr.right, 0, fr.left] }, kids: [{ ...top, owner: "@top" }] }, W, H, at);
+  return at.get("@top")?.h ?? 0;
+}
+
+/** How far the body parts must shrink to fit `area` (1 when they fit, or draw by code), no further than MIN_FIT. */
+function fitScale(ds: Drawable[], own: Set<string>, area: Bounds): number {
+  const mine = ds.filter((d) => own.has(d.owner));
+  if (!mine.length || mine.some((d) => d.t === "paint")) return 1;
+  const c = bounds(mine.flatMap(reach));
+  const k = Math.min(area.w / Math.max(1, c.w), area.h / Math.max(1, c.h));
+  // A scene over its room by a hair is left as it is: it still clears the safe area.
+  return k < 0.98 ? Math.max(MIN_FIT, k) : 1;
+}
 /** How far the body grows at most, and how much of its room it may take. */
 const FILL_MAX = 1.6;
 const FILL_W = 0.9;

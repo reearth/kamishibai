@@ -7,6 +7,12 @@ import type { FontRole } from "./theme.ts";
 /** How a part comes in when it first appears. Everything else is a plain move. */
 export type Verb = "fade" | "rise" | "draw" | "type" | "count" | "pop" | "none" | "from-left" | "from-right" | "from-top" | "from-bottom" | "wipe" | "blur";
 
+/** How long each verb takes by default, in ms; an enter's `ms` stretches it to that. */
+export const VERB_MS: Record<Verb, number> = {
+  fade: 400, rise: 550, draw: 650, type: 1400, count: 1100, pop: 450, none: 0,
+  "from-left": 650, "from-right": 650, "from-top": 650, "from-bottom": 650, wipe: 600, blur: 600,
+};
+
 type Base = {
   id: string;
   /** opacity */
@@ -60,6 +66,9 @@ export type TextD = Base & {
   chars?: number;
   /** the width its widest line wanted, for the overflow check */
   need: number;
+  /** runs set in `mark` instead of `color`, per line, as [from, to) code points */
+  marks?: Array<Array<[number, number]>>;
+  mark?: string;
 };
 
 export type PathD = Base & {

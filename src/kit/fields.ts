@@ -5,8 +5,14 @@
 
 export type Field = {
   kind: "string" | "number" | "boolean" | "strings" | "text" | "parts" | "function" | "object" | "list" | "any";
+  /** the least a number may be */
+  min?: number;
   /** the values a string may take */
   enum?: readonly string[];
+  /** a string, or an object written out */
+  orObject?: boolean;
+  /** the fields of the object (an object field's, or the object a string may be instead), checked with it */
+  of?: Fields;
   required?: boolean;
   doc?: string;
 };
@@ -15,15 +21,19 @@ export type Fields = Record<string, Field>;
 export const f = {
   str: (doc?: string, required = false): Field => ({ kind: "string", doc, required }),
   num: (doc?: string, required = false): Field => ({ kind: "number", doc, required }),
+  /** a length (of time in ms, or of room): 0 or more */
+  ms: (doc?: string): Field => ({ kind: "number", min: 0, doc }),
   bool: (doc?: string): Field => ({ kind: "boolean", doc }),
   strs: (doc?: string, required = false): Field => ({ kind: "strings", doc, required }),
   text: (doc?: string, required = false): Field => ({ kind: "text", doc, required }),
   list: (doc?: string, required = false): Field => ({ kind: "list", doc, required }),
   parts: (doc?: string, required = false): Field => ({ kind: "parts", doc, required }),
   fn: (doc?: string, required = false): Field => ({ kind: "function", doc, required }),
-  obj: (doc?: string, required = false): Field => ({ kind: "object", doc, required }),
+  obj: (doc?: string, required = false, of?: Fields): Field => ({ kind: "object", doc, required, ...(of ? { of } : {}) }),
   any: (doc?: string, required = false): Field => ({ kind: "any", doc, required }),
   one: (values: readonly string[], doc?: string): Field => ({ kind: "string", enum: values, doc }),
+  /** one of `values`, or an object that says more */
+  oneOr: (values: readonly string[], of: Fields, doc?: string): Field => ({ kind: "string", enum: values, orObject: true, of, doc }),
 };
 
 const kindOf = (v: unknown): string =>
@@ -39,15 +49,20 @@ export function checkFields(o: Record<string, unknown>, fields: Fields, at: stri
       continue;
     }
     // Unquoted YAML text with ": " in it is read as a map; say how to keep it text.
-    const quote = (fd.kind === "string" || fd.kind === "strings" || fd.kind === "text") && hasMap(v) ? ' (YAML reads "a: b" as a map: put the text in quotes)' : "";
+    const quote = (fd.kind === "string" && !fd.orObject || fd.kind === "strings" || fd.kind === "text") && hasMap(v) ? ' (YAML reads "a: b" as a map: put the text in quotes)' : "";
     const bad = (want: string) => out.push(`${at}.${k}: expected ${want}, got ${kindOf(v)} ${short(v)}${quote}`);
     switch (fd.kind) {
       case "string":
-        if (typeof v !== "string") bad("a string");
+        if (fd.orObject && kindOf(v) === "object") {
+          out.push(...checkFields(v as Record<string, unknown>, fd.of ?? {}, `${at}.${k}`));
+          break;
+        }
+        if (typeof v !== "string") bad(fd.orObject ? "a string or an object" : "a string");
         else if (fd.enum && !fd.enum.includes(v)) out.push(`${at}.${k}: "${v}" is not one of ${fd.enum.map((e) => `"${e}"`).join(", ")}`);
         break;
       case "number":
         if (typeof v !== "number" || !isFinite(v)) bad("a number");
+        else if (fd.min !== undefined && v < fd.min) out.push(`${at}.${k}: ${v} is under ${fd.min}`);
         break;
       case "boolean":
         if (typeof v !== "boolean") bad("true or false");
@@ -69,6 +84,7 @@ export function checkFields(o: Record<string, unknown>, fields: Fields, at: stri
         break;
       case "object":
         if (kindOf(v) !== "object") bad("an object");
+        else if (fd.of) out.push(...checkFields(v as Record<string, unknown>, fd.of, `${at}.${k}`));
         break;
     }
   }
@@ -117,10 +133,12 @@ function distance(a: string, b: string): number {
 export function fieldSchema(fd: Field, part: object): Record<string, unknown> {
   const doc = fd.doc ? { description: fd.doc } : {};
   switch (fd.kind) {
-    case "string":
-      return { type: "string", ...(fd.enum ? { enum: fd.enum } : {}), ...doc };
+    case "string": {
+      const str = { type: "string", ...(fd.enum ? { enum: fd.enum } : {}) };
+      return fd.orObject ? { anyOf: [str, objectOf(fd.of ?? {}, part)], ...doc } : { ...str, ...doc };
+    }
     case "number":
-      return { type: "number", ...doc };
+      return { type: "number", ...(fd.min !== undefined ? { minimum: fd.min } : {}), ...doc };
     case "boolean":
       return { type: "boolean", ...doc };
     case "strings":
@@ -132,8 +150,14 @@ export function fieldSchema(fd: Field, part: object): Record<string, unknown> {
     case "parts":
       return { type: "array", items: part, ...doc };
     case "object":
-      return { type: "object", ...doc };
+      return fd.of ? { ...objectOf(fd.of, part), ...doc } : { type: "object", ...doc };
     default:
       return { ...doc };
   }
+}
+
+/** The object `fields` describe, as JSON Schema. */
+function objectOf(fields: Fields, part: object): Record<string, unknown> {
+  const properties = Object.fromEntries(Object.entries(fields).map(([k, fd]) => [k, fieldSchema(fd, part)]));
+  return { type: "object", properties, additionalProperties: false };
 }

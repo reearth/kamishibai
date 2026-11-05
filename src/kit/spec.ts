@@ -14,8 +14,8 @@ export const KIT_VERSION = 1;
 type Common = {
   /** Same id in the next scene: the part moves there. Default: its type, numbered when repeated. */
   id?: string;
-  /** how it comes in when it first appears */
-  enter?: Verb;
+  /** how it comes in when it first appears: a verb, or { type?, ms?, delay? } to set how long it takes and when it starts */
+  enter?: EnterSpec;
   /** come in as this sentence of the scene's say starts (0 = the first, with the scene) */
   cue?: number;
 };
@@ -29,14 +29,18 @@ export type TextSpec = Common & {
   align?: "start" | "center" | "end";
   /** a theme colour's name or CSS (default: by role) */
   color?: string;
+  /** set smaller until its longest word fits: true (down to half its size) or the least share of it (above 0, up to 1) */
+  shrink?: boolean | number;
+  /** the colour of runs written between ** (a theme colour's name or CSS; default accentText) */
+  mark?: string;
 };
 export type GroupSpec = Common & {
   type: "row" | "col";
   parts: PartSpec[];
   gap?: number;
   align?: "start" | "center" | "end" | "stretch";
-  /** a row that doesn't fit across: "stack" into a column (default), "wrap" like tiles, or "keep" */
-  narrow?: "stack" | "wrap" | "keep";
+  /** a row that doesn't fit across: "stack" into a column (default), "wrap" like tiles, "fit" (stay a row on a wide stage, the scene shrunk to fit), or "keep" */
+  narrow?: "stack" | "wrap" | "fit" | "keep";
 };
 export type CardSpec = Common & {
   type: "card";
@@ -64,9 +68,11 @@ export type ImageSpec = Common & {
   type: "image";
   /** a path relative to the reel */
   src: string;
-  /** the box, in layout units (default: the image's own size, fitted to the stage) */
+  /** at most this wide and tall, in layout units (default: as large as the room under the heading allows) */
   width?: number;
   height?: number;
+  /** false: never wider than the file's own pixels (default true) */
+  upscale?: boolean;
   caption?: string;
 };
 /** A box drawn by code (only in a code reel): `fn` paints w×h at the reel's time. */
@@ -89,6 +95,17 @@ export type FocusSpec = string | { on: string; cue?: number; zoom?: number };
 
 /** How a scene comes in after the one before it. */
 export type Transition = "morph" | "cut" | "fade" | "push" | "wipe";
+/** A transition, or one with its length: `{ type: "fade", ms: 200 }`. A field left out takes the reel's. */
+export type TransitionSpec = Transition | { type?: Transition; ms?: number };
+
+/**
+ * How a part comes in: a verb, or the verb with its length (`ms`, the whole
+ * of it) and `delay`, the ms from the scene's start (or its cue's sentence)
+ * to when it starts.
+ */
+export type EnterSpec = Verb | { type?: Verb; ms?: number; delay?: number };
+/** When a scene's new parts come in, by default: `delay` before the first, `ms` each takes, and `stagger` between one and the next. */
+export type SceneEnter = { delay?: number; ms?: number; stagger?: number };
 
 /** One keyframe: what the screen shows while `say` is spoken. */
 export type SceneSpec = {
@@ -102,8 +119,10 @@ export type SceneSpec = {
   /** a scene shape from `kata`, filled in with the fields beside it */
   kata?: string;
   parts?: PartSpec[];
-  /** how it comes in: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe" */
-  transition?: Transition;
+  /** how it comes in: "morph" (default: what stays moves), "cut", "fade", "push" or "wipe", or { type, ms } with its length */
+  transition?: TransitionSpec;
+  /** when its new parts come in, unless a part says: { delay?, ms?, stagger? } */
+  enter?: SceneEnter;
   /** move the camera in on a part, or a list of those, each with a cue */
   focus?: FocusSpec | FocusSpec[];
   /** grow the parts under the heading when they leave the stage mostly empty: true (default, up to 1.6×), "max" (as large as the room allows, up to 4×), or false */
@@ -121,11 +140,28 @@ export type SceneSpec = {
  */
 export type VoiceSpec = { provider: string; [opt: string]: unknown };
 
-/** One sentence written out: what is spoken, what the caption shows, the voice's options for it alone, and a pause after it. */
+/** One sentence written out: what is spoken, what the caption shows, the voice's options for it alone, and the silence after it (before the next sentence, or after the last before the scene ends). */
 export type SayLine = { text: string; caption?: string; voice?: Record<string, unknown>; pause?: number };
 
 /** Burned captions: text and box colours (a theme name or CSS), size in layout units (40 wide, 48 tall), and font role (bold). */
 export type CaptionStyle = { color?: string; box?: string; size?: number; font?: "sans" | "bold" | "black" | "mono" };
+
+/** A bar across the foot (or the top) of the picture that fills as the reel plays: its colour, its thickness in layout units, and the colour of the track under it. */
+export type ProgressSpec = { color?: string; size?: number; at?: "bottom" | "top"; track?: string };
+
+/** What an overlay is told as it paints: the stage's size, the reel's length, and its scenes on the clock. */
+export type OverlayInfo = { W: number; H: number; durationMs: number; timing: ReadonlyArray<{ id: string; start: number; ms: number }> };
+
+/**
+ * Drawn over every scene (only in a code reel), outside the camera, in stage
+ * units. `room` keeps that much clear at each edge, so the parts and the
+ * checks stay out of it. `paint` returns a fingerprint of what it drew, so
+ * frames that look the same are drawn once; with none, every frame is drawn.
+ */
+export type OverlaySpec = {
+  paint: (g: Context2D, ms: number, o: OverlayInfo) => string | void;
+  room?: { top?: number; right?: number; bottom?: number; left?: number };
+};
 
 /** Narration timing, in ms: before the first sentence, between sentences, and after the last before the scene ends. */
 export type Pace = { lead?: number; gap?: number; tail?: number };
@@ -151,11 +187,19 @@ export type KitReelSpec = {
   music?: { src: string; gain?: number; duck?: boolean | { amountDb?: number; attackMs?: number; releaseMs?: number }; fadeInMs?: number; fadeOutMs?: number; trimStartMs?: number };
   /** narration timing for every scene (default lead 400, gap 250, tail 700) */
   pace?: Pace;
+  /** how every scene comes in, unless it says (default "morph") */
+  transition?: TransitionSpec;
+  /** when new parts come in, in every scene, unless it says */
+  enter?: SceneEnter;
   /** captions from each scene's `say`: a subtitle track (true, the default), drawn into the picture ("burn"), or none */
   captions?: boolean | "burn";
   /** how burned captions look */
   captionStyle?: CaptionStyle;
   /** keep room at the foot of the stage for the captions (default true when there are captions); false lets the parts use it, and a player's captions cover them */
   captionRoom?: boolean;
+  /** a bar at the foot that fills as the reel plays: true (the accent, 10 units), or how it looks */
+  progress?: boolean | ProgressSpec;
+  /** drawn over every scene, by code (only in a code reel) */
+  overlay?: OverlaySpec;
   scenes: SceneSpec[];
 };

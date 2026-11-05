@@ -353,7 +353,9 @@ export default canvasReel({
   vertical video).
 - `env.readText(path)`, `env.loadImage(path)`, `env.createCanvas(w, h)` instead
   of `fs`, `<img>` or `document.createElement("canvas")`; paths are relative to
-  the reel.
+  the reel. Data the reel is built from is imported (`import words from
+  "./words.yaml"`, or `.json`): never `node:fs`, which dev and export (a
+  browser) can't load, and `import.meta.url` is a temporary bundle's.
 - Any weight works in `font` for a variable font, and `textBaseline` is placed
   as in a browser.
 - `g` comes scaled to layout units and cleared for every frame. `view.medium`
@@ -445,10 +447,17 @@ scenes:
   (scales in), `draw` (traces a line; the default for lines), `type` (types
   text out), `count` (counts a number up), `none`, `from-left|right|top|bottom`
   (slides in 160 units from that side), `wipe` (uncovered from the left),
-  `blur` (comes into focus).
+  `blur` (comes into focus). Written out, `enter: { type: rise, ms: 250,
+  delay: 0 }` sets how long it takes and when it starts (ms from the scene's
+  start, or from its cue's sentence). A scene's (or the reel's) `enter: {
+  delay, ms, stagger }` does so for all its new parts: by default the first
+  starts 150 ms in (a fade's 400 + 150, a morph's movers 55% done) and the
+  next 160 after, which eats into a scene held under a second.
 - A scene's `transition`: `morph` (default; same ids move over 750 ms, gone
   ones fade, new ones come in after), `cut` (at once), `fade` (through the
-  paper), `push` (slides in from the right), `wipe` (uncovers left to right).
+  paper, 400 ms), `push` (slides in from the right), `wipe` (uncovers left to
+  right; both 700 ms). `transition: { type: fade, ms: 200 }` sets its length;
+  the reel's `transition` is every scene's default, a scene's fields over it.
   A camera move takes 900 ms. `focus: gate` moves the camera in on a part;
   `focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]` moves with the
   sentences (`zoom` sets how close, past the default 2.5× for a small
@@ -483,6 +492,11 @@ scenes:
   foot of the stage is kept for them; `captionRoom: false` gives it to the
   parts (the captions then sit over them). `captionStyle: { color, box,
   size, font }` styles burned ones (white on a dark box, 40/48, bold).
+- `progress: true` draws a bar at the foot that fills as the reel plays
+  (`{ color, size: 10, at: bottom|top, track }`). A code reel draws its own
+  over every scene with `overlay: { paint(g, ms, { W, H, durationMs, timing
+  }), room: { bottom: 60 } }` (return a fingerprint string; `room` keeps the
+  parts and check clear of it) instead of wrapping the reel kit() returns.
 - `theme`: `paper` (stage), `card`, `well`, `ink`, `ink2`, `ink3`, `rule`,
   `accent`, `accentText`, `accentTint`, `onAccent` (text on accent), `fonts:
   { sans, mono, bold?, black? }` (bold and black take sans's family unless
@@ -496,7 +510,8 @@ scenes:
 - Tall from the same reel: `render reel.yaml --size 1080x1920 -o tall.mp4`
   (or `--aspect 9:16`); rows stack and the layout is redone.
 - Loop: `kamishibai check reel.yaml` (kinds `overlap`, `off-stage`,
-  `overflow`, `contrast`, `widow`, and `glyph` for characters no font has; at
+  `overflow`, `contrast`, `widow`, `glyph` for characters no font has, and
+  `unused` for a field no shape uses (a card's width in a tall-only reel); at
   meta's size and each end of `aspect`, no
   frames; `--json` for parsing; exit 1 on any; each issue says what usually
   fixes it), fix, then `render` and look at a few frames of each shape.
@@ -505,7 +520,16 @@ scenes:
   they leave mostly empty, so there is rarely a reason to set widths. A
   scene with `fill: false` keeps its parts at their own size; `fill: max`
   grows them as large as the room allows, up to 4× (a full-frame figure), and
-  `fill: 2` up to 2×.
+  `fill: 2` up to 2×. Parts too large for the room are shrunk together to
+  fit it (to half at most; past that, check says what spills), whatever
+  `fill` says. A picture is as large as its room allows unless `width`,
+  `height` or `upscale: false` (no wider than its pixels) holds it. A long
+  word that can't break: `{ type: text, …, shrink: true }` sets it smaller
+  until it fits (half its size at most, or the share `shrink: 0.7` says).
+  `**…**` in a part's text (not code or a figure's items) sets that run in `accentText` (a `text`
+  part's `mark` sets the colour): `re·**CEIPT**` for a stressed syllable. A row with
+  `narrow: fit` stays a row on a wide stage, shrunk with the scene, when
+  stacking would shrink more (flow does this).
   Neither grows a scene with a `paint` part. `place: left|right|top|bottom`
   puts them at that edge of the room, `top-left` and the like at a corner
   (default center). The room is the stage
@@ -524,8 +548,8 @@ scenes:
   as wide as its widest child) and draws with `paint(rect) → drawables`, each
   with an id from the part's. `textBox(id, text, ctx, opts)` is a text leaf.
   `defineKata(name, { doc, fields, parts(o) })` adds a scene shape; its fields
-  can't reuse a scene field (`id`, `say`, `ms`, `kata`, `parts`, `transition`,
-  `focus`, `fill`, `place`). `schema` lists only the built-in ones.
+  can't reuse a scene field (`id`, `say`, `pace`, `ms`, `kata`, `parts`,
+  `transition`, `enter`, `focus`, `fill`, `place`). `schema` lists only the built-in ones.
 - YAML anchors and merge keys (`<<: *base`) work.
 
 Give it font files for every script it draws (a container has few fonts).

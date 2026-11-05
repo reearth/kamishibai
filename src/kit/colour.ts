@@ -61,7 +61,7 @@ export function normalTheme(t: Theme, g: Context2D): Theme {
 export function normalColours(ds: Drawable[], g: Context2D): Drawable[] {
   const one = (d: Drawable): Drawable => {
     const out: Record<string, unknown> = { ...d };
-    for (const k of ["fill", "stroke", "color"]) if (typeof out[k] === "string") out[k] = normalColour(out[k] as string, g);
+    for (const k of ["fill", "stroke", "color", "mark"]) if (typeof out[k] === "string") out[k] = normalColour(out[k] as string, g);
     if (d.steps) out.steps = d.steps.map((s) => ({ ...s, d: one(s.d) }));
     return out as Drawable;
   };

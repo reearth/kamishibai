@@ -67,11 +67,15 @@ The reel's fields:
 | `captions` | Captions from each scene's `say`: `true` (the default) for a subtitle track and an `.srt` next to the video, `burn` to draw them into the picture (light on a dark box, in the room kept at the foot), or `false`. |
 | `captionStyle` | How burned captions look: `{ color, box, size, font }`, the text colour (`#fff`), the box's (`rgba(0,0,0,0.62)`), each a theme colour's name or CSS, the size in layout units (40 on a wide stage, 48 on a tall one) and the font role (`bold`). |
 | `captionRoom` | `false` gives the room kept at the foot for the captions to the parts, so they fill more of the stage; the captions then sit over them. For a reel whose captions are often off, or are a player's own. Default `true` when there are captions. |
+| `transition` | How every scene comes in, unless it says: a name, or `{ type, ms }` with how long it takes (see [Transitions](#transitions)). |
+| `enter` | When every scene's new parts come in, unless it says: `{ delay, ms, stagger }` (see [When parts come in](#when-parts-come-in)). |
+| `progress` | A bar that fills as the reel plays, at the foot of the picture: `true` (the accent, 10 units thick), or `{ color, size, at, track }`, its colour, its thickness, `top` for the top edge, and a colour under its whole length. It sits in the stage's margin, inside the view's insets, so it never covers a part. |
+| `overlay` | Only in a code reel: drawn over every scene, outside the camera, under burned captions. `{ paint(g, ms, { W, H, durationMs, timing }), room? }`: `paint` draws in stage units and returns a fingerprint of what it drew (frames with the same one are drawn once; with none, every frame is drawn), and `room: { top, right, bottom, left }` keeps that much clear, so the parts and `kamishibai check` stay out of it. |
 | `scenes` | The scenes, in order. |
 
 ## Scenes
 
-A scene has a `say` (the narration, and its captions: a text, split into sentences, or a list of them, where a sentence may be written out as `{ text, caption?, voice?, pause? }`: what is spoken, what the caption shows instead, the voice's options for it alone (`{ speed: 0.9 }`), and the ms before the next one) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)). When the parts under the heading leave most of the stage empty, they grow together, up to 1.6 times and 90% of the room, to fill it; `fill: max` grows them as large as the room allows (up to 4×), a number such as `fill: 2` as large as the room allows up to that many times, and `fill: false` keeps them at their own size; a scene with a `paint` part does not grow. `place` says where they sit in their room: `center` (the default), an edge (`left`, `right`, `top`, `bottom`) or a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`), and they grow from there. A scene with no `title` has no heading, so its room runs from the stage's top margin.
+A scene has a `say` (the narration, and its captions: a text, split into sentences, or a list of them, where a sentence may be written out as `{ text, caption?, voice?, pause? }`: what is spoken, what the caption shows instead, the voice's options for it alone (`{ speed: 0.9 }`), and the ms of silence after it: before the next sentence instead of the gap, or after the last one before the scene ends instead of the tail) and either a `kata`, a scene shape filled in with the fields beside it, or `parts`, or both: the parts are added after the shape's. `id` names the scene in messages, and `ms` holds it for that long instead of the narration's length. `transition` says how the scene comes in after the one before, and `focus` moves the camera in on a part (see [Transitions](#transitions) and [Camera](#camera)). When the parts under the heading leave most of the stage empty, they grow together, up to 1.6 times and 90% of the room, to fill it; `fill: max` grows them as large as the room allows (up to 4×), a number such as `fill: 2` as large as the room allows up to that many times, and `fill: false` keeps them at their own size; a scene with a `paint` part does not grow. Parts that are too large for the room, such as a row of steps too wide for the stage or a long list, are shrunk together to fit it, whatever `fill` says, to half their size at most; past that, `kamishibai check` says what spills. `place` says where they sit in their room: `center` (the default), an edge (`left`, `right`, `top`, `bottom`) or a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`), and they grow from there. A scene with no `title` has no heading, so its room runs from the stage's top margin.
 
 | Shape | Fields (* required) | |
 |---|---|---|
@@ -87,18 +91,20 @@ A scene has a `say` (the narration, and its captions: a text, split into sentenc
 
 Every part is `{ type, … }`, with an optional `id`, `enter` and `cue`.
 
+In a part's text (a heading, a `text`, a card's label and body, a list's items, a chip, a stat's label; not code, nor a figure's items), a run written between `**` is set in the accent's text colour: `re·**CEIPT**` marks the stressed syllable. A `text` part's `mark` sets the colour (a theme colour's name or CSS). Only paired `**` mark, so `2 ** 10` stays as written; `kamishibai check` judges the marked runs' contrast too.
+
 | Part | Fields (* required) | |
 |---|---|---|
 | `title` | `text`\*, `kicker` | The scene's heading, pinned to the top. |
-| `text` | `text`\*, `role` (`display`, `lead`, `body`, `note`), `align` | Plain text, sized by what it is for: a cover's title, a large line, a sentence (the default), or a small grey note. |
-| `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row is held to the stage's width, its cards wrapping their text to fit; one that still doesn't fit (a word would be cut, or a card would go under 360 units) stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), or stays a row (`keep`). |
-| `card` | `label`, `body`, `code`, `highlight`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. |
+| `text` | `text`\*, `role` (`display`, `lead`, `body`, `note`), `align`, `color`, `shrink`, `mark` | Plain text, sized by what it is for: a cover's title, a large line, a sentence (the default), or a small grey note. A word never breaks, so a long one can be wider than its room: `shrink: true` sets the text smaller until its longest word fits, down to half its size (`shrink: 0.7`, to 70%). |
+| `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row is held to the stage's width, its cards wrapping their text to fit; one that still doesn't fit (a word would be cut, or a card would go under 360 units) stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), stays a row with its parts at their own width and the scene shrunk to fit it on a wide stage, stacking on a tall one or when stacking shrinks it less (`fit`, which `flow` uses), or stays a row (`keep`). |
+| `card` | `label`, `body`, `code`, `highlight`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. On a tall stage a card in a column takes the full width instead of its `width`, so the column reads as one; in a row it keeps it. |
 | `arrow` | `kind` (`right`, `down`, `versus`, `equals`) | An arrow between parts; in a column it points down. |
 | `chip` | `text`\*, `state` (`active`, `done`), `n` | A pill, for a step. `n` puts a number in a badge before the label, a tick once it is done. |
 | `stat` | `value`\*, `unit`, `label`, `tone`, `digits` | A big number that counts up from its previous value. |
 | `list` | `items`\*, `at` | A bulleted list; `at` stresses one item. |
-| `image` | `src`\*, `width`, `height`, `caption` | A picture, fitted to the room it gets. |
-| `figure` | `width`\*, `height`\*, `items`\*, `caption` | A drawing as data (see below). |
+| `image` | `src`\*, `width`, `height`, `upscale`, `caption` | A picture, as large as the room it gets allows, its shape kept: as tall as the room under the heading, less its caption. `width` and `height` hold it smaller; `upscale: false` keeps it no wider than the file's own pixels, so a small file stays sharp. |
+| `figure` | `width`\*, `height`\*, `items`\*, `caption` | A drawing as data (see below), as large as the room under the heading allows. |
 | `paint` | `width`\*, `height`\*, `fn`\*, `key` | A box drawn by code, `fn(g, ms, w, h)`, on the reel's clock. Only in a code reel. |
 
 ### Figures
@@ -130,7 +136,7 @@ An item can also move within its scene. `then` lists what it becomes, in order, 
 
 ### What moves between scenes
 
-A part is the same part in the next scene when it has the same `id`. Then it moves there, changing size and colour on the way; a part that is gone fades out, and a new one comes in with its `enter` verb (`rise` by default, `draw` for lines; also `fade`, `pop`, `type`, `count`, `none`, `from-left`, `from-right`, `from-top` and `from-bottom` to slide in from that side, `wipe` to be uncovered from the left, and `blur` to come into focus). New parts come in one after another, after the movers have mostly settled. A number under the same id counts from its old value to its new one, and a line of code still on screen slides to its new place instead of being typed again.
+A part is the same part in the next scene when it has the same `id`. Then it moves there, changing size and colour on the way; a part that is gone fades out, and a new one comes in with its `enter` verb (`rise` by default, `draw` for lines; also `fade`, `pop`, `type`, `count`, `none`, `from-left`, `from-right`, `from-top` and `from-bottom` to slide in from that side, `wipe` to be uncovered from the left, and `blur` to come into focus). New parts come in one after another, 160 ms apart, after the movers have mostly settled. A number under the same id counts from its old value to its new one, and a line of code still on screen slides to its new place instead of being typed again.
 
 A part without an `id` gets its type as its id, numbered when the type repeats in the scene (`card`, `card.2`). So a `title` in every scene is the same title, and it stays put while the rest changes. The shapes use fixed ids (`title`, `flow.0`, `flow.1`, …), so moving `at` along a flow from one scene to the next fills the next pill.
 
@@ -167,7 +173,26 @@ A scene comes in after the one before it by its `transition`:
 | `push` | The new scene slides in from the right and pushes the one before out to the left. |
 | `wipe` | The new scene is uncovered over the one before, from left to right. |
 
-With `cut`, `push` and `wipe`, a part with a `cue` still comes in with its sentence. Nothing carries over from the scene before, so a change of topic reads as one.
+With `cut`, `push` and `wipe`, a part with a `cue` (or a `delay` of its own) still comes in with its sentence. Nothing carries over from the scene before, so a change of topic reads as one.
+
+A transition takes its own time: a morph moves what stays over 750 ms, a fade takes 400 ms to go out, and a push or a wipe 700 ms. `transition: { type: fade, ms: 200 }` sets it. A `transition` on the reel is every scene's, and a scene's fields go over it: with `transition: { type: fade, ms: 200 }` on the reel, a scene's `transition: push` pushes in 200 ms, and `transition: { ms: 300 }` fades in 300.
+
+### When parts come in
+
+New parts start coming in 150 ms into a scene; after a fade, 150 ms after it has gone out; after a morph, once what stays has mostly moved. Each verb takes its own time (a `rise` 550 ms, a `fade` 400, a `count` 1100), and parts that come in together start 160 ms apart. A scene shown for a moment needs them sooner and quicker, and `enter` says so:
+
+```yaml
+transition: { type: fade, ms: 200 }
+enter: { delay: 0, ms: 250, stagger: 60 }   # every scene's new parts
+scenes:
+  - say: accommodation
+    ms: 900
+    enter: { delay: 50 }                    # this scene's, over the reel's
+    parts:
+      - { type: text, role: display, text: accommodation, enter: { type: pop, ms: 150 } }
+```
+
+On the reel or a scene, `enter` takes `delay` (ms from the scene's start to the first new part), `ms` (how long each takes) and `stagger` (ms between one and the next). A part's `enter` is a verb, or `{ type?, ms?, delay? }`: the verb (the part's own when left out), how long it takes, and when it starts, in ms from the scene's start, or from its sentence with a `cue`. Parts inside it take its timing.
 
 ### Camera
 
@@ -211,6 +236,7 @@ The layout already knows every box, so these are found with no frame drawn (the 
 - `contrast`: text below WCAG contrast on what it sits on (3:1 for large text, 4.5:1 otherwise).
 - `widow`: one or two characters alone on a paragraph's last line, or one word under a line more than 2.5 times as long.
 - `glyph`: a character no font has, which would show as an empty box (the parts' text, and burned captions).
+- `unused`: a field the reel wrote that no shape it lays out for uses, such as a card's `width` in a reel that is only tall.
 
 Each issue ends with what usually fixes it. It exits 1 when it finds anything. What it can't judge is whether the result looks good: look at the frames of each shape you render.
 
@@ -246,7 +272,28 @@ export default await kit({
 });
 ```
 
-The functions build the same objects a YAML reel holds, and `kit()` checks them the same way. A code reel can also use `paint` parts and parts of its own. A canvas reel can have the kit's motion without its layout, from [`morph`](canvas.md#moving-items-between-keyframes-morph).
+The functions build the same objects a YAML reel holds, and `kit()` checks them the same way. A code reel can also use `paint` parts, parts of its own, and an `overlay` drawn over every scene:
+
+```ts
+export default await kit({
+  kit: 1,
+  // a chapter mark in the corner, kept clear of the parts
+  overlay: {
+    room: { top: 60 },
+    paint(g, ms, { W, timing }) {
+      const n = timing.findIndex((t) => ms < t.start + t.ms) + 1;
+      g.font = "700 28px Geist";
+      g.fillStyle = "#6e6e69";
+      g.textAlign = "right";
+      g.fillText(`${n} / ${timing.length}`, W - 96, 64);
+      return String(n);
+    },
+  },
+  scenes: [/* … */],
+});
+```
+
+Wrap the reel `kit()` returns instead only for what an overlay can't do: an overlay is laid out with the reel, and `kamishibai check` keeps its room clear. A code reel that builds its scenes from data imports it, `import words from "./words.yaml"` (or `.json`), so the data is bundled with the reel and is there in `kamishibai dev` and `export` too, which run it in a browser where `node:fs` is not. A canvas reel can have the kit's motion without its layout, from [`morph`](canvas.md#moving-items-between-keyframes-morph).
 
 ### Parts of your own
 

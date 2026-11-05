@@ -4,9 +4,9 @@
 // ------------------------------------------------------------------
 import { parseAspect } from "../canvas/types.ts";
 import { checkFields, closest, f, type Fields } from "./fields.ts";
-import { kataDef, kataNames, SCENE_FIELDS, type PLACES } from "./kata.ts";
+import { kataDef, kataNames, SCENE_ENTER_FIELDS, SCENE_FIELDS, TRANSITION_FIELDS, TRANSITIONS, type PLACES } from "./kata.ts";
 import { COMMON, partDef, partTypes, type Placed } from "./parts.ts";
-import { KIT_VERSION, type KitReelSpec, type Pace, type PartSpec, type SayLine, type Transition } from "./spec.ts";
+import { KIT_VERSION, type KitReelSpec, type Pace, type PartSpec, type SayLine, type SceneEnter, type Transition, type TransitionSpec } from "./spec.ts";
 import { sentences } from "./text.ts";
 
 export type NormScene = {
@@ -19,8 +19,15 @@ export type NormScene = {
   parts: Placed<PartSpec>[];
   /** the sentence each cued part (and every part inside it) comes in with, by id */
   cues: Map<string, number>;
-  /** how it comes in after the scene before */
+  /** how it comes in after the scene before, and how long that takes (default: the transition's own) */
   transition: Transition;
+  transMs?: number;
+  /** when its new parts come in, unless a part says */
+  enter: SceneEnter;
+  /** each part's own timing (and every part's inside it), by id */
+  enters: Map<string, PartEnter>;
+  /** the ids of the parts the reel wrote (and those inside them), not a shape's */
+  written: Set<string>;
   /** where the camera moves in, in order of their sentences */
   focus: Focus[];
   /** grow the parts below the heading to fill the room they leave: some, as much as fits (up to n times), or not */
@@ -28,6 +35,9 @@ export type NormScene = {
   /** where the parts below the heading sit in their room */
   place: (typeof PLACES)[number];
 };
+
+/** When a part comes in, and how long it takes, where its enter says. */
+export type PartEnter = { delay?: number; ms?: number };
 
 /** The camera on a part from a sentence on, at a zoom (or as close as fits). */
 export type Focus = { on: string; cue: number; zoom?: number };
@@ -46,12 +56,26 @@ export const REEL_FIELDS: Fields = {
   lexicon: f.obj("reading substitutions for the voice only"),
   music: f.obj("a track under the whole reel, looped: { src (relative to the reel), gain? (dB, default -14), duck? (lowered under the voice: true by default, or { amountDb, attackMs, releaseMs }), fadeInMs?, fadeOutMs? (default 1500), trimStartMs? }"),
   pace: f.obj("narration timing for every scene, in ms: { lead? (400), gap? (250), tail? (700) }; a scene's pace overrides it"),
+  transition: f.oneOr(TRANSITIONS, TRANSITION_FIELDS, 'how every scene comes in, unless it says: "morph" (default), "cut", "fade", "push" or "wipe", or { type?, ms? } with how long it takes'),
+  enter: f.obj("when new parts come in, in every scene, unless it says: { delay?, ms?, stagger? }", false, SCENE_ENTER_FIELDS),
   captions: f.any('captions from each scene\'s say: true (a subtitle track, the default), "burn" (drawn into the picture) or false'),
   captionStyle: f.obj('how burned captions look: { color? (#fff), box? (rgba(0,0,0,0.62)), size? (40 wide, 48 tall), font? (bold) }, colours by theme name or CSS'),
   captionRoom: f.bool("keep room at the foot for the captions (default true when there are captions); false gives it to the parts"),
+  progress: f.any('a bar that fills as the reel plays: true (at the foot, in the accent, 10 units thick), or { color?, size?, at? ("bottom" | "top"), track? (a colour under it) }, colours by theme name or CSS'),
+  overlay: f.obj("drawn over every scene, outside the camera (only in a code reel): { paint(g, ms, { W, H, durationMs, timing }) returning a fingerprint, room?: { top?, right?, bottom?, left? } kept clear for it }", false, {
+    paint: f.fn("(g, ms, { W, H, durationMs, timing }) => fingerprint | void", true),
+    room: f.obj("layout units kept clear at each edge: { top?, right?, bottom?, left? }", false, { top: f.ms(), right: f.ms(), bottom: f.ms(), left: f.ms() }),
+  }),
   scenes: f.any("the scenes, in order", true),
 };
 
+
+const PROGRESS_FIELDS: Fields = {
+  color: f.str("the bar's colour: a theme colour's name or CSS (default accent)"),
+  size: { kind: "number", min: 1, doc: "its thickness in layout units, 1 or more (default 10)" },
+  at: f.one(["bottom", "top"], 'which edge (default "bottom")'),
+  track: f.str("a colour under the bar's whole length (default none)"),
+};
 
 const FOCUS_FIELDS: Fields = {
   on: f.str("the id of the part to frame", true),
@@ -80,7 +104,7 @@ const LINE_FIELDS: Fields = {
   text: f.str("what is spoken (and captioned, unless caption is given)", true),
   caption: f.str("what the caption shows instead"),
   voice: f.obj("the voice's options for this sentence alone, over the reel's (not its provider)"),
-  pause: f.num("ms before the next sentence, instead of the gap"),
+  pause: f.num("ms of silence after it: before the next sentence instead of the gap, or, after the last, before the scene ends instead of the tail"),
 };
 
 function checkPace(v: unknown, at: string): string[] {
@@ -109,6 +133,13 @@ function sayLines(v: unknown, at: string, problems: string[]): SayLine[] {
   return out;
 }
 
+/** A scene's transition: the reel's, with the scene's fields over it (a name is its type). */
+function transitionOf(reel: TransitionSpec | undefined, scene: TransitionSpec | undefined): { transition: Transition; transMs?: number } {
+  const o = (t: TransitionSpec | undefined) => (typeof t === "string" ? { type: t } : isObj(t) ? t : {});
+  const t = { ...o(reel), ...o(scene) };
+  return { transition: t.type ?? "morph", ...(t.ms !== undefined ? { transMs: t.ms } : {}) };
+}
+
 /** Check `spec`, expand its shapes and place its parts; throws KitSpecError listing every problem. */
 export function normalize(spec: KitReelSpec): NormScene[] {
   const problems: string[] = [];
@@ -126,6 +157,8 @@ export function normalize(spec: KitReelSpec): NormScene[] {
   };
   if (isObj(spec.aspect)) (ratio(spec.aspect.min, "reel.aspect.min"), ratio(spec.aspect.max, "reel.aspect.max"));
   else ratio(spec.aspect, "reel.aspect");
+  if (isObj(spec.progress)) problems.push(...checkFields(spec.progress, PROGRESS_FIELDS, "reel.progress"));
+  else if (spec.progress !== undefined && typeof spec.progress !== "boolean") problems.push(`reel.progress: expected true, false or { color?, size?, at?, track? }, got ${JSON.stringify(spec.progress)}`);
   if (spec.captions !== undefined && typeof spec.captions !== "boolean" && spec.captions !== "burn") {
     problems.push(`reel.captions: expected true, false or "burn", got ${JSON.stringify(spec.captions)}`);
   }
@@ -142,7 +175,7 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const at = `scenes[${i}]`;
     if (!isObj(sc)) {
       problems.push(`${at}: expected an object`);
-      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", focus: [], fill: true, place: "center" };
+      return { id: `s${i}`, say: [], pace: PACE, parts: [], cues: new Map(), transition: "morph", enter: {}, enters: new Map(), written: new Set(), focus: [], fill: true, place: "center" };
     }
     const id = typeof sc.id === "string" ? sc.id : `s${i + 1}`;
     if (sceneIds.has(id)) problems.push(`${at}: the scene id "${id}" is used twice`);
@@ -170,10 +203,13 @@ export function normalize(spec: KitReelSpec): NormScene[] {
     const say = sayLines(sc.say, `${where}.say`, problems);
     problems.push(...checkPace(sc.pace, `${where}.pace`));
     const cues = new Map<string, number>();
+    const enters = new Map<string, PartEnter>();
+    const writtenIds = new Set<string>();
+    let fromShape = false;
     const used = new Set<string>();
     // Things inside parts that focus may aim at too (a figure's items, as "figure.item").
     const inner = new Set<string>();
-    const place = (p: unknown, pat: string, inherited?: number): Placed<PartSpec> | null => {
+    const place = (p: unknown, pat: string, inherited?: number, timing?: PartEnter): Placed<PartSpec> | null => {
       if (!isObj(p)) {
         problems.push(`${pat}: expected a part ({ type, … }), got ${JSON.stringify(p)}`);
         return null;
@@ -200,8 +236,18 @@ export function normalize(spec: KitReelSpec): NormScene[] {
         for (let n = 2; used.has(id); n++) id = `${p.type}.${n}`;
       } else if (used.has(id)) problems.push(`${pat}: the id "${id}" is used twice in this scene`);
       used.add(id);
+      if (!fromShape) writtenIds.add(id);
       for (const t of def.targets?.({ ...p, id } as never) ?? []) inner.add(t);
       if (cue) cues.set(id, cue);
+      // An enter written out: its verb stays on the part, its timing with the scene, and the parts inside take it.
+      let own = timing;
+      let verb = p.enter;
+      if (isObj(p.enter)) {
+        const { type, ms, delay } = p.enter as { type?: string; ms?: number; delay?: number };
+        own = { ...timing, ...(ms !== undefined ? { ms } : {}), ...(delay !== undefined ? { delay } : {}) };
+        verb = type;
+      }
+      if (own) enters.set(id, own);
       for (const [what, n] of def.stepCues?.({ ...p, id } as never) ?? []) {
         if (!Number.isInteger(n) || n < 0 || n >= Math.max(1, say.length)) problems.push(`${label}: ${what} moves at cue ${n}, which is not a sentence of this scene's say (it has ${say.length})`);
       }
@@ -210,16 +256,20 @@ export function normalize(spec: KitReelSpec): NormScene[] {
         else if (n) cues.set(turn, n);
       }
       const placed: Record<string, unknown> = { ...p, id };
+      if (verb === undefined) delete placed.enter;
+      else placed.enter = verb;
       // Parts inside parts (a row's, or a custom part's lists of parts).
       for (const [k, fd] of Object.entries(def.fields)) {
         if (fd.kind === "parts" && Array.isArray(p[k])) {
-          placed[k] = (p[k] as unknown[]).map((c, j) => place(c, `${pat}.${k}[${j}]`, cue)).filter((c) => c !== null);
+          placed[k] = (p[k] as unknown[]).map((c, j) => place(c, `${pat}.${k}[${j}]`, cue, own)).filter((c) => c !== null);
         }
       }
       return placed as Placed<PartSpec>;
     };
     // The shape's ids are fixed: mark them first, so a written part never takes one.
+    fromShape = true;
     const kataParts = fromKata.map((p, j) => place(p, `${where} (kata ${String(sc.kata)}) part ${j}`));
+    fromShape = false;
     const written = Array.isArray(sc.parts) ? sc.parts.map((p, j) => place(p, `${where}.parts[${j}]`)) : [];
     const focus: Focus[] = [];
     if (sc.focus !== undefined) {
@@ -248,7 +298,10 @@ export function normalize(spec: KitReelSpec): NormScene[] {
       ms: typeof sc.ms === "number" ? sc.ms : undefined,
       parts: [...kataParts, ...written].filter((p) => p !== null),
       cues,
-      transition: (sc.transition as Transition | undefined) ?? "morph",
+      ...transitionOf(spec.transition, sc.transition),
+      enter: { ...(isObj(spec.enter) ? spec.enter : {}), ...(isObj(sc.enter) ? sc.enter : {}) } as SceneEnter,
+      enters,
+      written: writtenIds,
       focus,
       fill: sc.fill === "max" || typeof sc.fill === "number" ? sc.fill : sc.fill !== false,
       place: (sc.place as NormScene["place"] | undefined) ?? "center",

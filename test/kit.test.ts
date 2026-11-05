@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { kit, kitBrief, kitSchema, morph, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
-import { camAt, frameAt, layersAt, type Keyframe } from "../src/kit/engine.ts";
+import { camAt, frameAt, layersAt, settleMs, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
-import { tokens, speechMs, sentences } from "../src/kit/text.ts";
+import { tokens, speechMs, sentences, parseMarks, lineMarks } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
 import { resolveView, type Context2D } from "../src/canvas/types.ts";
 import { checkEntry } from "../src/kit-check.ts";
+import { bundleOptions } from "../src/serve.ts";
+import { build } from "esbuild";
 import { layoutScene, partBox, stageFrame } from "../src/kit/stage.ts";
 import { loadYoga } from "../src/kit/layout.ts";
 import { Fonts } from "../src/kit/text.ts";
@@ -18,7 +20,7 @@ import { itemPaint } from "../src/kit/items.ts";
 import { check } from "../src/kit/check.ts";
 import { parseColour } from "../src/kit/colour.ts";
 import type { Ctx } from "../src/kit/parts.ts";
-import type { Bounds, Drawable } from "../src/kit/model.ts";
+import { bbox, type Bounds, type Drawable } from "../src/kit/model.ts";
 import type { PartSpec, SceneSpec } from "../src/kit/spec.ts";
 
 const GEIST = resolve("examples/canvas/fonts/Geist.ttf");
@@ -50,6 +52,43 @@ describe("normalize", () => {
     expect(flow.parts.map((p) => p.id)).toEqual(["flow.0", "flow.a1", "flow.1"]);
     expect(flow.parts[2]!.state).toBe("active");
     expect(s2!.parts.map((p) => p.id)).toEqual(["title", "card", "card.2"]);
+  });
+
+  it("takes a transition and an enter written out, the reel's under the scene's", () => {
+    const [a, b, c] = normalize({
+      kit: 1,
+      transition: { type: "fade", ms: 200 },
+      enter: { delay: 0, stagger: 80 },
+      scenes: [
+        { parts: [{ type: "title", text: "T" }] },
+        { transition: { ms: 300 }, enter: { ms: 250 }, parts: [{ type: "row", enter: { delay: 500 }, parts: [{ type: "card", body: "x" }, { type: "card", body: "y", enter: { type: "pop", ms: 100 } }] }] },
+        { transition: "cut", parts: [{ type: "text", text: "t", enter: "fade" }] },
+      ],
+    });
+    expect([a!.transition, a!.transMs, a!.enter]).toEqual(["fade", 200, { delay: 0, stagger: 80 }]);
+    expect([b!.transition, b!.transMs, b!.enter]).toEqual(["fade", 300, { delay: 0, stagger: 80, ms: 250 }]);
+    // A name is the type alone: the reel's ms still holds.
+    expect([c!.transition, c!.transMs]).toEqual(["cut", 200]);
+    // The parts inside take the row's timing; a part's own fields go over it, and its enter is left as the verb.
+    expect(Object.fromEntries(b!.enters)).toEqual({ row: { delay: 500 }, card: { delay: 500 }, "card.2": { delay: 500, ms: 100 } });
+    const row = b!.parts[0] as unknown as { enter?: string; parts: Array<{ enter?: string }> };
+    expect([row.enter, row.parts[0]!.enter, row.parts[1]!.enter]).toEqual([undefined, undefined, "pop"]);
+    expect(c!.parts[0]!.enter).toBe("fade");
+    expect(c!.enters.size).toBe(0);
+  });
+
+  it("names what is wrong in a transition or an enter written out", () => {
+    expect(problems({
+      kit: 1,
+      transition: { type: "dissolve" },
+      scenes: [{ transition: { ms: -1 }, enter: { wait: 1 }, parts: [{ type: "title", text: "T", enter: { type: "rise", ms: "fast" } }, { type: "text", text: "t", enter: 3 }] }],
+    })).toEqual([
+      'reel.transition.type: "dissolve" is not one of "morph", "cut", "fade", "push", "wipe"',
+      "scenes[0].transition.ms: -1 is under 0",
+      'scenes[0].enter: unknown field "wait"',
+      'scenes[0].parts[0] (title).enter.ms: expected a number, got string "fast"',
+      "scenes[0].parts[1] (text).enter: expected a string or an object, got number 3",
+    ]);
   });
 
   it("says to quote text that YAML read as a map", () => {
@@ -118,6 +157,10 @@ describe("text", () => {
     expect(b).toMatchObject({ atMs: 100 + a!.ms + 1000, text: "書き" });
     expect(c!.atMs).toBe(b!.atMs + b!.ms + 50);
     expect(reel.timing[0]!.ms).toBe(c!.atMs + c!.ms + 2000);
+    // A pause on the last sentence is the time after it, instead of the tail.
+    const last = await kit({ kit: 1, fonts, theme, scenes: [{ pace: { tail: 2000 }, say: ["あいうえお。", { text: "かきくけこ。", pause: 3000 }], parts: [title("A")] }] });
+    const z = last.timing[0]!.say[1]!;
+    expect(last.timing[0]!.ms).toBe(z.atMs + z.ms + 3000);
     expect(problems({ kit: 1, pace: { lead: "x" }, scenes: [{ parts: [title("A")], say: [{ text: "a", speed: 2 }] }] })).toEqual([
       "reel.pace.lead: expected a number, got string \"x\"",
       'scenes[0].say[0]: unknown field "speed"',
@@ -139,6 +182,57 @@ describe("text", () => {
   it("guesses a spoken length from the script", () => {
     expect(speechMs("あいうえおかきくけこさしすせそ")).toBe(2000);
     expect(speechMs("fourteen chars")).toBe(929);
+  });
+});
+
+describe("marks", () => {
+  it("takes the runs between paired ** out of the text, and leaves a lone ** be", () => {
+    expect(parseMarks("re·**ceipt**")).toEqual({ plain: "re·ceipt", marks: [[3, 8]] });
+    expect(parseMarks("**HEAD**quar**TERS**")).toEqual({ plain: "HEADquarTERS", marks: [[0, 4], [8, 12]] });
+    expect(parseMarks("2 ** 10")).toEqual({ plain: "2 ** 10", marks: [] });
+    expect(parseMarks("a **b** c ** d")).toEqual({ plain: "a b c ** d", marks: [[2, 3]] });
+    // Counted in code points, so a character outside the BMP is one.
+    expect(parseMarks("𝑥 **漢字**")).toEqual({ plain: "𝑥 漢字", marks: [[2, 4]] });
+  });
+
+  it("follows the marks onto the lines the text breaks into", () => {
+    const { plain, marks } = parseMarks("one **two three** four");
+    expect(lineMarks(plain, marks, ["one two", "three four"])).toEqual([[[4, 7]], [[0, 5]]]);
+    expect(lineMarks(plain, marks, ["one", "two three four"])).toEqual([[], [[0, 9]]]);
+  });
+
+  it("draws the marked runs in the mark's colour, and checks their contrast", async () => {
+    const make = (mark?: string) => kit({ kit: 1, fonts, theme: { ...theme, accentText: "#ff0000" }, captions: false, scenes: [{ ms: 2000, fill: false, parts: [{ type: "text", role: "display", text: "ab**CD**", ...(mark ? { mark } : {}) }] }] });
+    const reel = await make();
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    paint(patchContext(c.getContext("2d") as unknown as Context2D), 1900);
+    const data = c.getContext("2d").getImageData(0, 0, view.width, view.height).data;
+    // "ab" in ink, then "CD" in red: every red pixel right of every ink one.
+    let [red, ink, inkMaxX, redMinX] = [0, 0, -1, Infinity];
+    for (let i = 0; i < data.length; i += 4) {
+      const x = (i / 4) % view.width;
+      if (data[i]! > 200 && data[i + 1]! < 60 && data[i + 2]! < 60) (red++, (redMinX = Math.min(redMinX, x)));
+      if (data[i]! < 60 && data[i + 1]! < 60 && data[i + 2]! < 60) (ink++, (inkMaxX = Math.max(inkMaxX, x)));
+    }
+    expect(red).toBeGreaterThan(500);
+    expect(ink).toBeGreaterThan(500);
+    expect(redMinX).toBeGreaterThan(inkMaxX);
+    const pale = await make("#f4f4f0");
+    const issues = await pale.check(view, await nodeEnv("."));
+    expect(issues.map((i) => i.msg)).toEqual([expect.stringMatching(/^text's marked text is 1\.\d\d:1 on #fafaf7/)]);
+  });
+
+  it("crossfades a text whose marks change, and moves one whose marks stay", () => {
+    const t = (marks?: Array<Array<[number, number]>>) => ({ t: "text" as const, id: "w", owner: "w", x: 0, y: 0, w: 100, h: 50, lines: ["receipt"], font: "sans" as const, size: 40, lh: 1.2, track: 0, color: "#000000", align: "start" as const, o: 1, need: 0, ...(marks ? { marks, mark: "#ff0000" } : {}) });
+    const ks = (a: ReturnType<typeof t>, b: ReturnType<typeof t>): Keyframe[] => [
+      { id: "1", start: 0, ms: 1000, ds: [a] },
+      { id: "2", start: 1000, ms: 1000, ds: [{ ...b, x: 50 }] },
+    ];
+    const ids = (k: Keyframe[]) => frameAt(k, 1300).map((d) => d.id);
+    expect(ids(ks(t([[[2, 7]]]), t([[[2, 7]]])))).toEqual(["w"]);
+    expect(ids(ks(t(), t([[[2, 7]]])))).toContain("w~");
   });
 });
 
@@ -230,6 +324,72 @@ describe("kit", () => {
     expect([...c.getContext("2d").getImageData(view.width / 2, 940, 1, 1).data].slice(0, 3)).toEqual([255, 0, 0]);
   });
 
+  it("draws a progress bar at the foot that fills as the reel plays", async () => {
+    const make = (progress: KitReelSpec["progress"]) => kit({ kit: 1, fonts, theme: { ...theme, accent: "#ff0000" }, captions: false, progress, scenes: [{ ms: 2000, parts: [title("A")] }, { ms: 2000, parts: [title("B")] }] });
+    const reel = await make(true);
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    const g = patchContext(c.getContext("2d") as unknown as Context2D);
+    const px = (t: number, x: number, y: number) => {
+      paint(g, t);
+      return [...c.getContext("2d").getImageData(x, y, 1, 1).data].slice(0, 3);
+    };
+    const foot = c.height - 1;
+    // A quarter through, the first quarter of the foot is filled; past it, the paper.
+    expect(px(1000, c.width * 0.2, foot)).toEqual([255, 0, 0]);
+    expect(px(1000, c.width * 0.3, foot)).not.toEqual([255, 0, 0]);
+    expect(px(3900, c.width * 0.9, foot)).toEqual([255, 0, 0]);
+    // A frame that fills it further differs, even with the scene settled.
+    expect(paint(g, 1700)).not.toBe(paint(g, 1900));
+    const top = await make({ at: "top", size: 40, color: "#0000ff", track: "#00ff00" });
+    const paintTop = await top.setup(view, await nodeEnv("."));
+    paintTop(g, 1000);
+    const at = (x: number, y: number) => [...c.getContext("2d").getImageData(x, y, 1, 1).data].slice(0, 3);
+    expect(at(c.width * 0.2, 2)).toEqual([0, 0, 255]);
+    expect(at(c.width * 0.8, 2)).toEqual([0, 255, 0]);
+    expect(problems({ kit: 1, progress: { size: 0, at: "side" }, scenes: [{ kata: "cover", title: "x" }] })).toEqual([
+      "reel.progress.size: 0 is under 1",
+      'reel.progress.at: "side" is not one of "bottom", "top"',
+    ]);
+    expect(problems({ kit: 1, progress: "yes", scenes: [{ kata: "cover", title: "x" }] })).toEqual(['reel.progress: expected true, false or { color?, size?, at?, track? }, got "yes"']);
+  });
+
+  it("paints an overlay over every scene, keeping its room clear of the parts", async () => {
+    const seen: Array<{ ms: number; W: number; durationMs: number; scenes: number }> = [];
+    const overlay = (fingerprint: boolean) => ({
+      room: { bottom: 540 },
+      paint: (g: Context2D, ms: number, o: { W: number; H: number; durationMs: number; timing: readonly unknown[] }) => {
+        seen.push({ ms, W: o.W, durationMs: o.durationMs, scenes: o.timing.length });
+        g.fillStyle = "#00ff00";
+        g.fillRect(0, o.H - 20, 20, 20);
+        return fingerprint ? "same" : undefined;
+      },
+    });
+    const reel = await kit({ kit: 1, fonts, theme, captions: false, overlay: overlay(true), scenes: [{ ms: 3000, fill: "max", parts: [{ type: "text", role: "display", text: "Hello" }] }] });
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    const g = patchContext(c.getContext("2d") as unknown as Context2D);
+    expect(paint(g, 2500)).toBe(paint(g, 2900));
+    expect(seen.at(-1)).toEqual({ ms: 2900, W: 1920, durationMs: 3000, scenes: 1 });
+    // Its corner, and nothing of the parts below the middle (its room).
+    expect([...c.getContext("2d").getImageData(5, view.height - 5, 1, 1).data].slice(0, 3)).toEqual([0, 255, 0]);
+    const lower = c.getContext("2d").getImageData(40, view.height / 2 + 4, view.width - 80, view.height / 2 - 60).data;
+    const paper = [...lower.slice(0, 3)];
+    let ink = 0;
+    for (let i = 0; i < lower.length; i += 4) if (lower[i] !== paper[0] || lower[i + 1] !== paper[1] || lower[i + 2] !== paper[2]) ink++;
+    expect(ink).toBe(0);
+    expect((await reel.check(view, await nodeEnv("."))).length).toBe(0);
+    // With no fingerprint, every frame is drawn.
+    const bare = await kit({ kit: 1, fonts, theme, captions: false, overlay: overlay(false), scenes: [{ ms: 3000, parts: [title("A")] }] });
+    expect((await bare.setup(view, await nodeEnv(".")))(g, 2900)).toBeUndefined();
+    expect(problems({ kit: 1, overlay: { room: { top: -1 } }, scenes: [{ kata: "cover", title: "x" }] })).toEqual([
+      'reel.overlay: "paint" is required ((g, ms, { W, H, durationMs, timing }) => fingerprint | void)',
+      "reel.overlay.room.top: -1 is under 0",
+    ]);
+  });
+
   it("refuses a cue past the scene's sentences", () => {
     expect(problems({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", text: "x", cue: 2 }] }] })[0]).toMatch(/cue: 2 is not a sentence of this scene's say \(it has 2/);
   });
@@ -299,6 +459,52 @@ describe("transitions and the camera", () => {
     expect(fade).toHaveLength(2);
     expect(fade[0]!.ds.map((d) => d.id)).toEqual(["stage"]);
     expect(layersAt(two("fade"), 1800, 100)).toHaveLength(1);
+  });
+
+  it("takes a transition's length", () => {
+    const at = (tr: Keyframe["transition"], transMs: number, t: number) => {
+      const ks = two(tr);
+      ks[1]!.transMs = transMs;
+      return layersAt(ks, t, 100);
+    };
+    expect(at("fade", 200, 1150)).toHaveLength(2);
+    expect(at("fade", 200, 1250)).toHaveLength(1);
+    expect(at("push", 200, 1150)).toHaveLength(2);
+    expect(at("push", 200, 1250)).toHaveLength(1);
+    // A morph of 300 ms has what stays where it ends up by then (750 by default).
+    expect((at("morph", 300, 1300)[0]!.ds[1] as { x: number }).x).toBeCloseTo(50);
+    expect((at(undefined, 750, 1300)[0]!.ds[1] as { x: number }).x).toBeLessThan(50);
+    expect((at("morph", 0, 1000)[0]!.ds[1] as { x: number }).x).toBe(50);
+  });
+
+  it("brings new parts in when the scene or the part says, over the length it says", () => {
+    const ks = (more: Partial<Keyframe>): Keyframe[] => [
+      { id: "1", start: 0, ms: 1000, ds: [paper] },
+      { id: "2", start: 1000, ms: 3000, ds: [paper, rect("b", 0), rect("c", 0)], transition: "fade", ...more },
+    ];
+    const o = (k: Keyframe[], t: number, id: string) => frameAt(k, t).find((d) => d.id === id)?.o ?? 0;
+    // By default a fade's parts wait for it (400 + 150), and the next starts 160 later.
+    expect(o(ks({}), 1500, "b")).toBe(0);
+    // A delay of 0 and 200 ms each: the first is in by 200, the next 160 after it.
+    const quick = ks({ enter: { delay: 0, ms: 200 } });
+    expect(o(quick, 1200, "b")).toBe(1);
+    expect(o(quick, 1200, "c")).toBeLessThan(1);
+    expect(o(quick, 1360, "c")).toBe(1);
+    expect(o(ks({ enter: { delay: 0, ms: 200, stagger: 0 } }), 1200, "c")).toBe(1);
+    // A part's own delay, here in a fade, and its own length.
+    const own = ks({ enters: { c: { delay: 900, ms: 100 } } });
+    expect(o(own, 1890, "c")).toBe(0);
+    expect(o(own, 2000, "c")).toBe(1);
+    // In a cut a part with a delay of its own still comes in.
+    const cut = ks({ transition: "cut", enters: { c: { delay: 900 } } });
+    expect(o(cut, 1001, "b")).toBe(1);
+    expect(o(cut, 1500, "c")).toBe(0);
+  });
+
+  it("waits for its longest part before its frames repeat", () => {
+    const ks = (more: Partial<Keyframe>): Keyframe[] => [{ id: "1", start: 0, ms: 9000, ds: [paper, rect("b", 0)], ...more }];
+    expect(settleMs(ks({ enters: { b: { ms: 4000 } } }), 0)).toBeGreaterThan(settleMs(ks({}), 0) + 2000);
+    expect(settleMs(ks({ enters: { b: { delay: 3000 } } }), 0)).toBeGreaterThan(3000);
   });
 
   it("brings a part in from a side, wiped on, or out of a blur", () => {
@@ -420,7 +626,7 @@ describe("transitions and the camera", () => {
 
 describe("filling the stage", () => {
   // A scene laid out on a stage, with Geist measured the way a render measures it.
-  const lay = async (sc: SceneSpec, W = 1920, H = 1080) => {
+  const lay = async (sc: SceneSpec, W = 1920, H = 1080, images: Record<string, { w: number; h: number }> = {}) => {
     const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [sc] });
     await registerFonts(reel, ".");
     await loadYoga();
@@ -432,7 +638,7 @@ describe("filling the stage", () => {
       fonts: new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), mergeTheme(theme)),
       theme: mergeTheme(theme),
       readText: () => "",
-      image: () => undefined,
+      image: (src) => (images[src] ? { img: {} as CanvasImageSource, ...images[src]! } : undefined),
       child: (p, flow) => partBox(p as PartSpec & { id: string }, { ...ctx, flow }),
     };
     const boxes = new Map<string, Bounds>();
@@ -440,14 +646,129 @@ describe("filling the stage", () => {
     return { ds, boxes, text: (id: string) => ds.find((d) => d.id === id) as Extract<Drawable, { t: "text" }> };
   };
 
+  const room = (W = 1920, H = 1080) => {
+    const fr = stageFrame({ W, H }, { top: 0, right: 0, bottom: 0, left: 0 }, false);
+    return { x: fr.left, y: fr.top, w: W - fr.left - fr.right, h: H - fr.top - fr.bottom };
+  };
+  const within = (b: Bounds, r: Bounds) => b.x >= r.x - 1 && b.y >= r.y - 1 && b.x + b.w <= r.x + r.w + 1 && b.y + b.h <= r.y + r.h + 1;
+
+  it("shrinks parts too tall for the room until they fit it, and never past half", async () => {
+    const cards = Array.from({ length: 6 }, (_, i) => card({ label: `Step ${i + 1}`, body: "A sentence on a card" }));
+    const { ds, boxes } = await lay({ fill: false, parts: [title("Many"), ...cards] });
+    const r = room();
+    for (const id of ["card", "card.6"]) expect(within(boxes.get(id)!, r)).toBe(true);
+    expect(ds.filter((d) => d.owner.startsWith("card")).every((d) => within(bbox(d), r))).toBe(true);
+    // Under the heading: the shrink leaves the title where it was.
+    expect(boxes.get("card")!.y).toBeGreaterThan(boxes.get("title")!.y + boxes.get("title")!.h);
+    const many = await lay({ parts: [title("Too many"), ...Array.from({ length: 30 }, () => card({ body: "x" }))] });
+    const t = many.ds.find((d) => d.id === "card.body") as Extract<Drawable, { t: "text" }>;
+    expect(t.size).toBeCloseTo((SIZE.h2 - 4) * 0.5);
+  });
+
+  it("keeps a flow a row on a wide stage, shrunk, when stacking would shrink it more", async () => {
+    const steps = ["Look", "Listen", "Remember", "Read it", "Use it", "Say it"];
+    const wide = await lay({ kata: "flow", title: "Five steps", steps, at: 2 });
+    const ys = steps.map((_, i) => wide.boxes.get(`flow.${i}`)!.y);
+    expect(new Set(ys.map(Math.round)).size).toBe(1);
+    expect(within(wide.boxes.get("flow")!, room())).toBe(true);
+    // A tall stage stacks it.
+    const tall = await lay({ kata: "flow", title: "Five steps", steps, at: 2 }, 1080, 1920);
+    expect(tall.boxes.get("flow.1")!.y).toBeGreaterThan(tall.boxes.get("flow.0")!.y);
+  });
+
+  it("makes a picture as large as its room allows, or no wider than its pixels with upscale: false", async () => {
+    const images = { "a.png": { w: 300, h: 200 } };
+    const big = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png" }] }, 1920, 1080, images);
+    const b = big.boxes.get("image")!;
+    const r = room();
+    // As tall as the room under the heading, its shape kept.
+    expect(Math.abs(b.y + b.h - (r.y + r.h))).toBeLessThan(2);
+    expect(b.w / b.h).toBeCloseTo(1.5);
+    const small = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png", upscale: false }] }, 1920, 1080, images);
+    expect(small.boxes.get("image")!.w).toBeCloseTo(300);
+    const capped = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png", width: 600, upscale: false }] }, 1920, 1080, images);
+    expect(capped.boxes.get("image")!.w).toBeCloseTo(300);
+    // With a caption, the picture leaves it room.
+    const cap = await lay({ fill: false, parts: [title("A picture"), { type: "image", src: "a.png", caption: "A caption" }] }, 1920, 1080, images);
+    const c = cap.ds.find((d) => d.id === "image.caption")!;
+    expect(within(bbox(c), r)).toBe(true);
+  });
+
+  it("sets a text smaller until its longest word fits, with shrink", async () => {
+    const word = (shrink?: boolean | number) => lay({ fill: false, parts: [row([card({ body: "x", width: 900 }), { type: "text", role: "display", text: "accommodation", ...(shrink !== undefined ? { shrink } : {}) }], { narrow: "keep" })] });
+    const plain = (await word()).text("text");
+    expect(plain.need).toBeGreaterThan(plain.w + 1);
+    const fit = (await word(true)).text("text");
+    expect(fit.need).toBeLessThanOrEqual(fit.w + 1);
+    expect(fit.size).toBeLessThan(SIZE.display);
+    expect(fit.size).toBeGreaterThanOrEqual(SIZE.display / 2);
+    // No further than it says.
+    const floor = (await word(0.95)).text("text");
+    expect(floor.size).toBeCloseTo(SIZE.display * 0.95);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "text", text: "a", shrink: 0.1 }] }] })).toEqual([]);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "text", text: "a", shrink: 0 }, { type: "text", text: "b", shrink: 1.5 }] }] })).toEqual([
+      "scenes[0].parts[0] (text).shrink: expected true, false or a share above 0 and up to 1, got 0",
+      "scenes[0].parts[1] (text).shrink: expected true, false or a share above 0 and up to 1, got 1.5",
+    ]);
+  });
+
+  it("makes a figure as tall as its room allows", async () => {
+    const fig = { type: "figure", width: 1000, height: 1000, items: [{ rect: [0, 0, 1000, 1000], fill: "accent" }] };
+    const { boxes } = await lay({ fill: false, parts: [title("A figure"), fig] });
+    const r = room();
+    const b = boxes.get("figure")!;
+    // Before, 60% of the stage (648 here), shorter than the room under the heading.
+    expect(b.h).toBeGreaterThan(1080 * 0.6 + 50);
+    expect(Math.abs(b.y + b.h - (r.y + r.h))).toBeLessThan(2);
+  });
+
+  it("says when a card's width goes unused on every shape the reel lays out for", async () => {
+    const reel = (aspect: KitReelSpec["aspect"], scene: SceneSpec) => kit({ kit: 1, fonts, theme, aspect, scenes: [scene] });
+    const issues = async (aspect: KitReelSpec["aspect"], scene: SceneSpec) => {
+      const r = await reel(aspect, scene);
+      return (await r.check(resolveView(r.meta), await nodeEnv("."))).filter((i) => i.kind === "unused");
+    };
+    const written: SceneSpec = { parts: [title("Cards"), card({ body: "Narrow", width: 600 })] };
+    expect((await issues("9:16", written)).map((i) => i.msg)).toEqual(["card's width (600) goes unused: on a tall stage a card in a column takes the full width. Drop it, or put the card in a row"]);
+    // Used on the wide shapes of the default range; used in a row; set by a shape, not the reel.
+    expect(await issues(undefined, written)).toEqual([]);
+    expect(await issues("9:16", { parts: [row([card({ body: "a", width: 400 }), card({ body: "b", width: 400 })], { narrow: "keep" })] })).toEqual([]);
+    expect(await issues("9:16", { kata: "compare", title: "Two", left: { body: "a" }, right: { body: "b" } })).toEqual([]);
+  });
+
+  it("lays every built-in shape out at every shape of stage with nothing to fix", async () => {
+    const scenes: SceneSpec[] = [
+      { kata: "cover", kicker: "A short course", title: "Words for travel", sub: "Thirty words in four passes" },
+      { kata: "flow", title: "Four passes", steps: ["Look and listen", "Remember the meaning", "Read it at a glance", "Use it in a sentence"], at: 1, note: "One word at a time, four passes each" },
+      { kata: "flow", title: "Six steps", steps: ["Plan", "Write", "Check", "Fix", "Ship", "Watch"], at: 5 },
+      { kata: "compare", title: "Two ways", left: { label: "Before", body: "Every word read aloud" }, right: { label: "After", body: "Only the new words" } },
+      { kata: "stat", title: "Words learned", value: 120, unit: "words", label: "in four weeks" },
+      { kata: "points", title: "What helps", items: ["Short sessions", "Hearing it twice", "Using it the same day"], at: 1 },
+      { kata: "code", title: "The check", code: "const ok = words.every((w) => w.seen >= 4);\nif (!ok) review(words);", highlight: "w.seen >= 4", note: "Four passes each" },
+    ];
+    const reel = await kit({ kit: 1, fonts, theme, aspect: { min: "9:16", max: "16:9" }, scenes });
+    await registerFonts(reel, ".");
+    const env = await nodeEnv(".");
+    for (const aspect of ["16:9", "4:3", "1:1", "4:5", "9:16"]) {
+      const issues = await reel.check(resolveView(reel.meta, { aspect }), env);
+      expect(issues.filter((i) => i.kind !== "contrast").map((i) => `${aspect} ${i.scene} ${i.kind} ${i.msg}`)).toEqual([]);
+    }
+  });
+
   it("grows a few short parts to fill the room under the heading, and leaves a full scene be", async () => {
     const sparse = await lay({ kata: "points", title: "Why", items: ["One", "Two"] });
     expect(sparse.text("points.0").size).toBeCloseTo(SIZE.body * 1.6);
     expect(sparse.text("title").size).toBe(SIZE.h1);
     const off = await lay({ kata: "points", title: "Why", items: ["One", "Two"], fill: false });
     expect(off.text("points.0").size).toBe(SIZE.body);
-    const full = await lay({ kata: "points", title: "Why", items: Array.from({ length: 9 }, (_, i) => `Item number ${i}`) });
+    const full = await lay({ kata: "points", title: "Why", items: Array.from({ length: 8 }, (_, i) => `Item number ${i}`) });
     expect(full.text("points.0").size).toBe(SIZE.body);
+    // Too many for the room: shrunk to fit it, where the rows were squeezed into each other before.
+    const over = await lay({ kata: "points", title: "Why", items: Array.from({ length: 9 }, (_, i) => `Item number ${i}`) });
+    expect(over.text("points.0").size).toBeLessThan(SIZE.body);
+    const rows = Array.from({ length: 9 }, (_, i) => over.text(`points.${i}`));
+    rows.slice(1).forEach((t, i) => expect(t.y).toBeGreaterThanOrEqual(rows[i]!.y + rows[i]!.h));
+    expect(within(bbox(rows[8]!), room())).toBe(true);
   });
 
   it("places the parts under the heading at an edge of their room, and grows them as large as fits with fill: max", async () => {
@@ -588,7 +909,7 @@ describe("schema", () => {
     const b = kitBrief();
     expect(b).toContain("  flow: title*, steps* [..], at #, note");
     expect(b).toContain("  chip: text*, state (active|done)");
-    expect(b).toMatch(/^Scene: .*transition \(morph\|cut\|fade\|push\|wipe\)/m);
+    expect(b).toMatch(/^Scene: .*transition \(morph\|cut\|fade\|push\|wipe\|\{\.\.\}\)/m);
     expect(b).not.toMatch(/^ {2}paint:/m);
     expect(b.length).toBeLessThan(JSON.stringify(kitSchema()).length / 5);
   });
@@ -626,6 +947,18 @@ definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 
 `);
     await writeFile(join(dir, "uses.json"), JSON.stringify({ kit: 1, uses: ["dot.ts"], fonts: [{ family: "Geist", src: GEIST }], theme, scenes: [{ parts: [{ type: "dot" }] }] }));
     await writeFile(join(dir, "missing.json"), JSON.stringify({ kit: 1, uses: ["nope.ts"], scenes: [{ parts: [] }] }));
+    // A code reel built from data next to it: imported, or read with node:fs by import.meta.url.
+    const KIT = JSON.stringify(resolve("src/kit/index.ts"));
+    await writeFile(join(dir, "words.yaml"), "- accommodation\n- headquarters\n");
+    await writeFile(join(dir, "words.ts"), `import { kit } from ${KIT};
+import words from "./words.yaml";
+export default await kit({ kit: 1, fonts: ${JSON.stringify(fonts)}, theme: ${JSON.stringify(theme)}, scenes: words.map((w: string) => ({ parts: [{ type: "text", text: w }] })) });
+`);
+    await writeFile(join(dir, "fs.ts"), `import { readFileSync } from "node:fs";
+import { kit } from ${KIT};
+const words = readFileSync(new URL("./words.yaml", import.meta.url), "utf8").split("\\n");
+export default await kit({ kit: 1, scenes: [{ parts: [{ type: "text", text: words[0] }] }] });
+`);
   });
   afterAll(() => rm(dir, { recursive: true, force: true }));
 
@@ -654,6 +987,25 @@ definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 
   it("runs the modules uses names, with the kit the reel is made with", async () => {
     expect((await checkEntry({ entry: join(dir, "uses.json") })).count).toBe(0);
     await expect(loadCanvasEntry(join(dir, "missing.json"))).rejects.toThrow(/uses names nope.ts, which is not there/);
+  });
+
+  it("bundles YAML a code reel imports, for Node and for a browser", async () => {
+    const e = await loadCanvasEntry(join(dir, "words.ts"));
+    try {
+      expect((e!.reel as { timing: unknown[] }).timing).toHaveLength(2);
+    } finally {
+      await e?.close();
+    }
+    const { entryPoints: _, outfile: __, ...opts } = bundleOptions(join(dir, "words.ts"), "bundle.js");
+    const r = await build({ ...opts, entryPoints: [join(dir, "words.ts")], write: false, outdir: dir, format: "esm" });
+    expect(r.outputFiles[0]!.text).toContain("headquarters");
+  });
+
+  it("stops with the error a reel that imports node:fs threw, not as a page", async () => {
+    const err = await loadCanvasEntry(join(dir, "fs.ts")).then(() => null, (e: Error) => e);
+    expect(err?.message).toMatch(/fs\.ts failed as it loaded: .*ENOENT/);
+    expect(err?.message).toMatch(/import\.meta\.url/);
+    expect(err?.message).toMatch(/import words from "\.\/words\.yaml"/);
   });
 
   it("says what a JSON file without kit is", async () => {

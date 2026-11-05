@@ -19,7 +19,7 @@ function objectSchema(fields: Fields, part: object, extra: Record<string, unknow
 /** One field, short: its name, * if required, and its kind or values. */
 function brief(name: string, fd: Field): string {
   const kind = fd.enum
-    ? ` (${fd.enum.join("|")})`
+    ? ` (${fd.enum.join("|")}${fd.orObject ? "|{..}" : ""})`
     : { number: " #", boolean: " true|false", strings: " [..]", text: " text|[..]", parts: " [parts]", list: " [..]", object: " {..}" }[fd.kind as string] ?? "";
   return `${name}${fd.required ? "*" : ""}${kind}`;
 }

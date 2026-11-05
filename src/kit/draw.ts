@@ -27,6 +27,20 @@ function partial(pts: [number, number][], prog: number): [number, number][] {
   return out;
 }
 
+/** A line of `n` code points as runs [from, to, marked], the marks cut to it. */
+function runs(n: number, marks: Array<[number, number]>): Array<[number, number, boolean]> {
+  const out: Array<[number, number, boolean]> = [];
+  let at = 0;
+  for (const [a0, b0] of marks) {
+    const [a, b] = [Math.min(a0, n), Math.min(b0, n)];
+    if (a > at) out.push([at, a, false]);
+    if (b > a) out.push([a, b, true]);
+    at = Math.max(at, b);
+  }
+  if (at < n) out.push([at, n, false]);
+  return out;
+}
+
 function head(g: Context2D, tip: [number, number], from: [number, number], sw: number) {
   const ang = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
   const [L, W] = [sw * 3.6, sw * 2.4];
@@ -144,7 +158,17 @@ function one(g: Context2D, d: Live, c: DrawCtx) {
           const lw = F.measure(full, d.font, d.size, d.track);
           x = d.align === "center" ? d.x + (d.w - lw) / 2 : d.x + d.w - lw;
         }
-        g.fillText(line, x, base);
+        const marks = d.marks?.[i];
+        if (!marks?.length) return void g.fillText(line, x, base);
+        // In runs, each in its colour, one after another along the line.
+        const shown = [...line];
+        for (const [a, b, marked] of runs(shown.length, marks)) {
+          const s = shown.slice(a, b).join("");
+          g.fillStyle = marked ? d.mark! : d.color;
+          g.fillText(s, x, base);
+          x += F.measure(s, d.font, d.size, d.track);
+        }
+        g.fillStyle = d.color;
       });
       break;
     }

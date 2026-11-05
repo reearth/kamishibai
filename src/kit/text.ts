@@ -173,3 +173,48 @@ export function speechMs(s: string): number {
   }
   return Math.round((wide / 7.5 + narrow / 14) * 1000);
 }
+
+/** Ranges of code points, [from, to), within a string. */
+export type Marks = Array<[number, number]>;
+
+/**
+ * Text with its marked runs taken out: `re·**ceipt**` is `re·ceipt` with
+ * `ceipt` marked. Only paired `**` mark, so a lone one (`2 ** 10`) stays.
+ */
+export function parseMarks(s: string): { plain: string; marks: Marks } {
+  const parts = s.split("**");
+  if (parts.length < 3) return { plain: s, marks: [] };
+  // An odd one out at the end stays as written.
+  const tail = parts.length % 2 === 0 ? `**${parts.pop()}` : "";
+  let plain = "";
+  const marks: Marks = [];
+  parts.forEach((p, i) => {
+    const at = [...plain].length;
+    plain += p;
+    if (i % 2 === 1 && p) marks.push([at, at + [...p].length]);
+  });
+  return { plain: plain + tail, marks };
+}
+
+/**
+ * The marks of each line `plain` was broken into, counted from the line's
+ * start. The lines are runs of `plain` in order, less the spaces and line
+ * breaks they were broken at.
+ */
+export function lineMarks(plain: string, marks: Marks, lines: string[]): Marks[] {
+  const cps = [...plain];
+  let p = 0;
+  return lines.map((line) => {
+    const l = [...line];
+    if (!l.length) return [];
+    const at = (i: number) => l.every((c, j) => cps[i + j] === c);
+    let i = p;
+    while (i < cps.length && !at(i)) i++;
+    if (i >= cps.length) return [];
+    p = i + l.length;
+    return marks.flatMap(([a, b]): Marks => {
+      const [x, y] = [Math.max(a, i) - i, Math.min(b, p) - i];
+      return x < y ? [[x, y]] : [];
+    });
+  });
+}
