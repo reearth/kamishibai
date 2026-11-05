@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { folderSize, formatBytes, removeOnExit, strayFrames, strayFramesNote, TEMP_FRAMES_PREFIX } from "../src/frames-disk.ts";
+import { folderSize, formatBytes, removeOnExit, strayFrames, strayFramesNote, TEMP_FRAMES_PREFIX, vanishedError, VanishedError } from "../src/frames-disk.ts";
 
 describe("frames on disk", () => {
   let tmp: string;
@@ -36,6 +36,22 @@ describe("frames on disk", () => {
     expect(stray.map((s) => [s.dir, s.files, s.bytes])).toEqual([[old, 2, 1000]]);
     expect(strayFramesNote(stray)).toBe([`1 frames folder left by a render that was stopped takes 1000 B:`, `  ${old}`, "  Delete them once no other render is running."].join("\n"));
     expect(strayFramesNote([])).toBeUndefined();
+  });
+
+  it("says a folder went away during the render, once, with the error as its cause", async () => {
+    const here = await folder("still-here", 0, 0, 0);
+    const enoent = new Error("ENOENT: no such file or directory, open 'f000042.png'");
+    // Nothing gone: the error as it was.
+    expect(vanishedError(enoent, [here, undefined])).toBe(enoent);
+    const gone = join(tmp, "gone");
+    const err = vanishedError(enoent, [gone, here]) as VanishedError;
+    expect(err).toBeInstanceOf(VanishedError);
+    expect(err.cause).toBe(enoent);
+    expect(err.message.split("\n")[0]).toBe(`A folder kamishibai was using went away during the render: ${gone}`);
+    // In the temp dir, the advice is about cleanups of it and --frames-dir.
+    expect(err.message).toMatch(/cleanup of the temp dir.*--frames-dir/);
+    // Wrapped once, however many layers pass it on.
+    expect(vanishedError(err, [gone])).toBe(err);
   });
 
   it("removes a render's temporary frames when the process is stopped", async () => {
