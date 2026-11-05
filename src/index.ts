@@ -16,6 +16,10 @@ export type {
 } from "./render.ts";
 
 export { dev } from "./dev/server.ts";
+
+// Text widths as a kit reel draws them, for a script that writes one.
+export { textMeasurer, measureText } from "./kit-measure.ts";
+export type { TextMeasurerOptions, MeasureText } from "./kit-measure.ts";
 export type { DevOptions, DevServer, CcMode } from "./dev/server.ts";
 
 export { audio } from "./audio.ts";

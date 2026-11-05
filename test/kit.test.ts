@@ -16,7 +16,7 @@ import { layoutScene, partBox, stageFrame } from "../src/kit/stage.ts";
 import { loadYoga } from "../src/kit/layout.ts";
 import { Fonts } from "../src/kit/text.ts";
 import { mergeTheme, SIZE } from "../src/kit/theme.ts";
-import { itemPaint } from "../src/kit/items.ts";
+import { itemPaint, resolveItems } from "../src/kit/items.ts";
 import { check } from "../src/kit/check.ts";
 import { parseColour } from "../src/kit/colour.ts";
 import type { Ctx } from "../src/kit/parts.ts";
@@ -415,6 +415,45 @@ describe("kit", () => {
     expect(problems({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", text: "x", cue: 2 }] }] })[0]).toMatch(/cue: 2 is not a sentence of this scene's say \(it has 2/);
   });
 
+  it("places a figure's items by the edges of items before them, measured in the reel's fonts", async () => {
+    await loadYoga();
+    const T = mergeTheme(theme);
+    const F = new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), T);
+    await registerFonts(await kit({ kit: 1, fonts, theme, scenes: [{ parts: [title("A")] }] }), ".");
+    const items = resolveItems([
+      { id: "syl1", text: "re", pos: [100, 120], size: 64 },
+      { id: "syl2", text: "CEIPT", pos: ["syl1.right+16", 120], size: 64, color: "accent" },
+      // Under the stressed syllable, from its left edge, a line as long as it is read.
+      { id: "len", line: [["syl2.left", "syl2.bottom+10"], ["syl2.left+240", "syl2.bottom+10"]] },
+      // A frame around both, by its corners.
+      { id: "frame", box: ["syl1.left-12", "syl1.top-8", "syl2.right+12", "syl2.bottom+8"], stroke: "accent", r: 12 },
+    ], F);
+    const w1 = F.measure("re", "sans", 64);
+    const w2 = F.measure("CEIPT", "sans", 64);
+    expect(items[1]!.pos).toEqual([100 + w1 + 16, 120]);
+    expect(items[2]!.line).toEqual([[100 + w1 + 16, 120 + 64 * 1.3 + 10], [100 + w1 + 16 + 240, 120 + 64 * 1.3 + 10]]);
+    const [bx, by, bw, bh] = items[3]!.rect as number[];
+    expect([bx, by]).toEqual([88, 112]);
+    expect(bw).toBeCloseTo(w1 + 16 + w2 + 24);
+    expect(bh).toBeCloseTo(64 * 1.3 + 16);
+    expect(items[3]!.box).toBeUndefined();
+    // Through a figure, as numbers, with nothing reported.
+    const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [{ parts: [{ type: "figure", width: 800, height: 300, items: [
+      { id: "a", text: "Hello", pos: [20, 20] },
+      { box: ["a.left-8", "a.top-8", "a.right+8", "a.bottom+8"], stroke: "accent" },
+    ] }] }] });
+    expect(await reel.check(resolveView(reel.meta), await nodeEnv("."))).toEqual([]);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [
+      { line: [["b.left", 0], [1, 1]] },
+      { id: "b", text: "x", pos: ["nope.right", 0] },
+      { box: ["b.middle", 0, 1, 1] },
+    ] }] }] })).toEqual([
+      'scenes[0].parts[0] (figure).items[0]: "b.left" names "b", which comes after it: an item\'s edges are known once it is placed, so put "b" first',
+      'scenes[0].parts[0] (figure).items[1]: "nope.right" names no item "nope" before it',
+      'scenes[0].parts[0] (figure).items[2]: "b.middle" is not a coordinate: a number, or an item\'s edge such as "syl1.right" or "w3.bottom+8" (left, right, top, bottom, cx, cy)',
+    ]);
+  });
+
   it("draws a figure from data, moving an item kept under its id", async () => {
     const box = (x: number, fill: string) => ({ id: "box", rect: [x, 10, 100, 60], fill, r: 8 });
     const reel = await kit({
@@ -429,7 +468,7 @@ describe("kit", () => {
     expect(await reel.check(resolveView(reel.meta), await nodeEnv("."))).toEqual([]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ rect: [0, 0] }, { circle: [0, 0, 1], line: [[0, 0], [1, 1]] }] }] }] })).toEqual([
       "scenes[0].parts[0] (figure).items[0].rect: expected [x, y, w, h]",
-      "scenes[0].parts[0] (figure).items[1]: give one of rect, circle, line, text (got circle and line)",
+      "scenes[0].parts[0] (figure).items[1]: give one of rect, box, circle, line, text (got circle and line)",
     ]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ line: [[0, 0], [1, 1]], width: 4 }] }] }] })).toEqual([
       expect.stringMatching(/^scenes\[0\]\.parts\[0\] \(figure\)\.items\[0\]\.width: only a text takes width \(where it wraps\); a line's or an outline's is lineWidth$/),

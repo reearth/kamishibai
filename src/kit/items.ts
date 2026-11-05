@@ -7,17 +7,25 @@ import type { Drawable, Step, Verb } from "./model.ts";
 import type { Fonts } from "./text.ts";
 import { SIZE, type FontRole, type Theme } from "./theme.ts";
 
+/**
+ * A coordinate: a number in the figure's units, or an edge of an item before
+ * it, by id, and an offset: "syl1.right+16", "w3.bottom", "title.cx".
+ */
+export type Coord = number | string;
+
 export type FigureItem = {
   id?: string;
   enter?: Verb;
   /** in a figure: come in as this sentence of the scene's say starts */
   cue?: number;
-  rect?: [number, number, number, number];
-  circle?: [number, number, number];
-  line?: [number, number][];
+  rect?: [Coord, Coord, number, number];
+  /** a rect by two corners: [x1, y1, x2, y2] */
+  box?: [Coord, Coord, Coord, Coord];
+  circle?: [Coord, Coord, number];
+  line?: [Coord, Coord][];
   text?: string;
   /** a text's anchor */
-  pos?: [number, number];
+  pos?: [Coord, Coord];
   fill?: string;
   stroke?: string;
   /** a line's or an outline's width */
@@ -50,10 +58,76 @@ export type FigureItem = {
  */
 export type ItemStep = Partial<Pick<FigureItem, "rect" | "circle" | "line" | "text" | "pos" | "fill" | "stroke" | "lineWidth" | "r" | "size" | "color" | "opacity">> & { cue?: number; delay?: number; ms?: number };
 
-const SHAPES = ["rect", "circle", "line", "text"] as const;
+const SHAPES = ["rect", "box", "circle", "line", "text"] as const;
 const KEYS = [...SHAPES, "id", "enter", "pos", "fill", "stroke", "lineWidth", "r", "arrow", "size", "color", "bold", "mono", "font", "width", "opacity", "dash", "align", "then"];
-const STEP_KEYS = [...SHAPES, "pos", "fill", "stroke", "lineWidth", "r", "size", "color", "opacity", "ms"];
+const STEP_KEYS = [...SHAPES.filter((k) => k !== "box"), "pos", "fill", "stroke", "lineWidth", "r", "size", "color", "opacity", "ms"];
 const ROLES = ["sans", "bold", "black", "mono"];
+/** An edge of an item, by id, and an offset: "syl1.right+16". */
+const REF = /^([A-Za-z0-9_-]+)\.(left|right|top|bottom|cx|cy)\s*(?:([+-])\s*(\d+(?:\.\d+)?))?$/;
+const isCoord = (v: unknown) => (typeof v === "number" && isFinite(v)) || typeof v === "string";
+/** The strings an item gives where a coordinate goes. */
+function refsOf(it: Record<string, unknown>): string[] {
+  const at = (v: unknown, n: number[]) => (Array.isArray(v) ? n.map((i) => v[i]).filter((x): x is string => typeof x === "string") : []);
+  return [
+    ...at(it.rect, [0, 1]),
+    ...at(it.box, [0, 1, 2, 3]),
+    ...at(it.circle, [0, 1]),
+    ...at(it.pos, [0, 1]),
+    ...(Array.isArray(it.line) ? it.line.flatMap((p) => at(p, [0, 1])) : []),
+  ];
+}
+
+/** An item's box in the figure's units, from its own numbers (a text measured in the reel's fonts). */
+function itemBox(it: FigureItem, fonts: Fonts): { x: number; y: number; w: number; h: number } {
+  const n = (v: Coord | undefined) => v as number;
+  if (it.rect) return { x: n(it.rect[0]), y: n(it.rect[1]), w: it.rect[2], h: it.rect[3] };
+  if (it.circle) return { x: n(it.circle[0]) - it.circle[2], y: n(it.circle[1]) - it.circle[2], w: it.circle[2] * 2, h: it.circle[2] * 2 };
+  if (it.line) {
+    const xs = it.line.map((p) => n(p[0]));
+    const ys = it.line.map((p) => n(p[1]));
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+  }
+  // A text scales with its size, so it is measured at its own size, in the figure's units.
+  const size = it.size ?? SIZE.body;
+  const font: FontRole = it.font ?? (it.mono ? "mono" : it.bold ? "bold" : "sans");
+  const lines = it.width ? fonts.balance(it.text!, font, size, it.width) : it.text!.split("\n");
+  const w = Math.max(...lines.map((l) => fonts.measure(l, font, size)));
+  const align = it.align ?? "start";
+  return { x: n(it.pos![0]) - (align === "center" ? w / 2 : align === "end" ? w : 0), y: n(it.pos![1]), w, h: lines.length * size * 1.3 };
+}
+
+/**
+ * The items with every coordinate a number: an edge of an item before it
+ * ("syl1.right+16") becomes that item's edge, measured in the reel's fonts
+ * and theme, plus the offset; a box becomes the rect between its corners.
+ * checkItems has made sure each named item comes before.
+ */
+export function resolveItems<T extends FigureItem>(items: T[], fonts: Fonts): T[] {
+  const boxes = new Map<string, { x: number; y: number; w: number; h: number }>();
+  const at = (v: Coord): number => {
+    if (typeof v === "number") return v;
+    const m = REF.exec(v);
+    const b = m ? boxes.get(m[1]!) : undefined;
+    if (!m || !b) return 0;
+    const edge = { left: b.x, right: b.x + b.w, top: b.y, bottom: b.y + b.h, cx: b.x + b.w / 2, cy: b.y + b.h / 2 }[m[2] as "left"]!;
+    return edge + (m[4] ? (m[3] === "-" ? -1 : 1) * Number(m[4]) : 0);
+  };
+  return items.map((it) => {
+    const out: T = { ...it };
+    if (it.rect) out.rect = [at(it.rect[0]), at(it.rect[1]), it.rect[2], it.rect[3]];
+    if (it.box) {
+      const [x1, y1, x2, y2] = it.box.map(at) as [number, number, number, number];
+      delete out.box;
+      out.rect = [Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)];
+    }
+    if (it.circle) out.circle = [at(it.circle[0]), at(it.circle[1]), it.circle[2]];
+    if (it.line) out.line = it.line.map(([x, y]) => [at(x), at(y)]);
+    if (it.pos) out.pos = [at(it.pos[0]), at(it.pos[1])];
+    if (it.id !== undefined) boxes.set(it.id, itemBox(out, fonts));
+    return out;
+  });
+}
+
 const isNums = (v: unknown, n?: number) => Array.isArray(v) && (n === undefined || v.length === n) && v.every((x) => typeof x === "number" && isFinite(x));
 
 /** What is wrong with a list of items, each message led by `at`. `extra` names the fields this use adds (cue, delay). */
@@ -61,6 +135,7 @@ export function checkItems(items: unknown, at: string, extra: readonly string[])
   if (!Array.isArray(items)) return [];
   const keys = [...KEYS, ...extra];
   const out: string[] = [];
+  const seen = new Set<string>();
   items.forEach((it, i) => {
     const where = `${at}[${i}]`;
     if (!it || typeof it !== "object") return void out.push(`${where}: expected an item ({ rect | circle | line | text, … })`);
@@ -68,11 +143,23 @@ export function checkItems(items: unknown, at: string, extra: readonly string[])
     if (unknown.length) out.push(`${where}: unknown field${unknown.length === 1 ? "" : "s"} ${unknown.map((k) => `"${k}"`).join(", ")}; an item takes ${keys.join(", ")}`);
     const kinds = SHAPES.filter((k) => it[k] !== undefined);
     if (kinds.length !== 1) return void out.push(`${where}: give one of ${SHAPES.join(", ")} (got ${kinds.length ? kinds.join(" and ") : "none"})`);
-    if (it.rect !== undefined && !isNums(it.rect, 4)) out.push(`${where}.rect: expected [x, y, w, h]`);
-    if (it.circle !== undefined && !isNums(it.circle, 3)) out.push(`${where}.circle: expected [cx, cy, r]`);
-    if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p: unknown) => isNums(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
+    const coords = (v: unknown, n: number) => Array.isArray(v) && v.length === n && v.every(isCoord);
+    if (it.rect !== undefined && !(coords(it.rect.slice(0, 2), 2) && isNums(it.rect.slice(2), 2) && it.rect.length === 4)) out.push(`${where}.rect: expected [x, y, w, h]`);
+    if (it.box !== undefined && !coords(it.box, 4)) out.push(`${where}.box: expected [x1, y1, x2, y2], its corners`);
+    if (it.circle !== undefined && !(Array.isArray(it.circle) && it.circle.length === 3 && coords(it.circle.slice(0, 2), 2) && isNums(it.circle.slice(2), 1))) out.push(`${where}.circle: expected [cx, cy, r]`);
+    if (it.line !== undefined && (!Array.isArray(it.line) || it.line.length < 2 || !it.line.every((p: unknown) => coords(p, 2)))) out.push(`${where}.line: expected two points or more, [[x, y], …]`);
     else if (it.line !== undefined && it.fill !== undefined && it.line.length < 3) out.push(`${where}.line: a filled line is a closed shape, so it needs three points or more`);
-    if (it.text !== undefined && (typeof it.text !== "string" || !isNums(it.pos, 2))) out.push(`${where}: a text needs text and pos: [x, y]`);
+    if (it.text !== undefined && (typeof it.text !== "string" || !coords(it.pos, 2))) out.push(`${where}: a text needs text and pos: [x, y]`);
+    // An edge named in a coordinate is an item's before this one.
+    for (const ref of refsOf(it)) {
+      const m = REF.exec(ref);
+      if (!m) out.push(`${where}: "${ref}" is not a coordinate: a number, or an item's edge such as "syl1.right" or "w3.bottom+8" (left, right, top, bottom, cx, cy)`);
+      else if (!seen.has(m[1]!)) {
+        const later = items.slice(i + 1).some((o: { id?: unknown }) => o && o.id === m[1]);
+        out.push(`${where}: "${ref}" names ${later ? `"${m[1]}", which comes after it: an item's edges are known once it is placed, so put "${m[1]}" first` : `no item "${m[1]}" before it`}`);
+      }
+    }
+    if (typeof it.id === "string") seen.add(it.id);
     if (it.font !== undefined && !ROLES.includes(it.font)) out.push(`${where}.font: "${it.font}" is not one of ${ROLES.map((r) => `"${r}"`).join(", ")}`);
     if (it.width !== undefined && it.text === undefined) out.push(`${where}.width: only a text takes width (where it wraps); a line's or an outline's is lineWidth`);
     else if (it.width !== undefined && !(typeof it.width === "number" && it.width > 0)) out.push(`${where}.width: expected a width in the figure's units`);
@@ -146,15 +233,15 @@ export function itemPaint(it: FigureItem, base: { id: string; o: number; enter?:
   base = { ...base, o: base.o * (it.opacity ?? 1) };
   const dash = it.dash ? { dash: it.dash.map((v) => v * k) } : {};
   if (it.rect) {
-    const [x, y, w, h] = it.rect;
+    const [x, y, w, h] = it.rect as [number, number, number, number];
     return { ...base, t: "rect", x: X(x), y: Y(y), w: w * k, h: h * k, r: (it.r ?? 0) * k, fill: it.fill || it.stroke ? (it.fill ? colour(it.fill, T, T.card) : undefined) : T.card, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k, ground: !!it.fill, ...dash };
   }
   if (it.circle) {
-    const [cx, cy, rad] = it.circle;
+    const [cx, cy, rad] = it.circle as [number, number, number];
     return { ...base, t: "circle", cx: X(cx), cy: Y(cy), r: rad * k, fill: it.fill || !it.stroke ? colour(it.fill, T, T.ink) : undefined, stroke: it.stroke ? colour(it.stroke, T, T.ink) : undefined, sw: (it.lineWidth ?? 2) * k, ...dash };
   }
   if (it.line) {
-    const pts = it.line.map(([x, y]) => [X(x), Y(y)] as [number, number]);
+    const pts = (it.line as [number, number][]).map(([x, y]) => [X(x), Y(y)] as [number, number]);
     // With a fill, the points close into a shape, outlined only with a stroke.
     if (it.fill) return { ...base, t: "path", pts, fill: colour(it.fill, T, T.ink), stroke: it.stroke ? colour(it.stroke, T, T.ink) : "", sw: (it.lineWidth ?? 2) * k, prog: 1, head: "none", ...dash };
     return { ...base, t: "path", pts, stroke: colour(it.stroke, T, T.ink), sw: (it.lineWidth ?? 4) * k, prog: 1, head: it.arrow ? "end" : "none", ...dash };
@@ -166,6 +253,6 @@ export function itemPaint(it: FigureItem, base: { id: string; o: number; enter?:
   const h = lines.length * size * 1.3;
   const align = it.align ?? "start";
   // pos is the text's top-left (or top-centre, top-right) corner
-  const x = X(it.pos![0]) - (align === "center" ? w / 2 : align === "end" ? w : 0);
-  return { ...base, t: "text", x, y: Y(it.pos![1]), w, h, lines, font, size, lh: 1.3, track: 0, color: colour(it.color, T, T.ink), align, need: w };
+  const x = X(it.pos![0] as number) - (align === "center" ? w / 2 : align === "end" ? w : 0);
+  return { ...base, t: "text", x, y: Y(it.pos![1] as number), w, h, lines, font, size, lh: 1.3, track: 0, color: colour(it.color, T, T.ink), align, need: w };
 }
