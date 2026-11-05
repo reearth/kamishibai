@@ -104,7 +104,7 @@ In a part's text (a heading, a `text`, a card's label and body, a list's items, 
 | `chip` | `text`\*, `state` (`active`, `done`), `n` | A pill, for a step. `n` puts a number in a badge before the label, a tick once it is done. |
 | `stat` | `value`\*, `unit`, `label`, `tone`, `digits` | A big number that counts up from its previous value. |
 | `list` | `items`\*, `at` | A bulleted list; `at` stresses one item. |
-| `image` | `src`\*, `width`, `height`, `upscale`, `caption` | A picture, as large as the room it gets allows, its shape kept: as tall as the room under the heading, less its caption. `width` and `height` hold it smaller; `upscale: false` keeps it no wider than the file's own pixels, so a small file stays sharp. |
+| `image` | `src`\*, `width`, `height`, `upscale`, `caption` | A picture, as large as the room it gets allows, its shape kept: as tall as the room under the heading, less its caption. `width` and `height` hold it smaller; `upscale: false` keeps it no wider than the file's own pixels, so a small file stays sharp. Its corners are rounded, but square where it meets the frame's edge (with a scene's `margin: 0`). |
 | `figure` | `width`\*, `height`\*, `items`\*, `caption` | A drawing as data (see below), as large as the room under the heading allows. |
 | `paint` | `width`\*, `height`\*, `fn`\*, `key` | A box drawn by code, `fn(g, ms, w, h)`, on the reel's clock. Only in a code reel. |
 

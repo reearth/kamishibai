@@ -176,7 +176,9 @@ function one(g: Context2D, d: Live, c: DrawCtx) {
       const img = c.images.get(d.src);
       if (!img) break;
       g.beginPath();
-      g.roundRect(d.x, d.y, d.w, d.h, Math.max(0, Math.min(d.r, d.w / 2, d.h / 2)));
+      // Square where it meets the frame's edge, rounded elsewhere.
+      const r = Math.max(0, Math.min(d.r, d.w / 2, d.h / 2));
+      g.roundRect(d.x, d.y, d.w, d.h, d.square ? d.square.map((sq) => (sq ? 0 : r)) : r);
       g.clip();
       g.drawImage(img, d.x, d.y, d.w, d.h);
       break;

@@ -735,6 +735,13 @@ describe("filling the stage", () => {
     const images = { "a.png": { w: 1920, h: 1080 } };
     const full = await lay({ margin: 0, fill: false, parts: [{ type: "image", src: "a.png" }] }, 1920, 1080, images);
     expect(full.boxes.get("image")).toEqual({ x: 0, y: 0, w: 1920, h: 1080 });
+    // Its corners are square where it meets the frame's edge, and only there.
+    const square = (r: Awaited<ReturnType<typeof lay>>) => (r.ds.find((d) => d.t === "image") as Extract<Drawable, { t: "image" }>).square;
+    expect(square(full)).toEqual([true, true, true, true]);
+    const left = await lay({ margin: { left: 0 }, place: "left", fill: false, parts: [{ type: "image", src: "a.png", width: 600 }] }, 1920, 1080, images);
+    expect(square(left)).toEqual([true, false, false, true]);
+    const inside = await lay({ fill: false, parts: [{ type: "image", src: "a.png" }] }, 1920, 1080, images);
+    expect(square(inside)).toBeUndefined();
     // The same through kit(): a picture at the edge is not off the stage at a scene's margin 0, nor at a reel's margin of 20.
     const env = await nodeEnv(".");
     const pic = join(tmpdir(), `kamishibai-margin-${process.pid}.png`);

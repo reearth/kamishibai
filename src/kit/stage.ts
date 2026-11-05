@@ -4,7 +4,7 @@
 // ------------------------------------------------------------------
 import type { Insets } from "../canvas/types.ts";
 import { layout, type Box } from "./layout.ts";
-import { bbox, type Bounds, type Drawable } from "./model.ts";
+import { bbox, type Bounds, type Drawable, type ImageD } from "./model.ts";
 import type { NormScene } from "./normalize.ts";
 import { isTall, partDef, rect, type Ctx, type Frame, type Stage } from "./parts.ts";
 import type { PartSpec } from "./spec.ts";
@@ -96,7 +96,15 @@ export function layoutScene(scene: NormScene, ctx: Ctx, boxes?: Map<string, Boun
     }
   }
   for (const [id, b] of placed) boxes?.set(id, b);
-  return ds;
+  // A picture that reaches the frame's edge has square corners there, not a rounded one cut against it.
+  return ds.map((d) => (d.t === "image" ? edged(d, W, H) : d));
+}
+
+/** An image with the corners square where it meets the stage's edge. */
+function edged(d: ImageD, W: number, H: number): ImageD {
+  const at = { l: d.x <= 0.5, t: d.y <= 0.5, r: d.x + d.w >= W - 0.5, b: d.y + d.h >= H - 0.5 };
+  const square: ImageD["square"] = [at.l || at.t, at.r || at.t, at.r || at.b, at.l || at.b];
+  return square.some(Boolean) ? { ...d, square } : d;
 }
 
 /** A part's id and the ids of every part inside it. */

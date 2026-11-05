@@ -494,7 +494,7 @@ scenes:
   size, font }` styles burned ones (white on a dark box, 40/48, bold).
 - `margin: 40` (or `{ top, right, bottom, left }`) on the reel or a scene
   sets the room kept at the stage's edges (default 88/96 wide, 120/72 tall);
-  a scene's `margin: 0` lets a picture fill the frame. Captions and insets
+  a scene's `margin: 0` lets a picture fill the frame (square corners at the edge). Captions and insets
   take room beyond it, and check holds a scene to its own margin.
 - `progress: true` draws a bar at the foot that fills as the reel plays
   (`{ color, size: 10, at: bottom|top, track }`). A code reel draws its own
