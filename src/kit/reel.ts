@@ -117,6 +117,14 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
 
   const audio: NonNullable<CanvasReel["audio"]> = [];
   for (const t of timing) t.say.forEach((l, i) => l.src && audio.push({ src: l.src, atMs: l.atMs, label: `${t.id}#${i}` }));
+  // A scene's sounds, from its start or a sentence's: the times are known only now the voice is measured.
+  scenes.forEach((s, i) => {
+    const t = timing[i]!;
+    s.sounds.forEach((snd, j) => {
+      const from = snd.cue && t.say[snd.cue] ? t.say[snd.cue]!.atMs : t.start;
+      audio.push({ src: snd.src, atMs: Math.round(from + snd.at), ...(snd.gain !== undefined ? { gain: snd.gain } : {}), label: `${t.id} sound ${j}` });
+    });
+  });
   if (spec.music) {
     const m = spec.music;
     audio.push({ src: m.src, atMs: 0, durationMs, loop: true, gain: m.gain ?? -14, duck: m.duck ?? true, fadeInMs: m.fadeInMs, fadeOutMs: m.fadeOutMs ?? 1500, trimStartMs: m.trimStartMs, label: "music" });

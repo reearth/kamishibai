@@ -3,9 +3,10 @@
 // much, a render stopped by Ctrl+C removes its temporary ones, and the next
 // render points out any that a stopped render left behind.
 // ------------------------------------------------------------------
-import { rmSync } from "node:fs";
+import { existsSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 /** The prefix of a render's temporary frames folder, in the OS's temp dir. */
 export const TEMP_FRAMES_PREFIX = "kamishibai-frames-";
@@ -86,4 +87,46 @@ export function strayFramesNote(stray: Awaited<ReturnType<typeof strayFrames>>):
     ...list,
     "  Delete them once no other render is running.",
   ].join("\n");
+}
+
+/** A folder a render was using went away under it. */
+export class VanishedError extends Error {
+  override name = "VanishedError";
+}
+
+/**
+ * `err` as it happened, unless a folder the render was using is gone: then
+ * an error that says so (another process removed it), with `err` as its
+ * cause. A bare ENOENT on a frame, or a stack from loading the bundle, says
+ * nothing of why.
+ */
+export function vanishedError(err: unknown, dirs: Array<string | undefined>): unknown {
+  if (err instanceof VanishedError) return err;
+  const gone = dirs.filter((d): d is string => !!d && !existsSync(d));
+  if (!gone.length) return err;
+  const msg = err instanceof Error ? err.message : String(err);
+  // In the temp dir, a cleanup of it is the likely cause; --frames-dir moves the frames out.
+  const inTemp = gone.some((d) => resolve(d).startsWith(resolve(tmpdir())) || realOf(d).startsWith(realOf(tmpdir())));
+  return new VanishedError(
+    [
+      `${gone.length === 1 ? "A folder" : "Folders"} kamishibai was using went away during the render: ${gone.join(", ")}`,
+      inTemp
+        ? "  Another process removed it, such as a cleanup of the temp dir. Keep that from touching kamishibai-* folders while a render runs; --frames-dir <dir> keeps the frames out of the temp dir."
+        : "  Another process removed it while the render was writing to it.",
+      `  (${msg})`,
+    ].join("\n"),
+    { cause: err },
+  );
+}
+
+/** A path with its links resolved, as far as it still exists (/var → /private/var on macOS). */
+function realOf(p: string): string {
+  let at = resolve(p);
+  const rest: string[] = [];
+  while (!existsSync(at) && dirname(at) !== at) (rest.unshift(basename(at)), (at = dirname(at)));
+  try {
+    return join(realpathSync(at), ...rest);
+  } catch {
+    return resolve(p);
+  }
 }

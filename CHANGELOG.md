@@ -4,6 +4,22 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Added
+
+- **A scene plays sounds**: `sounds: [{ src, at?, cue?, gain? }]`, each `at` ms after the scene starts or after sentence `cue` starts, at `gain` dB. A scene's times are known only once the voice is measured, so a click on a beat used to mean wrapping the reel `kit()` returns.
+- **`kamishibai timing <reel>`** prints where a kit reel's scenes, sentences and sounds fall on its clock, with the narration's real lengths (from the TTS cache, or synthesized into it as a render would); `--json` for scripts. A kit reel imported in plain Node, with no TTS engine, now warns that it estimated the narration.
+- **A figure's items can be placed by other items' edges**: a coordinate may be `"syl1.right+16"` (left, right, top, bottom, cx, cy, and an offset) for an item before it, measured in the reel's fonts and theme as the figure lays out, and `box: [x1, y1, x2, y2]` is a rect by its corners. The same works in `morph`.
+- **`textMeasurer({ fonts, theme })` and `measureText`** from `kamishibai` measure text as a kit reel draws it, for a script that writes a reel.
+- **`kamishibai check` reports `timing`**: a scene that ends less than half a second (or half the scene) after its parts are all in.
+- **A render says when a folder it was using goes away** (its frames, or the bundled reel): which folder, that another process removed it, and to use `--frames-dir` or keep temp-dir cleanups away, instead of a bare `ENOENT`.
+
+### Changed
+
+- **A fade crossfades.** A scene that comes in by a `fade` is there whole under the scene before as it fades out, as one that cuts, pushes or wipes in already is; only parts with a `cue` or a `delay` of their own come in with their verb. Before, the parts waited for the fade and then came in one by one, so a short scene was over before they had.
+- **`sounds` is a scene field**, so a shape made with `defineKata` can't name one of its own fields `sounds`.
+
 ## 0.12.0
 
 ### Added

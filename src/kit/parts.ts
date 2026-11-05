@@ -7,7 +7,7 @@ import { intrinsic, layout, type Box, type Paint, type Rect } from "./layout.ts"
 import { f, type Fields } from "./fields.ts";
 import { MIN_FIT, SIZE, type FontRole, type Theme } from "./theme.ts";
 import { lineMarks, parseMarks, type Fonts } from "./text.ts";
-import { checkItems, colour, itemPaint, itemSteps, type FigureItem } from "./items.ts";
+import { checkItems, colour, itemPaint, itemSteps, resolveItems, type FigureItem } from "./items.ts";
 import type {
   ArrowSpec,
   CardSpec,
@@ -538,7 +538,7 @@ definePart<FigureSpec>("figure", {
   fields: {
     width: f.num("its units across", true),
     height: f.num("its units down", true),
-    items: f.list('{ rect: [x, y, w, h] } | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } (with fill: a closed, filled shape) | { text, pos: [x, y], size?, font? (sans|bold|black|mono), width? (wraps there), align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), opacity, dash: [on, off], id, enter, cue, then: [{ cue?, delay?, ms?, …the fields that change }]. pos is the top-left of a text (top-centre with align: center); size defaults to 44', true),
+    items: f.list('{ rect: [x, y, w, h] } | { box: [x1, y1, x2, y2] } (a rect by its corners) | { circle: [cx, cy, r] } | { line: [[x, y], …], arrow? } (with fill: a closed, filled shape) | { text, pos: [x, y], size?, font? (sans|bold|black|mono), width? (wraps there), align? }, with fill, stroke, lineWidth, r, color (a theme colour name or CSS), opacity, dash: [on, off], id, enter, cue, then: [{ cue?, delay?, ms?, …the fields that change }]. pos is the top-left of a text (top-centre with align: center); size defaults to 44. A coordinate may be an edge of an item before it, by id: "syl1.right+16" (left, right, top, bottom, cx, cy, and an offset)', true),
     caption: f.str("a small line under it"),
   },
   check: (s, at) => checkItems(s.items, `${at}.items`, ["cue"]),
@@ -559,7 +559,8 @@ definePart<FigureSpec>("figure", {
       paint: (r) => {
         const k = r.w / s.width;
         // An item with a cue comes in on its own turn; the rest with the figure.
-        return s.items.map((it, i) => {
+        // Edges named in coordinates ("syl1.right+16") become numbers, measured in the reel's fonts.
+        return resolveItems(s.items, ctx.fonts).map((it, i) => {
           const base = { id: itemId(s, it, i), ...(it.cue ? { turn: itemId(s, it, i) } : {}), o: 1, enter: it.enter };
           const place = { x: r.x, y: r.y, k };
           const d = itemPaint(it, base, place, T, ctx.fonts);

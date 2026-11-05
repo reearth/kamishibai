@@ -1,7 +1,7 @@
 // The orchestrator: serve -> probe -> split -> capture -> assemble.
 // ------------------------------------------------------------------
 import { mkdtemp, mkdir, rm, readdir, unlink } from "node:fs/promises";
-import { folderSize, formatBytes, removeOnExit, strayFrames, strayFramesNote, TEMP_FRAMES_PREFIX } from "./frames-disk.ts";
+import { folderSize, formatBytes, removeOnExit, strayFrames, strayFramesNote, TEMP_FRAMES_PREFIX, vanishedError } from "./frames-disk.ts";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve, extname, isAbsolute } from "node:path";
@@ -657,6 +657,9 @@ export async function capture(opts: CaptureOptions): Promise<CaptureResult> {
       geometry,
       view,
     };
+  } catch (err) {
+    // A frames folder or the reel's bundle removed under it: say so, not ENOENT.
+    throw vanishedError(err, [framesDir, canvas ? dirname(canvas.bundle) : undefined]);
   } finally {
     await served?.close();
     await canvas?.close();
@@ -763,10 +766,14 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
     const elapsedMs = Date.now() - started;
     log(`Done → ${out} (${(elapsedMs / 1000).toFixed(1)}s)`);
     return { out, meta: cap.meta, frames: cap.frames, workers: cap.workers, elapsedMs };
+  } catch (err) {
+    // Encoding reads the frames back: the folder may have gone since capture.
+    throw vanishedError(err, [framesDir]);
   } finally {
     // Keep frames when the user picked the directory, or asked to keep them, and say how much they take.
     const keep = opts.keepFrames || !usingTempFrames;
-    if (keep) {
+    // Nothing to report when another process removed the folder (the error says so).
+    if (keep && existsSync(framesDir)) {
       const { files, bytes } = await folderSize(framesDir);
       const why = usingTempFrames ? "delete it when you are done with them" : "a render with -i reuses them; delete the folder when you are done";
       log(`Frames kept in ${framesDir}: ${files} file${files === 1 ? "" : "s"}, ${formatBytes(bytes)} (${why})`);

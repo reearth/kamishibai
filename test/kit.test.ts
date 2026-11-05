@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { kit, kitBrief, kitSchema, morph, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
-import { camAt, frameAt, layersAt, settleMs, type Keyframe } from "../src/kit/engine.ts";
+import { camAt, enteredMs, frameAt, layersAt, settleMs, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences, parseMarks, lineMarks } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
@@ -16,7 +16,7 @@ import { layoutScene, partBox, stageFrame } from "../src/kit/stage.ts";
 import { loadYoga } from "../src/kit/layout.ts";
 import { Fonts } from "../src/kit/text.ts";
 import { mergeTheme, SIZE } from "../src/kit/theme.ts";
-import { itemPaint } from "../src/kit/items.ts";
+import { itemPaint, resolveItems } from "../src/kit/items.ts";
 import { check } from "../src/kit/check.ts";
 import { parseColour } from "../src/kit/colour.ts";
 import type { Ctx } from "../src/kit/parts.ts";
@@ -145,6 +145,27 @@ describe("text", () => {
     const css = (over: object) => (["sans", "bold", "black", "mono"] as const).map((r) => new Fonts(g, mergeTheme(over)).css(r, 10));
     expect(css({ fonts: { sans: "Geist", mono: "Mono" } })).toEqual(["400 10px Geist", "700 10px Geist", "900 10px Geist", "400 10px Mono"]);
     expect(css({ fonts: { sans: "Geist", mono: "Mono", black: "Fraunces" }, weights: { mono: 700 } })).toEqual(["400 10px Geist", "700 10px Geist", "900 10px Fraunces", "700 10px Mono"]);
+  });
+
+  it("plays a scene's sounds from its start or from a sentence's, on the measured clock", async () => {
+    const reel = await kit({
+      kit: 1, fonts, theme, pace: { lead: 100, gap: 1000 },
+      scenes: [
+        { ms: 2000, parts: [title("A")] },
+        { say: ["あいうえお。", "かきくけこ。"], sounds: [{ src: "click.wav" }, { src: "click.wav", at: 250, gain: -6 }, { src: "ding.wav", cue: 1, at: 50 }], parts: [title("B")] },
+      ],
+    });
+    const [, b] = reel.timing;
+    expect(reel.audio!.filter((c) => !c.label?.includes("#"))).toEqual([
+      { src: "click.wav", atMs: b!.start, label: "s2 sound 0" },
+      { src: "click.wav", atMs: b!.start + 250, gain: -6, label: "s2 sound 1" },
+      { src: "ding.wav", atMs: b!.say[1]!.atMs + 50, label: "s2 sound 2" },
+    ]);
+    expect(problems({ kit: 1, scenes: [{ say: "one.", sounds: [{ at: 10 }, { src: "a.wav", cue: 3 }, "b.wav"], parts: [title("A")] }] })).toEqual([
+      'scenes[0].sounds[0]: "src" is required (a sound file, relative to the reel)',
+      "scenes[0].sounds[1].cue: 3 is not a sentence of this scene's say (it has 1)",
+      'scenes[0].sounds[2]: expected { src, at?, cue?, gain? }, got "b.wav"',
+    ]);
   });
 
   it("times narration by the pace and each line's pause, and speaks a line as written out", async () => {
@@ -394,6 +415,45 @@ describe("kit", () => {
     expect(problems({ kit: 1, scenes: [{ say: "one. two.", parts: [{ type: "text", text: "x", cue: 2 }] }] })[0]).toMatch(/cue: 2 is not a sentence of this scene's say \(it has 2/);
   });
 
+  it("places a figure's items by the edges of items before them, measured in the reel's fonts", async () => {
+    await loadYoga();
+    const T = mergeTheme(theme);
+    const F = new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), T);
+    await registerFonts(await kit({ kit: 1, fonts, theme, scenes: [{ parts: [title("A")] }] }), ".");
+    const items = resolveItems([
+      { id: "syl1", text: "re", pos: [100, 120], size: 64 },
+      { id: "syl2", text: "CEIPT", pos: ["syl1.right+16", 120], size: 64, color: "accent" },
+      // Under the stressed syllable, from its left edge, a line as long as it is read.
+      { id: "len", line: [["syl2.left", "syl2.bottom+10"], ["syl2.left+240", "syl2.bottom+10"]] },
+      // A frame around both, by its corners.
+      { id: "frame", box: ["syl1.left-12", "syl1.top-8", "syl2.right+12", "syl2.bottom+8"], stroke: "accent", r: 12 },
+    ], F);
+    const w1 = F.measure("re", "sans", 64);
+    const w2 = F.measure("CEIPT", "sans", 64);
+    expect(items[1]!.pos).toEqual([100 + w1 + 16, 120]);
+    expect(items[2]!.line).toEqual([[100 + w1 + 16, 120 + 64 * 1.3 + 10], [100 + w1 + 16 + 240, 120 + 64 * 1.3 + 10]]);
+    const [bx, by, bw, bh] = items[3]!.rect as number[];
+    expect([bx, by]).toEqual([88, 112]);
+    expect(bw).toBeCloseTo(w1 + 16 + w2 + 24);
+    expect(bh).toBeCloseTo(64 * 1.3 + 16);
+    expect(items[3]!.box).toBeUndefined();
+    // Through a figure, as numbers, with nothing reported.
+    const reel = await kit({ kit: 1, fonts, theme, captions: false, scenes: [{ parts: [{ type: "figure", width: 800, height: 300, items: [
+      { id: "a", text: "Hello", pos: [20, 20] },
+      { box: ["a.left-8", "a.top-8", "a.right+8", "a.bottom+8"], stroke: "accent" },
+    ] }] }] });
+    expect(await reel.check(resolveView(reel.meta), await nodeEnv("."))).toEqual([]);
+    expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [
+      { line: [["b.left", 0], [1, 1]] },
+      { id: "b", text: "x", pos: ["nope.right", 0] },
+      { box: ["b.middle", 0, 1, 1] },
+    ] }] }] })).toEqual([
+      'scenes[0].parts[0] (figure).items[0]: "b.left" names "b", which comes after it: an item\'s edges are known once it is placed, so put "b" first',
+      'scenes[0].parts[0] (figure).items[1]: "nope.right" names no item "nope" before it',
+      'scenes[0].parts[0] (figure).items[2]: "b.middle" is not a coordinate: a number, or an item\'s edge such as "syl1.right" or "w3.bottom+8" (left, right, top, bottom, cx, cy)',
+    ]);
+  });
+
   it("draws a figure from data, moving an item kept under its id", async () => {
     const box = (x: number, fill: string) => ({ id: "box", rect: [x, 10, 100, 60], fill, r: 8 });
     const reel = await kit({
@@ -408,7 +468,7 @@ describe("kit", () => {
     expect(await reel.check(resolveView(reel.meta), await nodeEnv("."))).toEqual([]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ rect: [0, 0] }, { circle: [0, 0, 1], line: [[0, 0], [1, 1]] }] }] }] })).toEqual([
       "scenes[0].parts[0] (figure).items[0].rect: expected [x, y, w, h]",
-      "scenes[0].parts[0] (figure).items[1]: give one of rect, circle, line, text (got circle and line)",
+      "scenes[0].parts[0] (figure).items[1]: give one of rect, box, circle, line, text (got circle and line)",
     ]);
     expect(problems({ kit: 1, scenes: [{ parts: [{ type: "figure", width: 1, height: 1, items: [{ line: [[0, 0], [1, 1]], width: 4 }] }] }] })).toEqual([
       expect.stringMatching(/^scenes\[0\]\.parts\[0\] \(figure\)\.items\[0\]\.width: only a text takes width \(where it wraps\); a line's or an outline's is lineWidth$/),
@@ -454,10 +514,11 @@ describe("transitions and the camera", () => {
     const wipe = layersAt(two("wipe"), 1350, 100);
     expect(wipe[1]!.clipW).toBeGreaterThan(0);
     expect(wipe[1]!.clipW).toBeLessThan(100);
-    // A fade: the old scene goes out over the paper before the new parts come in.
+    // A fade crossfades: the new scene is there whole, under the old one going out.
     const fade = layersAt(two("fade"), 1200, 100);
     expect(fade).toHaveLength(2);
-    expect(fade[0]!.ds.map((d) => d.id)).toEqual(["stage"]);
+    expect(fade[0]!.ds.map((d) => [d.id, d.o])).toEqual([["stage", 1], ["a", 1]]);
+    expect(fade[1]!.o).toBeGreaterThan(0);
     expect(layersAt(two("fade"), 1800, 100)).toHaveLength(1);
   });
 
@@ -480,18 +541,18 @@ describe("transitions and the camera", () => {
   it("brings new parts in when the scene or the part says, over the length it says", () => {
     const ks = (more: Partial<Keyframe>): Keyframe[] => [
       { id: "1", start: 0, ms: 1000, ds: [paper] },
-      { id: "2", start: 1000, ms: 3000, ds: [paper, rect("b", 0), rect("c", 0)], transition: "fade", ...more },
+      { id: "2", start: 1000, ms: 3000, ds: [paper, rect("b", 0), rect("c", 0)], ...more },
     ];
     const o = (k: Keyframe[], t: number, id: string) => frameAt(k, t).find((d) => d.id === id)?.o ?? 0;
-    // By default a fade's parts wait for it (400 + 150), and the next starts 160 later.
-    expect(o(ks({}), 1500, "b")).toBe(0);
+    // By default new parts wait for what stays to mostly move (55% of 750 ms), and the next starts 160 later.
+    expect(o(ks({}), 1300, "b")).toBe(0);
     // A delay of 0 and 200 ms each: the first is in by 200, the next 160 after it.
     const quick = ks({ enter: { delay: 0, ms: 200 } });
     expect(o(quick, 1200, "b")).toBe(1);
     expect(o(quick, 1200, "c")).toBeLessThan(1);
     expect(o(quick, 1360, "c")).toBe(1);
     expect(o(ks({ enter: { delay: 0, ms: 200, stagger: 0 } }), 1200, "c")).toBe(1);
-    // A part's own delay, here in a fade, and its own length.
+    // A part's own delay, and its own length.
     const own = ks({ enters: { c: { delay: 900, ms: 100 } } });
     expect(o(own, 1890, "c")).toBe(0);
     expect(o(own, 2000, "c")).toBe(1);
@@ -499,6 +560,21 @@ describe("transitions and the camera", () => {
     const cut = ks({ transition: "cut", enters: { c: { delay: 900 } } });
     expect(o(cut, 1001, "b")).toBe(1);
     expect(o(cut, 1500, "c")).toBe(0);
+  });
+
+  it("crossfades a fade's parts in with it, but for those cued or given a delay", () => {
+    const ks = (more: Partial<Keyframe>): Keyframe[] => [
+      { id: "1", start: 0, ms: 1000, ds: [paper, rect("a", 0)] },
+      { id: "2", start: 1000, ms: 900, ds: [paper, rect("b", 0), rect("c", 0), rect("d", 0)], transition: "fade", transMs: 200, cues: { d: 500 }, ...more },
+    ];
+    const o = (k: Keyframe[], t: number, id: string) => frameAt(k, t).find((d) => d.id === id)?.o ?? 0;
+    expect(o(ks({}), 1001, "b")).toBe(1);
+    // A cued part still comes in with its sentence, and one with a delay of its own at it.
+    expect(o(ks({}), 1300, "d")).toBe(0);
+    expect(o(ks({ enters: { c: { delay: 300 } } }), 1200, "c")).toBe(0);
+    // Nothing comes in with the scene: it is all in at once.
+    expect(enteredMs(ks({}), 1)).toBe(0);
+    expect(enteredMs(ks({ enters: { c: { delay: 300, ms: 100 } } }), 1)).toBe(400);
   });
 
   it("waits for its longest part before its frames repeat", () => {
@@ -764,6 +840,21 @@ describe("filling the stage", () => {
     // Before, 60% of the stage (648 here), shorter than the room under the heading.
     expect(b.h).toBeGreaterThan(1080 * 0.6 + 50);
     expect(Math.abs(b.y + b.h - (r.y + r.h))).toBeLessThan(2);
+  });
+
+  it("says when a scene ends before its parts have been seen whole", async () => {
+    const reel = await kit({
+      kit: 1, fonts, theme,
+      scenes: [
+        { ms: 2000, parts: [title("Ready")] },
+        { id: "glance", ms: 900, parts: [{ type: "text", role: "display", text: "receipt" }] },
+        { id: "quick", ms: 900, enter: { delay: 0, ms: 0 }, parts: [{ type: "text", role: "display", text: "schedule" }] },
+        { id: "faded", ms: 900, transition: { type: "fade", ms: 200 }, parts: [{ type: "text", role: "display", text: "accommodation", shrink: true }] },
+      ],
+    });
+    const issues = (await reel.check(resolveView(reel.meta), await nodeEnv("."))).filter((i) => i.kind === "timing");
+    expect(issues.map((i) => i.scene)).toEqual(["glance"]);
+    expect(issues[0]!.msg).toMatch(/^its parts are all in for only 0\.\d\d s of its 0\.90 s/);
   });
 
   it("says when a card's width goes unused on every shape the reel lays out for", async () => {

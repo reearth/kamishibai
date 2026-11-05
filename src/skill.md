@@ -454,9 +454,10 @@ scenes:
   starts 150 ms in (a fade's 400 + 150, a morph's movers 55% done) and the
   next 160 after, which eats into a scene held under a second.
 - A scene's `transition`: `morph` (default; same ids move over 750 ms, gone
-  ones fade, new ones come in after), `cut` (at once), `fade` (through the
-  paper, 400 ms), `push` (slides in from the right), `wipe` (uncovers left to
-  right; both 700 ms). `transition: { type: fade, ms: 200 }` sets its length;
+  ones fade, new ones come in after), `cut` (at once), `fade` (a crossfade,
+  the new scene whole under the old, 400 ms), `push` (slides in from the
+  right), `wipe` (uncovers left to right; both 700 ms); after all but morph,
+  only parts with a `cue` or their own `delay` come in with their verb. `transition: { type: fade, ms: 200 }` sets its length;
   the reel's `transition` is every scene's default, a scene's fields over it.
   A camera move takes 900 ms. `focus: gate` moves the camera in on a part;
   `focus: [{ on: gate, cue: 1 }, { on: server, cue: 2 }]` moves with the
@@ -475,7 +476,16 @@ scenes:
   next scene starts from the last. Each step needs `cue` or `delay`, steps
   go in order, and a step can change only its shape's own field (a line
   keeps its number of points), `pos`, `fill`, `stroke`, `color`,
-  `lineWidth`, `r` (a rect's corners) and `size`.
+  `lineWidth`, `r` (a rect's corners) and `size`. A coordinate may be an
+  edge of an item before it: `pos: ["syl1.right+16", 120]`, `line:
+  [["w1.left", "w1.bottom+8"], …]` (left, right, top, bottom, cx, cy),
+  measured in the reel's fonts; `box: [x1, y1, x2, y2]` is a rect by its
+  corners. A script that writes a reel measures text with
+  `textMeasurer({ fonts, theme })` from `kamishibai`.
+- A scene's `sounds: [{ src, at?, cue?, gain? }]` plays files (a click on a
+  beat) `at` ms after the scene, or sentence `cue`, starts.
+  `kamishibai timing reel.yaml` prints every scene, sentence and sound on
+  the clock with the real narration (`--json`).
 - `uses: [parts.ts]` loads modules that `definePart` (parts beyond the kit).
 - `voice: { provider: say, voice: Samantha }` (macOS), `{ provider: kokoro,
   voice: af_heart }`, or `openai` / `gemini` / `google` / `elevenlabs` /
@@ -515,7 +525,8 @@ scenes:
   (or `--aspect 9:16`); rows stack and the layout is redone.
 - Loop: `kamishibai check reel.yaml` (kinds `overlap`, `off-stage`,
   `overflow`, `contrast`, `widow`, `glyph` for characters no font has, and
-  `unused` for a field no shape uses (a card's width in a tall-only reel); at
+  `unused` for a field no shape uses (a card's width in a tall-only reel),
+  `timing` for a scene gone under half a second after its parts are in; at
   meta's size and each end of `aspect`, no
   frames; `--json` for parsing; exit 1 on any; each issue says what usually
   fixes it), fix, then `render` and look at a few frames of each shape.

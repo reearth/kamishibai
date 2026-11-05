@@ -206,7 +206,8 @@ function morphFrom(ks: Keyframe[], i: number): Keyframe | null {
 }
 
 /** A cut, a push or a wipe: the scene is there at once, but for its cued parts. */
-const whole = (k: Keyframe) => k.transition === "cut" || k.transition === "push" || k.transition === "wipe";
+/** A scene there at once as it comes in (a fade crossfades it in), but for parts with a cue or a delay of their own. */
+const whole = (k: Keyframe) => k.transition === "cut" || k.transition === "fade" || k.transition === "push" || k.transition === "wipe";
 
 /** The keyframe on screen at `t`. */
 export function keyframeAt(ks: Keyframe[], t: number): number {
@@ -240,6 +241,34 @@ function turns(ks: Keyframe[], i: number): Map<string, number> {
     out.set(who, at + n * stagger);
   }
   return out;
+}
+
+/**
+ * How long after a scene starts the parts that come in with it are all in:
+ * every new part but those cued to a later sentence, each at its turn and
+ * over its verb's length (or the length its enter gives).
+ */
+export function enteredMs(ks: Keyframe[], i: number): number {
+  const k = ks[i]!;
+  const prev = morphFrom(ks, i);
+  const before = new Set(prev?.ds.map((d) => d.id));
+  const turn = turns(ks, i);
+  const seen = new Map<string, number>();
+  let last = 0;
+  for (const d of k.ds) {
+    const who = d.turn ?? d.owner;
+    if (d.owner === "stage" || before.has(d.id)) continue;
+    // Cued to a later sentence: it comes in with that, on purpose.
+    if (k.cues?.[who] !== undefined || k.cues?.[d.owner] !== undefined) continue;
+    const own = ownEnter(k, d);
+    if (i > 0 && whole(k) && own?.delay === undefined) continue;
+    const n = seen.get(who) ?? 0;
+    seen.set(who, n + 1);
+    const verb = d.enter ?? (d.t === "path" ? "draw" : "rise");
+    const ms = own?.ms ?? k.enter?.ms ?? (verb === "draw" && d.t !== "path" ? VERB_MS.fade : VERB_MS[verb]);
+    last = Math.max(last, turn.get(who)! + Math.min(n, 12) * 35 + ms);
+  }
+  return last;
 }
 
 /** How long after a scene starts its last part has come in (its frames repeat after). */
