@@ -12,6 +12,7 @@ import { resolveView, type Context2D } from "../src/canvas/types.ts";
 import { checkEntry } from "../src/kit-check.ts";
 import { bundleOptions } from "../src/serve.ts";
 import { build } from "esbuild";
+import { stringify } from "yaml";
 import { layoutScene, partBox, stageFrame } from "../src/kit/stage.ts";
 import { loadYoga } from "../src/kit/layout.ts";
 import { Fonts } from "../src/kit/text.ts";
@@ -1141,6 +1142,20 @@ export default await kit({ kit: 1, scenes: [{ parts: [{ type: "text", text: word
     expect(err?.message).toMatch(/fs\.ts failed as it loaded: .*ENOENT/);
     expect(err?.message).toMatch(/import\.meta\.url/);
     expect(err?.message).toMatch(/import words from "\.\/words\.yaml"/);
+  });
+
+  it("reads a YAML reel with any number of aliases, as yaml's stringify writes one", async () => {
+    // 150 scenes sharing one object: stringify writes it once and 149 aliases to it, past yaml's default cap of 100.
+    const fade = { type: "fade", ms: 200 };
+    const text = stringify({ kit: 1, fonts, theme, scenes: Array.from({ length: 150 }, (_, i) => ({ ms: 1000, transition: fade, parts: [{ type: "title", text: `Word ${i + 1}` }] })) });
+    expect(text.match(/\*a\d+/g)).toHaveLength(149);
+    await writeFile(join(dir, "aliases.yaml"), text);
+    const e = await loadCanvasEntry(join(dir, "aliases.yaml"));
+    try {
+      expect((e!.reel as { timing: unknown[] }).timing).toHaveLength(150);
+    } finally {
+      await e?.close();
+    }
   });
 
   it("says what a JSON file without kit is", async () => {

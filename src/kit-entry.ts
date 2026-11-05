@@ -38,8 +38,12 @@ export async function readKitData(path: string): Promise<unknown> {
     throw new Error("a YAML reel is read with the yaml package: npm i -D yaml");
   }
   try {
-    // merge: true lets a scene take shared fields with `<<: *anchor`.
-    return yaml.parse(text, { merge: true });
+    // merge: true lets a scene take shared fields with `<<: *anchor`. Aliases
+    // are unlimited: yaml caps them (100) against a file built to exhaust
+    // memory, but a reel is trusted like code (its uses: modules run), and a
+    // generator that writes it with yaml's stringify aliases every object it
+    // repeats, so a long reel passed the cap with nothing wrong.
+    return yaml.parse(text, { merge: true, maxAliasCount: -1 });
   } catch (err) {
     throw new Error(`${path}: not valid YAML: ${(err as Error).message}`);
   }

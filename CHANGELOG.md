@@ -4,6 +4,12 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Fixed
+
+- A YAML reel with more than 100 aliases (`&a1`, `*a1`) stopped with "Excessive alias count indicates a resource exhaustion attack". yaml's `stringify` writes an alias for every object a generator repeats (a shared `transition`, say), so a long reel passed that cap. A reel is trusted like code, so its aliases are no longer counted.
+
 ## 0.13.0
 
 ### Added
