@@ -634,7 +634,7 @@ describe("filling the stage", () => {
     const stage = { W, H };
     const ctx: Ctx = {
       stage,
-      frame: stageFrame(stage, { top: 0, right: 0, bottom: 0, left: 0 }, false),
+      frame: stageFrame(stage, { top: 0, right: 0, bottom: 0, left: 0 }, false, s!.margin),
       fonts: new Fonts(patchContext(createCanvas(1, 1).getContext("2d") as unknown as Context2D), mergeTheme(theme)),
       theme: mergeTheme(theme),
       readText: () => "",
@@ -710,6 +710,43 @@ describe("filling the stage", () => {
       "scenes[0].parts[0] (text).shrink: expected true, false or a share above 0 and up to 1, got 0",
       "scenes[0].parts[1] (text).shrink: expected true, false or a share above 0 and up to 1, got 1.5",
     ]);
+  });
+
+  it("takes a margin from the reel, with a scene's over it edge by edge", () => {
+    const [a, b, c] = normalize({ kit: 1, margin: 30, scenes: [{ parts: [title("A")] }, { margin: { left: 5 }, parts: [title("B")] }, { margin: 0, parts: [title("C")] }] });
+    expect(a!.margin).toEqual({ top: 30, right: 30, bottom: 30, left: 30 });
+    expect(b!.margin).toEqual({ top: 30, right: 30, bottom: 30, left: 5 });
+    expect(c!.margin).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+    const stage = { W: 1920, H: 1080 };
+    const none = { top: 0, right: 0, bottom: 0, left: 0 };
+    // Unwritten edges keep the default; captions take their band above the foot; a bar's edge is kept clear.
+    expect(stageFrame(stage, none, false, { left: 5 })).toEqual({ top: 88, right: 96, bottom: 96, left: 5 });
+    expect(stageFrame(stage, none, true, { bottom: 0 }).bottom).toBe(104);
+    expect(stageFrame(stage, none, false, { bottom: 0 }, { bottom: 10 }).bottom).toBe(10);
+    expect(stageFrame(stage, { top: 0, right: 0, bottom: 50, left: 0 }, false, { bottom: 0 }).bottom).toBe(50);
+    expect(problems({ kit: 1, margin: -1, scenes: [{ margin: { side: 3 }, parts: [title("A")] }, { margin: "wide", parts: [title("B")] }] })).toEqual([
+      "reel.margin: -1 is under 0",
+      'scenes[0].margin: unknown field "side"',
+      'scenes[1].margin: expected a number, or { top?, right?, bottom?, left? }, got "wide"',
+    ]);
+  });
+
+  it("lets a picture reach the stage's edges with margin: 0, and check holds the scene to its margin", async () => {
+    const images = { "a.png": { w: 1920, h: 1080 } };
+    const full = await lay({ margin: 0, fill: false, parts: [{ type: "image", src: "a.png" }] }, 1920, 1080, images);
+    expect(full.boxes.get("image")).toEqual({ x: 0, y: 0, w: 1920, h: 1080 });
+    // The same through kit(): a picture at the edge is not off the stage at a scene's margin 0, nor at a reel's margin of 20.
+    const env = await nodeEnv(".");
+    const pic = join(tmpdir(), `kamishibai-margin-${process.pid}.png`);
+    await writeFile(pic, createCanvas(1920, 1080).toBuffer("image/png"));
+    try {
+      const reel = await kit({ kit: 1, fonts, theme, captions: false, aspect: "16:9", scenes: [{ margin: 0, fill: false, parts: [{ type: "image", src: pic }] }] });
+      expect(await reel.check(resolveView(reel.meta), env)).toEqual([]);
+      const tight = await kit({ kit: 1, fonts, theme, captions: false, aspect: "16:9", margin: 20, scenes: [{ fill: false, parts: [{ type: "image", src: pic }] }] });
+      expect(await tight.check(resolveView(tight.meta), env)).toEqual([]);
+    } finally {
+      await rm(pic, { force: true });
+    }
   });
 
   it("makes a figure as tall as its room allows", async () => {

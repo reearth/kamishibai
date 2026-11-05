@@ -73,13 +73,14 @@ function tweak(theme: Theme, fg: string, bg: string): string {
 
 const box = (b: Bounds) => `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}×${Math.round(b.h)}`;
 
-/** The issues of every keyframe, for one stage, kept `margin` in from its edges. */
+/** The issues of every keyframe, for one stage, kept `margin` in from its edges (or a scene's own margin, where less). */
 export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme, margin = 48): Issue[] {
   const out: Issue[] = [];
-  const SAFE = margin;
-  const safe = { x: SAFE + insets.left, y: SAFE + insets.top, w: stage.W - SAFE * 2 - insets.left - insets.right, h: stage.H - SAFE * 2 - insets.top - insets.bottom };
   for (const k of ks) {
     const s = k.id;
+    // A scene that chose a smaller margin is held to that, not to the default safe area.
+    const e = (side: keyof Insets) => Math.min(margin, k.margin?.[side] ?? margin);
+    const safe = { x: e("left") + insets.left, y: e("top") + insets.top, w: stage.W - e("left") - e("right") - insets.left - insets.right, h: stage.H - e("top") - e("bottom") - insets.top - insets.bottom };
     const ds = k.ds.filter((d) => d.id !== "stage");
     // The scene as it stands when it comes in, and after each step has settled:
     // each text is judged against what it sits on at that moment.

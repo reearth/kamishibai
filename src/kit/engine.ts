@@ -30,6 +30,8 @@ export type Keyframe = {
   enter?: SceneEnter;
   /** a part's own delay and length, by owner (or turn) */
   enters?: Record<string, { delay?: number; ms?: number }>;
+  /** the margins it chose, where under the default: check keeps parts this far in, not further */
+  margin?: Partial<{ top: number; right: number; bottom: number; left: number }>;
   /** where the camera goes, in order; the first is at 0. None: the camera stays home. */
   shots?: Shot[];
 };

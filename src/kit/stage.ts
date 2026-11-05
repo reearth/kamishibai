@@ -10,13 +10,22 @@ import { isTall, partDef, rect, type Ctx, type Frame, type Stage } from "./parts
 import type { PartSpec } from "./spec.ts";
 import { MIN_FIT } from "./theme.ts";
 
-/** The margins of a stage, plus the room captions take and the view's insets (in stage units). */
-export function stageFrame(s: Stage, insets: Insets, captions: boolean): Frame {
-  const tall = isTall(s);
-  const side = tall ? 72 : 96;
-  const top = tall ? 120 : 88;
-  const foot = captions ? (tall ? 360 : 200) : tall ? 120 : 96;
-  return { top: top + insets.top, right: side + insets.right, bottom: foot + insets.bottom, left: side + insets.left };
+/** The margins a stage keeps by default, wide or tall (in stage units). */
+export function defaultMargin(s: Stage): Frame {
+  return isTall(s) ? { top: 120, right: 72, bottom: 120, left: 72 } : { top: 88, right: 96, bottom: 96, left: 96 };
+}
+
+/**
+ * The margins of a stage (the reel's or the scene's `margin` over the
+ * defaults, and no less than `keep` at an edge, where a progress bar is),
+ * plus the room captions take at the foot and the view's insets.
+ */
+export function stageFrame(s: Stage, insets: Insets, captions: boolean, margin: Partial<Frame> = {}, keep: Partial<Frame> = {}): Frame {
+  const m = { ...defaultMargin(s), ...margin };
+  const at = (k: keyof Frame) => Math.max(m[k], keep[k] ?? 0) + insets[k];
+  // Captions take a band above the foot's margin: 104 wide, 240 tall.
+  const room = captions ? (isTall(s) ? 240 : 104) : 0;
+  return { top: at("top"), right: at("right"), bottom: at("bottom") + room, left: at("left") };
 }
 
 /** The box of one part, owned by it. */
