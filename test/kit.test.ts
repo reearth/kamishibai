@@ -10,6 +10,8 @@ import { tokens, speechMs, sentences } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
 import { resolveView, type Context2D } from "../src/canvas/types.ts";
 import { checkEntry } from "../src/kit-check.ts";
+import { bundleOptions } from "../src/serve.ts";
+import { build } from "esbuild";
 import { layoutScene, partBox, stageFrame } from "../src/kit/stage.ts";
 import { loadYoga } from "../src/kit/layout.ts";
 import { Fonts } from "../src/kit/text.ts";
@@ -118,6 +120,10 @@ describe("text", () => {
     expect(b).toMatchObject({ atMs: 100 + a!.ms + 1000, text: "書き" });
     expect(c!.atMs).toBe(b!.atMs + b!.ms + 50);
     expect(reel.timing[0]!.ms).toBe(c!.atMs + c!.ms + 2000);
+    // A pause on the last sentence is the time after it, instead of the tail.
+    const last = await kit({ kit: 1, fonts, theme, scenes: [{ pace: { tail: 2000 }, say: ["あいうえお。", { text: "かきくけこ。", pause: 3000 }], parts: [title("A")] }] });
+    const z = last.timing[0]!.say[1]!;
+    expect(last.timing[0]!.ms).toBe(z.atMs + z.ms + 3000);
     expect(problems({ kit: 1, pace: { lead: "x" }, scenes: [{ parts: [title("A")], say: [{ text: "a", speed: 2 }] }] })).toEqual([
       "reel.pace.lead: expected a number, got string \"x\"",
       'scenes[0].say[0]: unknown field "speed"',
@@ -626,6 +632,18 @@ definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 
 `);
     await writeFile(join(dir, "uses.json"), JSON.stringify({ kit: 1, uses: ["dot.ts"], fonts: [{ family: "Geist", src: GEIST }], theme, scenes: [{ parts: [{ type: "dot" }] }] }));
     await writeFile(join(dir, "missing.json"), JSON.stringify({ kit: 1, uses: ["nope.ts"], scenes: [{ parts: [] }] }));
+    // A code reel built from data next to it: imported, or read with node:fs by import.meta.url.
+    const KIT = JSON.stringify(resolve("src/kit/index.ts"));
+    await writeFile(join(dir, "words.yaml"), "- accommodation\n- headquarters\n");
+    await writeFile(join(dir, "words.ts"), `import { kit } from ${KIT};
+import words from "./words.yaml";
+export default await kit({ kit: 1, fonts: ${JSON.stringify(fonts)}, theme: ${JSON.stringify(theme)}, scenes: words.map((w: string) => ({ parts: [{ type: "text", text: w }] })) });
+`);
+    await writeFile(join(dir, "fs.ts"), `import { readFileSync } from "node:fs";
+import { kit } from ${KIT};
+const words = readFileSync(new URL("./words.yaml", import.meta.url), "utf8").split("\\n");
+export default await kit({ kit: 1, scenes: [{ parts: [{ type: "text", text: words[0] }] }] });
+`);
   });
   afterAll(() => rm(dir, { recursive: true, force: true }));
 
@@ -654,6 +672,25 @@ definePart("dot", { doc: "a dot", fields: {}, box: (s) => ({ style: { w: 40, h: 
   it("runs the modules uses names, with the kit the reel is made with", async () => {
     expect((await checkEntry({ entry: join(dir, "uses.json") })).count).toBe(0);
     await expect(loadCanvasEntry(join(dir, "missing.json"))).rejects.toThrow(/uses names nope.ts, which is not there/);
+  });
+
+  it("bundles YAML a code reel imports, for Node and for a browser", async () => {
+    const e = await loadCanvasEntry(join(dir, "words.ts"));
+    try {
+      expect((e!.reel as { timing: unknown[] }).timing).toHaveLength(2);
+    } finally {
+      await e?.close();
+    }
+    const { entryPoints: _, outfile: __, ...opts } = bundleOptions(join(dir, "words.ts"), "bundle.js");
+    const r = await build({ ...opts, entryPoints: [join(dir, "words.ts")], write: false, outdir: dir, format: "esm" });
+    expect(r.outputFiles[0]!.text).toContain("headquarters");
+  });
+
+  it("stops with the error a reel that imports node:fs threw, not as a page", async () => {
+    const err = await loadCanvasEntry(join(dir, "fs.ts")).then(() => null, (e: Error) => e);
+    expect(err?.message).toMatch(/fs\.ts failed as it loaded: .*ENOENT/);
+    expect(err?.message).toMatch(/import\.meta\.url/);
+    expect(err?.message).toMatch(/import words from "\.\/words\.yaml"/);
   });
 
   it("says what a JSON file without kit is", async () => {

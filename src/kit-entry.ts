@@ -46,6 +46,24 @@ export async function readKitData(path: string): Promise<unknown> {
 }
 
 /**
+ * `import data from "./words.yaml"` in any entry: the file is read when the
+ * reel is bundled, so its data is in the bundle, in Node and in the browser
+ * alike. (JSON esbuild reads by itself.)
+ */
+export const yamlImports: Plugin = {
+  name: "kamishibai-yaml-imports",
+  setup(b) {
+    b.onLoad({ filter: /\.ya?ml$/i }, async (args) => {
+      try {
+        return { contents: JSON.stringify(await readKitData(args.path)), loader: "json", watchFiles: [args.path] };
+      } catch (err) {
+        return { errors: [{ text: (err as Error).message }] };
+      }
+    });
+  },
+};
+
+/**
  * Load `entry` (a .json, .yaml or .yml kit reel) as a module whose default
  * export is the reel, after the modules its `uses` names: they define parts
  * with definePart, so they run for that, and their "kamishibai/kit" is the

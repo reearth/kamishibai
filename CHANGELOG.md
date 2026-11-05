@@ -4,6 +4,20 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## Unreleased
+
+### Added
+
+- **`import words from "./words.yaml"` works in any script entry**, as `.json` already did: the data is bundled with the reel, so it is there in `render` and `check` (Node) and in `dev` and `export` (a browser) alike.
+
+### Changed
+
+- **A `pause` on a scene's last sentence holds the scene that long after it**, instead of the tail. It was ignored before; a reel that set one there now ends that scene at the pause.
+
+### Fixed
+
+- A script entry that imports Node's own modules (`node:fs`) and failed as it loaded, such as reading a file next to it by `import.meta.url` (which points to the temporary bundle), was taken for a page and failed again with `Could not resolve "node:fs"`. It now stops with the error it threw, and says to import the data instead.
+
 ## 0.11.0
 
 ### Added

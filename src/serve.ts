@@ -11,7 +11,7 @@
 // Every way you get back { url, close } and the renderer points Chrome
 // at `url`.
 // ------------------------------------------------------------------
-import { isDataEntry, kitDataPlugin } from "./kit-entry.ts";
+import { isDataEntry, kitDataPlugin, yamlImports } from "./kit-entry.ts";
 import { build, type BuildOptions } from "esbuild";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
@@ -286,7 +286,7 @@ export function bundleOptions(entry: string, outfile: string): BuildOptions {
       ".gif": "dataurl",
     },
     logLevel: "silent",
-    plugins: isDataEntry(entry) ? [kitDataPlugin(entry)] : [],
+    plugins: [...(isDataEntry(entry) ? [kitDataPlugin(entry)] : []), yamlImports],
   };
 }
 

@@ -3,6 +3,7 @@
 // ------------------------------------------------------------------
 import { mkdtemp, rm, copyFile, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,7 +11,7 @@ import { build, type Plugin } from "esbuild";
 import { frameTimeMs } from "../protocol.ts";
 import { chunkIndices, type Chunk } from "../segment.ts";
 import { TTS_HOOK } from "../tts/index.ts";
-import { isDataEntry, kitDataPlugin } from "../kit-entry.ts";
+import { isDataEntry, kitDataPlugin, yamlImports } from "../kit-entry.ts";
 import { isCanvasReel, splitFontWeight, type CanvasReel, type Context2D, type Env, type View } from "./types.ts";
 
 type Skia = typeof import("@napi-rs/canvas");
@@ -68,6 +69,7 @@ export async function loadCanvasEntry(entry: string): Promise<CanvasEntry | null
   const tmp = await mkdtemp(join(tmpdir(), "kamishibai-canvas-"));
   const bundle = join(tmp, "reel.mjs");
   const close = () => rm(tmp, { recursive: true, force: true });
+  let builtins: string[] = [];
   try {
     const result = await build({
       entryPoints: [abs],
@@ -79,9 +81,10 @@ export async function loadCanvasEntry(entry: string): Promise<CanvasEntry | null
       jsx: "automatic",
       metafile: true,
       logLevel: "silent",
-      plugins: [...(isDataEntry(abs) ? [kitDataPlugin(abs)] : []), externalPackages],
+      plugins: [...(isDataEntry(abs) ? [kitDataPlugin(abs)] : []), yamlImports, externalPackages],
     });
     const out = Object.values(result.metafile.outputs)[0];
+    builtins = (out?.imports ?? []).filter((i) => i.external && isBuiltin(i.path)).map((i) => i.path);
     if (!out?.exports.includes("default")) {
       await close();
       return null;
@@ -97,8 +100,25 @@ export async function loadCanvasEntry(entry: string): Promise<CanvasEntry | null
     // A page entry with a default export may fail to run in Node: it is a page.
     // A kit reel (a .json / .yaml one above all) is never a page: say what's wrong.
     if (err instanceof Error && (/esbuild|Build failed/.test(err.message) || err.name === "KitSpecError" || isDataEntry(abs))) throw err;
+    // An entry that imports Node's own modules can't be a page (a browser
+    // can't load them): what went wrong is this error, so say it.
+    if (builtins.length) throw entryError(entry, err, builtins, tmp);
     return null;
   }
+}
+
+/** An error the entry's top level threw, led by the entry, with what to do when it read a file. */
+function entryError(entry: string, err: unknown, builtins: string[], tmp: string): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lines = [`${entry} failed as it loaded: ${msg}`];
+  if (msg.includes(tmp)) {
+    lines.push(`  The reel runs bundled from a temporary folder, so import.meta.url and relative paths don't point next to it.`);
+  }
+  lines.push(
+    `  It imports ${[...new Set(builtins)].join(", ")}, which only Node has: dev and export run the reel in a browser.`,
+    `  Import the data instead (import words from "./words.yaml", or .json), so it is bundled with the reel.`,
+  );
+  return new Error(lines.join("\n"), { cause: err });
 }
 
 // ---- the host -------------------------------------------------------------

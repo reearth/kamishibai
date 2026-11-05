@@ -38,6 +38,7 @@ export default canvasReel({
 - **`setup(view, env)`** runs once per view, before any of its frames, and returns the painter. Do the expensive work here, such as layout and loading images.
 - **The painter `(g, ms)`** draws the frame at `ms`. `g` is already scaled to the output, so it is drawn in layout units, and it starts each frame cleared, with a fresh state. It returns what `seek()` returns: `false` for "same as the previous frame", a fingerprint string, or nothing.
 - **`audio`** and **`subtitles`** are the page's markers, declared up front. Audio paths may be relative to the module.
+- **Data** the reel is made from is imported: `import words from "./words.yaml"` (or `.json`) puts it in the bundle, so it is there in Node and in a browser alike. Node's own modules (`node:fs` and the rest) are not: `kamishibai dev` and `export` run the module in a browser, and in Node it runs bundled from a temporary folder, so `import.meta.url` doesn't point next to it. Files read while laying out go through `env.readText` in `setup`.
 
 The rules for a page hold here too. A frame is a pure function of `ms` and the view: no `Date.now()`, no unseeded `Math.random()`, no state carried from the previous call. Time doesn't depend on the view: `durationMs`, `audio` and `subtitles` are the same for every shape, so the soundtrack fits each one.
 

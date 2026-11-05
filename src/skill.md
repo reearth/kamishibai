@@ -353,7 +353,9 @@ export default canvasReel({
   vertical video).
 - `env.readText(path)`, `env.loadImage(path)`, `env.createCanvas(w, h)` instead
   of `fs`, `<img>` or `document.createElement("canvas")`; paths are relative to
-  the reel.
+  the reel. Data the reel is built from is imported (`import words from
+  "./words.yaml"`, or `.json`): never `node:fs`, which dev and export (a
+  browser) can't load, and `import.meta.url` is a temporary bundle's.
 - Any weight works in `font` for a variable font, and `textBaseline` is placed
   as in a browser.
 - `g` comes scaled to layout units and cleared for every frame. `view.medium`

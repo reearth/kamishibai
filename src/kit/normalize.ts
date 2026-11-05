@@ -80,7 +80,7 @@ const LINE_FIELDS: Fields = {
   text: f.str("what is spoken (and captioned, unless caption is given)", true),
   caption: f.str("what the caption shows instead"),
   voice: f.obj("the voice's options for this sentence alone, over the reel's (not its provider)"),
-  pause: f.num("ms before the next sentence, instead of the gap"),
+  pause: f.num("ms of silence after it: before the next sentence instead of the gap, or, after the last, before the scene ends instead of the tail"),
 };
 
 function checkPace(v: unknown, at: string): string[] {

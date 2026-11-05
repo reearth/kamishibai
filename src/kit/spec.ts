@@ -121,7 +121,7 @@ export type SceneSpec = {
  */
 export type VoiceSpec = { provider: string; [opt: string]: unknown };
 
-/** One sentence written out: what is spoken, what the caption shows, the voice's options for it alone, and a pause after it. */
+/** One sentence written out: what is spoken, what the caption shows, the voice's options for it alone, and the silence after it (before the next sentence, or after the last before the scene ends). */
 export type SayLine = { text: string; caption?: string; voice?: Record<string, unknown>; pause?: number };
 
 /** Burned captions: text and box colours (a theme name or CSS), size in layout units (40 wide, 48 tall), and font role (bold). */

@@ -105,7 +105,9 @@ export async function kit(spec: KitReelSpec): Promise<KitReel> {
       at = end + (l.pause ?? gap);
       return t;
     });
-    const ms = s.ms ?? (say.length ? Math.max(2500, end - start + tail) : SILENT_MS);
+    // The last sentence's pause is the time after it, so the scene holds that instead of its tail.
+    const hold = s.say.at(-1)?.pause ?? tail;
+    const ms = s.ms ?? (say.length ? Math.max(2500, end - start + hold) : SILENT_MS);
     const t: SceneTiming = { id: s.id, start, ms, say };
     start += ms;
     return t;
