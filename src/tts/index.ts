@@ -272,6 +272,7 @@ export function estimateMs(text: string): number {
 
 /** Where a Node host puts its TTS engine for prepareNarration (no HTTP there). */
 export const TTS_HOOK = "__KAMISHIBAI_TTS__";
+let estimateWarned = false;
 
 /**
  * Synthesize a batch of narration lines (a key -> text map) as a pre-pass,
@@ -313,6 +314,12 @@ export async function prepareNarration<K extends string>(
     for (const k in items) {
       const { text, caption } = items[k];
       out[k] = { src: "", durationMs: estimateMs(text), text: caption };
+    }
+    // Outside a browser this is a module imported with no kamishibai host: the
+    // times it lays out are guesses, and nothing else would say so.
+    if (typeof window === "undefined" && !estimateWarned) {
+      estimateWarned = true;
+      console.warn("kamishibai: no TTS engine here, so the narration's lengths are estimated, not the voice's. `kamishibai timing <reel>` gives the real ones.");
     }
     return out;
   }

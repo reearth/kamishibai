@@ -37,6 +37,8 @@ Usage:
   kamishibai export <entry> -o reel.html         a reel and its player as one HTML
                                                  file that plays with no server
   kamishibai check <entry> [--json]              check a kit reel's layout with no frame
+  kamishibai timing <entry> [--json]             a kit reel's scenes, sentences and sounds
+                                                 on its clock, with the cached narration
                                                  drawn (overlaps, overflow, contrast…)
   kamishibai schema [--brief]                    print the JSON Schema of a kit reel, or
                                                  every field, a line per part and shape
@@ -188,6 +190,7 @@ const FLAGS_FOR: Record<string, Set<string>> = {
   dev: new Set(["public", "port", "mute", "cc", "no-sweep", "no-open", "tts-cache"]),
   export: new Set(["out", "bare", "loop", "no-autoplay", "audio", "public", "probe-timeout", "tts-adapter", "tts-cache"]),
   check: new Set(["size", "aspect", "inset", "json"]),
+  timing: new Set(["tts-adapter", "tts-cache", "json"]),
   schema: new Set(["brief"]),
 };
 
@@ -322,7 +325,7 @@ async function main(): Promise<void> {
 
   if (!command || !FLAGS_FOR[command]) {
     process.stderr.write(
-      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / dev / export / check / encode -f <frames-dir>)\n`,
+      `Unknown command "${command}". Try: kamishibai render <entry|url>  (or: capture / tts / dev / export / check / timing / encode -f <frames-dir>)\n`,
     );
     process.exit(1);
   }
@@ -467,6 +470,19 @@ async function main(): Promise<void> {
     values["tts-adapter"] && FLAGS_FOR[command]!.has("tts-adapter")
       ? await loadTTSAdapters(values["tts-adapter"])
       : undefined;
+
+  // `kamishibai timing` lays a kit reel's scenes on its clock with the real
+  // narration lengths (cached, or synthesized as a render would).
+  if (command === "timing") {
+    if (!entry) {
+      process.stderr.write(`Missing <entry>.\n\n${HELP}`);
+      process.exit(1);
+    }
+    const { timingEntry, formatTiming } = await import("./kit-timing.ts");
+    const r = await timingEntry({ entry, ttsAdapters, onLog: (msg) => process.stderr.write(`${msg}\n`) });
+    process.stdout.write(values.json ? JSON.stringify(r, null, 2) + "\n" : formatTiming(r));
+    return;
+  }
 
   // `kamishibai tts` runs only the narration pre-pass: load the page once so
   // its prepareNarration fills the cache, then stop — no capture, no encode.
