@@ -7,6 +7,8 @@
 
 <sub>Rendered by kamishibai from [`site/demo/reel.ts`](site/demo/reel.ts): plain DOM, the one contract, and the [Lexicon](https://reearth.github.io/kamishibai/lexicon/)'s drawings. ([full mp4](site/demo/demo.mp4))</sub>
 
+- 🖥️ **Renders with no browser.** [Canvas](https://github.com/reearth/kamishibai/blob/main/docs/canvas.md) and [kit](https://github.com/reearth/kamishibai/blob/main/docs/kit.md) reels are painted on the CPU with Skia: no Chrome, no GPU, just Node and ffmpeg. That makes a server or a sandbox a place where an agent can make videos; a 25-second kit reel renders at 1080p in about 10 s on an M1.
+- 📋 **Scenes as data.** A kit reel is YAML, JSON or code: headings, cards, flows, numbers and pictures that move from scene to scene, timed to their narration, and laid out for 16:9 and 9:16 from one reel. `kamishibai check` finds overlaps, overflow and weak contrast with no frame drawn, so an agent can fix a reel from text alone.
 - 🧩 **Minimal.** One contract: the page exposes `window.kamishibai = { meta, seek }`. No framework to adopt, no editor.
 - 🎨 **Draw it any way.** React, plain DOM, canvas, three.js: anything a browser can show. The React helpers are optional.
 - ⚡ **Edit, then render only what changed.** `--incremental` captures again only the frames an edit touched. After one heading edit in an 86-second reel, it rendered again in 25 s, where Remotion took 48 s and HyperFrames 51 s ([benchmarks](docs/benchmarks.md)).
@@ -16,6 +18,8 @@
 - 🆓 **MIT.** Free for any use, by anyone, companies of any size included.
 
 `kamishibai` turns any web page (DOM, canvas, anything) into a video by **seeking to each moment and capturing a still**, then assembling the stills with `ffmpeg`. Because every frame is a pure function of its time, capture is reproducible — in a pinned environment, any order of frames gives the same video — and **trivially parallelisable** across several pages of a headless Chrome.
+
+A [canvas or kit reel](#kinds-of-reel) skips the browser: it draws each frame itself, on the CPU, so it renders wherever Node and ffmpeg run.
 
 It deliberately does *not* try to be a frame-accurate compositing engine or ship an editor. It gives you the renderer and one tiny contract; the rest is yours.
 
@@ -59,7 +63,39 @@ npx kamishibai render reel.tsx -o reel.mp4
 
 There's no GUI editor; you're the editor. The loop is **edit → look → render**: the [dev player](https://github.com/reearth/kamishibai/blob/main/docs/dev.md) shows the reel as you save, and a render writes the frames you can inspect one by one.
 
-**Requirements:** Node.js ≥ 20 · `ffmpeg` on `PATH` (not bundled) · a Chromium for Playwright (`npx playwright install chromium`).
+**Requirements:** Node.js ≥ 20 · `ffmpeg` on `PATH` (not bundled) · a Chromium for Playwright (`npx playwright install chromium`), for page reels only.
+
+### With no browser: a kit reel
+
+For a server, a sandbox or a CI job, where Chrome is heavy or missing, write the scenes as data and let the kit lay them out and draw them on the CPU:
+
+```sh
+npm i kamishibai @napi-rs/canvas yoga-layout yaml   # Skia, the layout, and YAML; no Playwright browser
+# plus ffmpeg on your PATH
+```
+
+```yaml
+# reel.yaml
+kit: 1
+captions: burn
+scenes:
+  - kata: cover
+    say: Three steps to a video, with no browser.
+    title: No browser needed
+  - kata: flow
+    say: Write the scenes, check them, then render.
+    title: How it goes
+    steps: [Write, Check, Render]
+    at: 1
+```
+
+```sh
+npx kamishibai check reel.yaml                            # layout problems, with no frame drawn
+npx kamishibai render reel.yaml -o reel.mp4               # 16:9
+npx kamishibai render reel.yaml -o tall.mp4 --aspect 9:16 # the same reel, laid out tall
+```
+
+Give it a `voice` and it narrates each scene, timing the scene to the speech. On a machine with few fonts, list the reel's own in `fonts`; `check` names any character no font has. The [kit guide](https://github.com/reearth/kamishibai/blob/main/docs/kit.md) has every part and shape.
 
 ---
 
@@ -73,7 +109,7 @@ A reel is the thing kamishibai turns into a video. It comes in three kinds:
 | [**Canvas**](https://github.com/reearth/kamishibai/blob/main/docs/canvas.md) | a module that paints each frame on a 2D canvas | Skia on the CPU, no browser | it must render with no browser. One reel lays itself out as 16:9 and as 9:16 |
 | [**Kit**](https://github.com/reearth/kamishibai/blob/main/docs/kit.md) | scenes as data, in YAML, JSON or code: titles, cards, flows, numbers | the kit, as a canvas reel | you want many videos fast. Parts move from scene to scene, and each scene is timed to its narration |
 
-`kamishibai export` makes a reel of any kind one HTML file that plays with no server ([more](https://github.com/reearth/kamishibai/blob/main/docs/export.md)).
+Canvas and kit reels need no browser: a container with Node and ffmpeg renders them, which is what an agent making videos on a server needs. `kamishibai export` makes a reel of any kind one HTML file that plays with no server ([more](https://github.com/reearth/kamishibai/blob/main/docs/export.md)).
 
 ---
 
