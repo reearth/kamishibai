@@ -525,7 +525,9 @@ scenes:
   `fill` says. A picture is as large as its room allows unless `width`,
   `height` or `upscale: false` (no wider than its pixels) holds it. A long
   word that can't break: `{ type: text, …, shrink: true }` sets it smaller
-  until it fits (half its size at most, or the share `shrink: 0.7` says). A row with
+  until it fits (half its size at most, or the share `shrink: 0.7` says).
+  `**…**` in a part's text (not code or a figure's items) sets that run in `accentText` (a `text`
+  part's `mark` sets the colour): `re·**CEIPT**` for a stressed syllable. A row with
   `narrow: fit` stays a row on a wide stage, shrunk with the scene, when
   stacking would shrink more (flow does this).
   Neither grows a scene with a `paint` part. `place: left|right|top|bottom`

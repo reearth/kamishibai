@@ -6,7 +6,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import { kit, kitBrief, kitSchema, morph, normalize, KitSpecError, card, row, title, arrow, scene, definePart, defineKata, f, textBox, type KitReelSpec } from "../src/kit/index.ts";
 import { camAt, frameAt, layersAt, settleMs, type Keyframe } from "../src/kit/engine.ts";
 import { aim } from "../src/kit/reel.ts";
-import { tokens, speechMs, sentences } from "../src/kit/text.ts";
+import { tokens, speechMs, sentences, parseMarks, lineMarks } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
 import { resolveView, type Context2D } from "../src/canvas/types.ts";
 import { checkEntry } from "../src/kit-check.ts";
@@ -182,6 +182,57 @@ describe("text", () => {
   it("guesses a spoken length from the script", () => {
     expect(speechMs("あいうえおかきくけこさしすせそ")).toBe(2000);
     expect(speechMs("fourteen chars")).toBe(929);
+  });
+});
+
+describe("marks", () => {
+  it("takes the runs between paired ** out of the text, and leaves a lone ** be", () => {
+    expect(parseMarks("re·**ceipt**")).toEqual({ plain: "re·ceipt", marks: [[3, 8]] });
+    expect(parseMarks("**HEAD**quar**TERS**")).toEqual({ plain: "HEADquarTERS", marks: [[0, 4], [8, 12]] });
+    expect(parseMarks("2 ** 10")).toEqual({ plain: "2 ** 10", marks: [] });
+    expect(parseMarks("a **b** c ** d")).toEqual({ plain: "a b c ** d", marks: [[2, 3]] });
+    // Counted in code points, so a character outside the BMP is one.
+    expect(parseMarks("𝑥 **漢字**")).toEqual({ plain: "𝑥 漢字", marks: [[2, 4]] });
+  });
+
+  it("follows the marks onto the lines the text breaks into", () => {
+    const { plain, marks } = parseMarks("one **two three** four");
+    expect(lineMarks(plain, marks, ["one two", "three four"])).toEqual([[[4, 7]], [[0, 5]]]);
+    expect(lineMarks(plain, marks, ["one", "two three four"])).toEqual([[], [[0, 9]]]);
+  });
+
+  it("draws the marked runs in the mark's colour, and checks their contrast", async () => {
+    const make = (mark?: string) => kit({ kit: 1, fonts, theme: { ...theme, accentText: "#ff0000" }, captions: false, scenes: [{ ms: 2000, fill: false, parts: [{ type: "text", role: "display", text: "ab**CD**", ...(mark ? { mark } : {}) }] }] });
+    const reel = await make();
+    const view = resolveView(reel.meta);
+    const paint = await reel.setup(view, await nodeEnv("."));
+    const c = createCanvas(view.width, view.height);
+    paint(patchContext(c.getContext("2d") as unknown as Context2D), 1900);
+    const data = c.getContext("2d").getImageData(0, 0, view.width, view.height).data;
+    // "ab" in ink, then "CD" in red: every red pixel right of every ink one.
+    let [red, ink, inkMaxX, redMinX] = [0, 0, -1, Infinity];
+    for (let i = 0; i < data.length; i += 4) {
+      const x = (i / 4) % view.width;
+      if (data[i]! > 200 && data[i + 1]! < 60 && data[i + 2]! < 60) (red++, (redMinX = Math.min(redMinX, x)));
+      if (data[i]! < 60 && data[i + 1]! < 60 && data[i + 2]! < 60) (ink++, (inkMaxX = Math.max(inkMaxX, x)));
+    }
+    expect(red).toBeGreaterThan(500);
+    expect(ink).toBeGreaterThan(500);
+    expect(redMinX).toBeGreaterThan(inkMaxX);
+    const pale = await make("#f4f4f0");
+    const issues = await pale.check(view, await nodeEnv("."));
+    expect(issues.map((i) => i.msg)).toEqual([expect.stringMatching(/^text's marked text is 1\.\d\d:1 on #fafaf7/)]);
+  });
+
+  it("crossfades a text whose marks change, and moves one whose marks stay", () => {
+    const t = (marks?: Array<Array<[number, number]>>) => ({ t: "text" as const, id: "w", owner: "w", x: 0, y: 0, w: 100, h: 50, lines: ["receipt"], font: "sans" as const, size: 40, lh: 1.2, track: 0, color: "#000000", align: "start" as const, o: 1, need: 0, ...(marks ? { marks, mark: "#ff0000" } : {}) });
+    const ks = (a: ReturnType<typeof t>, b: ReturnType<typeof t>): Keyframe[] => [
+      { id: "1", start: 0, ms: 1000, ds: [a] },
+      { id: "2", start: 1000, ms: 1000, ds: [{ ...b, x: 50 }] },
+    ];
+    const ids = (k: Keyframe[]) => frameAt(k, 1300).map((d) => d.id);
+    expect(ids(ks(t([[[2, 7]]]), t([[[2, 7]]])))).toEqual(["w"]);
+    expect(ids(ks(t(), t([[[2, 7]]])))).toContain("w~");
   });
 });
 

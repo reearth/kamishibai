@@ -6,7 +6,7 @@ import { bbox, type RectD, type Verb } from "./model.ts";
 import { intrinsic, layout, type Box, type Paint, type Rect } from "./layout.ts";
 import { f, type Fields } from "./fields.ts";
 import { MIN_FIT, SIZE, type FontRole, type Theme } from "./theme.ts";
-import type { Fonts } from "./text.ts";
+import { lineMarks, parseMarks, type Fonts } from "./text.ts";
 import { checkItems, colour, itemPaint, itemSteps, type FigureItem } from "./items.ts";
 import type {
   ArrowSpec,
@@ -102,10 +102,14 @@ export type TextOpts = {
   nowrap?: number;
   /** set smaller, down to this size, until its longest word fits the width it gets */
   shrinkTo?: number;
+  /** the colour of runs written between ** (default the theme's accentText) */
+  mark?: string;
 };
 
 /** A run of text that wraps to the width it gets. */
-export function textBox(id: string, s: string, ctx: Ctx, o: TextOpts = {}): Box {
+export function textBox(id: string, written: string, ctx: Ctx, o: TextOpts = {}): Box {
+  // Runs written between ** are drawn in the mark's colour; the rest of the layout reads the text without them.
+  const { plain: s, marks } = parseMarks(written);
   const font = o.font ?? "sans";
   const size = o.size ?? SIZE.body;
   const lh = o.lh ?? 1.45;
@@ -128,7 +132,10 @@ export function textBox(id: string, s: string, ctx: Ctx, o: TextOpts = {}): Box 
       const sz = sizeAt(r.w + 0.5);
       const ls = lines(r.w + 0.5, sz);
       return [
-        { t: "text", id, x: r.x, y: r.y, w: r.w, h: r.h, lines: ls, font, size: sz, lh, track, color: o.color ?? ctx.theme.ink, align: o.align ?? "start", o: 1, enter: o.enter, need: widest(ls, sz) },
+        {
+          t: "text", id, x: r.x, y: r.y, w: r.w, h: r.h, lines: ls, font, size: sz, lh, track, color: o.color ?? ctx.theme.ink, align: o.align ?? "start", o: 1, enter: o.enter, need: widest(ls, sz),
+          ...(marks.length ? { marks: lineMarks(s, marks, ls), mark: o.mark ?? ctx.theme.accentText } : {}),
+        },
       ];
     },
   };
@@ -173,15 +180,18 @@ definePart<TextSpec>("text", {
     align: f.one(["start", "center", "end"], "default start (center for display)"),
     color: f.str("a theme colour's name or CSS (default: by role)"),
     shrink: f.any("set smaller until its longest word fits (a word never breaks): true (down to half its size) or the least share of it, above 0 and up to 1"),
+    mark: f.str("the colour of runs written between ** (re·**ceipt**): a theme colour's name or CSS (default accentText)"),
   },
   check: (s, at) => (s.shrink === undefined || typeof s.shrink === "boolean" || (typeof s.shrink === "number" && s.shrink > 0 && s.shrink <= 1) ? [] : [`${at}.shrink: expected true, false or a share above 0 and up to 1, got ${JSON.stringify(s.shrink)}`]),
   box: (s, ctx) => {
     const role = s.role ?? "body";
     const least = (size: number) => (s.shrink === true ? size / 2 : typeof s.shrink === "number" ? size * s.shrink : undefined);
-    if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter, color: colour(s.color, ctx.theme, ctx.theme.ink), shrinkTo: least(SIZE.display) });
+    const mark = s.mark ? colour(s.mark, ctx.theme, ctx.theme.accentText) : undefined;
+    if (role === "display") return textBox(s.id, s.text, ctx, { font: "black", size: SIZE.display, lh: 1.1, track: -0.03, align: s.align ?? "center", balance: true, enter: s.enter, color: colour(s.color, ctx.theme, ctx.theme.ink), shrinkTo: least(SIZE.display), mark });
     const size = role === "lead" ? SIZE.h2 : role === "note" ? SIZE.small : SIZE.body;
     return textBox(s.id, s.text, ctx, {
       shrinkTo: least(size),
+      mark,
       font: role === "lead" ? "bold" : "sans",
       size,
       color: colour(s.color, ctx.theme, role === "note" ? ctx.theme.ink3 : ctx.theme.ink),

@@ -106,6 +106,11 @@ export function check(ks: Keyframe[], stage: Stage, insets: Insets, theme: Theme
         const need = d.size >= 40 || (d.size >= 30 && d.font !== "sans") ? 3 : 4.5;
         const c = contrast(d.color, bg);
         if (c !== null && c < need) say({ scene: s, kind: "contrast", msg: `${d.id} is ${c.toFixed(2)}:1 on ${bg} (needs ${need}:1): ${tweak(theme, d.color, bg)}` });
+        // Its marked runs, in their own colour.
+        if (d.mark && d.marks?.some((l) => l.length)) {
+          const cm = contrast(d.mark, bg);
+          if (cm !== null && cm < need) say({ scene: s, kind: "contrast", msg: `${d.id}'s marked text is ${cm.toFixed(2)}:1 on ${bg} (needs ${need}:1): ${tweak(theme, d.mark, bg)}` });
+        }
       }
     }
 

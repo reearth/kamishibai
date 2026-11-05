@@ -66,6 +66,9 @@ export type TextD = Base & {
   chars?: number;
   /** the width its widest line wanted, for the overflow check */
   need: number;
+  /** runs set in `mark` instead of `color`, per line, as [from, to) code points */
+  marks?: Array<Array<[number, number]>>;
+  mark?: string;
 };
 
 export type PathD = Base & {

@@ -99,7 +99,8 @@ function morphable(a: Drawable, b: Drawable): boolean {
   if (a.t !== b.t) return false;
   if (a.t === "text") {
     const t = b as TextD;
-    return (a.lines.join("\n") === t.lines.join("\n") && a.font === t.font) || (t.enter === "count" && num(a) !== null && num(t) !== null);
+    // The same words, marked the same: it moves (a mark that changes crossfades).
+    return (a.lines.join("\n") === t.lines.join("\n") && a.font === t.font && JSON.stringify(a.marks ?? []) === JSON.stringify(t.marks ?? [])) || (t.enter === "count" && num(a) !== null && num(t) !== null);
   }
   if (a.t === "path") return a.pts.length === (b as PathD).pts.length && a.head === (b as PathD).head;
   if (a.t === "paint") return a.key === (b as PaintD).key;
@@ -118,7 +119,7 @@ function tween(a: Drawable, b: Drawable, p: number): Live {
     const va = (a as Record<string, unknown>)[k];
     const vb = (b as Record<string, unknown>)[k];
     if (typeof va === "number" && typeof vb === "number") out[k] = lerp(va, vb, p);
-    else if (typeof va === "string" && typeof vb === "string" && (k === "fill" || k === "stroke" || k === "color")) out[k] = lerpColor(va, vb, p);
+    else if (typeof va === "string" && typeof vb === "string" && (k === "fill" || k === "stroke" || k === "color" || k === "mark")) out[k] = lerpColor(va, vb, p);
   }
   if (a.t === "path" && b.t === "path") out.pts = b.pts.map((q, i) => [lerp(a.pts[i]![0], q[0], p), lerp(a.pts[i]![1], q[1], p)]);
   if (a.t === "text" && b.t === "text" && b.enter === "count") {

@@ -31,6 +31,8 @@ export type TextSpec = Common & {
   color?: string;
   /** set smaller until its longest word fits: true (down to half its size) or the least share of it (above 0, up to 1) */
   shrink?: boolean | number;
+  /** the colour of runs written between ** (a theme colour's name or CSS; default accentText) */
+  mark?: string;
 };
 export type GroupSpec = Common & {
   type: "row" | "col";

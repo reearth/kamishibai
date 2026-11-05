@@ -91,10 +91,12 @@ A scene has a `say` (the narration, and its captions: a text, split into sentenc
 
 Every part is `{ type, … }`, with an optional `id`, `enter` and `cue`.
 
+In a part's text (a heading, a `text`, a card's label and body, a list's items, a chip, a stat's label; not code, nor a figure's items), a run written between `**` is set in the accent's text colour: `re·**CEIPT**` marks the stressed syllable. A `text` part's `mark` sets the colour (a theme colour's name or CSS). Only paired `**` mark, so `2 ** 10` stays as written; `kamishibai check` judges the marked runs' contrast too.
+
 | Part | Fields (* required) | |
 |---|---|---|
 | `title` | `text`\*, `kicker` | The scene's heading, pinned to the top. |
-| `text` | `text`\*, `role` (`display`, `lead`, `body`, `note`), `align`, `color`, `shrink` | Plain text, sized by what it is for: a cover's title, a large line, a sentence (the default), or a small grey note. A word never breaks, so a long one can be wider than its room: `shrink: true` sets the text smaller until its longest word fits, down to half its size (`shrink: 0.7`, to 70%). |
+| `text` | `text`\*, `role` (`display`, `lead`, `body`, `note`), `align`, `color`, `shrink`, `mark` | Plain text, sized by what it is for: a cover's title, a large line, a sentence (the default), or a small grey note. A word never breaks, so a long one can be wider than its room: `shrink: true` sets the text smaller until its longest word fits, down to half its size (`shrink: 0.7`, to 70%). |
 | `row`, `col` | `parts`\*, `gap`, `align`, `narrow` | Parts side by side, or one under another. A row is held to the stage's width, its cards wrapping their text to fit; one that still doesn't fit (a word would be cut, or a card would go under 360 units) stacks into a column (`narrow: stack`, the default), wraps like tiles (`wrap`), stays a row with its parts at their own width and the scene shrunk to fit it on a wide stage, stacking on a tall one or when stacking shrinks it less (`fit`, which `flow` uses), or stays a row (`keep`). |
 | `card` | `label`, `body`, `code`, `highlight`, `tone` (`plain`, `accent`, `dim`), `width` | A paper card: a small label over a sentence, a code excerpt, or both. On a tall stage a card in a column takes the full width instead of its `width`, so the column reads as one; in a row it keeps it. |
 | `arrow` | `kind` (`right`, `down`, `versus`, `equals`) | An arrow between parts; in a column it points down. |
