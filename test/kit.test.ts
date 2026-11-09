@@ -8,7 +8,7 @@ import { camAt, enteredMs, frameAt, layersAt, settleMs, type Keyframe } from "..
 import { aim } from "../src/kit/reel.ts";
 import { tokens, speechMs, sentences, parseMarks, lineMarks } from "../src/kit/text.ts";
 import { loadCanvasEntry, nodeEnv, patchContext, registerFonts } from "../src/canvas/node.ts";
-import { resolveView, type Context2D } from "../src/canvas/types.ts";
+import { resolveView, type CanvasReel, type Context2D } from "../src/canvas/types.ts";
 import { checkEntry } from "../src/kit-check.ts";
 import { bundleOptions } from "../src/serve.ts";
 import { build } from "esbuild";
@@ -27,6 +27,11 @@ import type { PartSpec, SceneSpec } from "../src/kit/spec.ts";
 const GEIST = resolve("examples/canvas/fonts/Geist.ttf");
 const fonts = [{ family: "Geist", src: GEIST, weight: "100 900" }];
 const theme = { fonts: { sans: "Geist", mono: "Geist" } };
+
+// Geist for every test here, whatever runs first: a machine may have no font
+// behind sans-serif at all (GitHub's ubuntu-26.04 runner has none), and text
+// measured in no font comes out as wide placeholder boxes.
+beforeAll(() => registerFonts({ fonts } as unknown as CanvasReel, "."));
 
 const problems = (spec: unknown): string[] => {
   try {
@@ -1264,7 +1269,7 @@ describe("morph", () => {
     const env = await nodeEnv(".");
     const m = morph(
       [{ at: 0, items: [{ id: "box", rect: [140, 10, 100, 60], fill: "card" }, { id: "t", text: "a long label", pos: [190, 20], align: "center" }, { id: "far", circle: [395, 100, 20] }] }],
-      { env, width: 400, height: 200 },
+      { env, width: 400, height: 200, theme },
     );
     expect(m.check().map((i) => `${i.kind} ${i.msg.split(":")[0]}`)).toEqual(["overflow t spills out of box", "off-stage far reaches outside the safe area (375,80 40×40)"]);
   });
