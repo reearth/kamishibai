@@ -4,6 +4,12 @@ All notable changes to kamishibai are listed here. The project follows
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor version
 can contain breaking changes, and they are called out under **Changed**.
 
+## 0.14.1
+
+### Fixed
+
+- A figure's `path` from an `.svg` file drew a shape away from where the file puts it when its `<path>` began with a relative `m` after another shape, as Lucide's `user-cog` does for its gear's teeth: the shapes are joined into one path, where that `m` was read from the shape before it. Such a path now starts from 0 0, so its `m` is where the file means.
+
 ## 0.14.0
 
 ### Added

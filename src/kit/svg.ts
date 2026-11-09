@@ -17,8 +17,12 @@ const num = (v: string | undefined, d = 0) => (v === undefined || v === "" ? d :
 /** A shape element as path data, or undefined for one that draws nothing here. */
 function shapeData(name: string, a: Record<string, string>): string | undefined {
   switch (name) {
-    case "path":
-      return a.d;
+    case "path": {
+      // A path element's first "m" is absolute, but in the joined path it would follow the shape
+      // before it and be read from that shape's last point, so it starts from 0 0 instead.
+      const d = a.d?.trim();
+      return d && d[0] === "m" ? `M0 0${d}` : d;
+    }
     case "circle":
     case "ellipse": {
       const [cx, cy] = [num(a.cx), num(a.cy)];

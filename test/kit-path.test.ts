@@ -33,6 +33,9 @@ describe("a figure's path item", () => {
     expect(outline.d).toContain("M7 8a5 5 0 1 0 10 0");
     expect(outline.d).toContain("M2 2L22 2");
     expect(outline.d).toContain("M1 1L2 2L3 1");
+    // A path that starts with a relative "m" (Lucide writes many) stays where the file puts it.
+    const joined = svgVector(`<svg viewBox="0 0 24 24" fill="none" stroke="#000"><path d="M10 15H6"/><path d="m14.3 16.5.9-.4"/></svg>`);
+    expect(joined.d).toBe("M10 15H6 M0 0m14.3 16.5.9-.4");
     expect(() => svgVector("<svg><g transform='scale(2)'><path d='M0 0L1 1'/></g></svg>", "a.svg")).toThrow(/a\.svg has a transform/);
     expect(() => svgVector("<svg viewBox='0 0 1 1'></svg>", "b.svg")).toThrow(/b\.svg has no shapes/);
     expect(() => svgVector("not svg", "c.svg")).toThrow(/c\.svg is not an SVG file/);
